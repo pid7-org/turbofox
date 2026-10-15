@@ -3,7 +3,8 @@ name = "turbofox"
 version = "0.0.1"
 edition = "2024"
 rust-version = "1.86.0"
-description = ""
+description = "Embedded Key-Value database for on-device storage"
+license = "MIT OR Apache-2.0"
 repository = "https://github.com/pid7-org/turbofox"
 keywords = [
     "database",
@@ -14,11 +15,29 @@ categories = [
     "caching",
     "database-implementations",
 ]
-license = "MIT OR Apache-2.0"
 
 [package.metadata.docs.rs]
 default-target = "x86_64-unknown-linux-gnu"
-targets = ["aarch64-unknown-linux-gnu", "aarch64-apple-darwin"]
 additional-targets = ["i686-apple-darwin"]
+targets = [
+    "aarch64-apple-darwin",
+    "i686-pc-windows-msvc",
+    "x86_64-pc-windows-msvc",
+    "aarch64-unknown-linux-gnu",
+]
 
+[profile.release]
+lto = "fat"
+opt-level = 3
+codegen-units = 1
+incremental = false
 
+[profile.profile]
+debug = true
+lto = "off"
+strip = "none"
+opt-level = 2
+codegen-units = 1
+inherits = "release"
+overflow-checks = false
+debug-assertions = false

@@ -249,8 +249,7 @@ impl Engine {
         &self.mmap
     }
 
-    /// Unmaps memory mapping and deletes backing file from storage device
-    #[inline]
+    /// Consumes engine, unmaps memory, terminates worker, and deletes backing file
     pub(crate) fn delete(self) -> TurboResult<()> {
         self.mmap.delete()?;
         Ok(())
@@ -466,15 +465,5 @@ mod tests {
             TurboError::InvalidRootNode => {}
             other => panic!("unexpected error: {:?}", other),
         }
-    }
-
-    #[test]
-    fn ok_engine_delete() {
-        let temp = TempFile::new("ok_engine_delete");
-        let cfg = TurboCfg::new(&temp.path);
-        let engine = Engine::open_or_create(cfg).unwrap();
-        assert!(temp.versioned.exists());
-        engine.delete().unwrap();
-        assert!(!temp.versioned.exists());
     }
 }

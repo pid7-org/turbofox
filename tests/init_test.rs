@@ -90,21 +90,20 @@ fn ok_turbofox_delete() {
 }
 
 #[test]
-fn err_turbofox_delete_with_active_clones() {
-    let temp = TempDb::new("err_delete_clones");
+fn err_turbofox_delete_with_active_clone() {
+    let temp = TempDb::new("err_delete_clone");
     let cfg = TurboCfg::new(&temp.path);
 
-    let db1 = TurboFox::new(cfg).unwrap();
-    let db2 = db1.clone();
-    assert!(temp.versioned.exists());
+    let db = TurboFox::new(cfg).unwrap();
+    let handle_clone = db.clone();
 
-    let err = db1.delete().unwrap_err();
+    let err = db.delete().unwrap_err();
     match err {
         TurboError::ResourceBusy(_) => {}
         other => panic!("unexpected error variant: {:?}", other),
     }
 
     assert!(temp.versioned.exists());
-    db2.delete().unwrap();
+    handle_clone.delete().unwrap();
     assert!(!temp.versioned.exists());
 }

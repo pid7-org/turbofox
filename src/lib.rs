@@ -45,7 +45,7 @@ impl TurboFox {
         self.engine.total_slots()
     }
 
-    /// Consumes database handle, unmaps memory, and deletes backing file from storage
+    /// Unmaps memory, terminates background sync, and removes database from filesystem
     pub fn delete(self) -> TurboResult<()> {
         match Arc::try_unwrap(self.engine) {
             Ok(engine) => engine.delete(),

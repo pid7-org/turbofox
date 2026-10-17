@@ -30,7 +30,7 @@ pub enum TurboError {
     },
     /// Root node virtual page failed type discriminator check
     InvalidRootNode,
-    /// Resource has active concurrent handles preventing exclusive operations
+    /// Resource is currently busy or referenced by active handles
     ResourceBusy(&'static str),
 }
 

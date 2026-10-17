@@ -9,16 +9,16 @@ use twox_hash::XxHash32;
 /// Using `"TBFX"` over the canonical xxHash32 default (`0x0000_0000`) establishes domain separation
 /// against external hash tables and precomputed collision datasets while fully preserving
 /// xxHash32's Strict Avalanche Criterion (SAC) and uniform 32-bit dispersion
-const SEED: u32 = 0x5442_4658;
+pub const SEED: u32 = 0x5442_4658;
 
 /// Sentinel hash value representing an empty bucket slot
-pub(crate) const HASH_EMPTY: u32 = 0;
+pub const HASH_EMPTY: u32 = 0;
 
 /// Sentinel hash value representing a deleted (tombstone) bucket slot
-pub(crate) const HASH_TOMBSTONE: u32 = 1;
+pub const HASH_TOMBSTONE: u32 = 1;
 
 /// Minimum valid hash value produced for any key
-pub(crate) const MIN_VALID_HASH: u32 = 2;
+pub const MIN_VALID_HASH: u32 = 2;
 
 /// Computes the normalized 32-bit xxHash32 for a key
 ///
@@ -30,7 +30,7 @@ pub(crate) const MIN_VALID_HASH: u32 = 2;
 /// - `1`: Tombstone (deleted) slot (`HASH_TOMBSTONE`)
 /// - `>= 2`: Valid key hash
 #[inline(always)]
-pub(crate) fn hash_key(key: &[u8]) -> u32 {
+pub fn hash_key(key: &[u8]) -> u32 {
     let mut hasher = XxHash32::with_seed(SEED);
 
     hasher.write(key);

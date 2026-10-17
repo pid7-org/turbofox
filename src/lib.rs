@@ -44,4 +44,14 @@ impl TurboFox {
     pub fn total_slots(&self) -> u32 {
         self.engine.total_slots()
     }
+
+    /// Consumes database handle, unmaps memory, and deletes backing file from storage
+    pub fn delete(self) -> TurboResult<()> {
+        match Arc::try_unwrap(self.engine) {
+            Ok(engine) => engine.delete(),
+            Err(_) => Err(TurboError::ResourceBusy(
+                "cannot delete database with active concurrent handles",
+            )),
+        }
+    }
 }

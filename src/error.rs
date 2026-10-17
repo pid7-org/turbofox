@@ -30,6 +30,8 @@ pub enum TurboError {
     },
     /// Root node virtual page failed type discriminator check
     InvalidRootNode,
+    /// Resource has active concurrent handles preventing exclusive operations
+    ResourceBusy(&'static str),
 }
 
 impl From<frozen_core::error::FrozenError> for TurboError {
@@ -69,6 +71,7 @@ impl core::fmt::Display for TurboError {
                 write!(f, "invalid file size: expected {}, found {}", expected, found)
             }
             Self::InvalidRootNode => write!(f, "invalid root node discriminator"),
+            Self::ResourceBusy(reason) => write!(f, "resource busy: {}", reason),
         }
     }
 }

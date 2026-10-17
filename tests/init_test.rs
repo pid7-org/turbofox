@@ -76,3 +76,35 @@ fn ok_turbofox_with_sync_interval() {
     assert_eq!(db.total_slots(), 0x0100);
     assert!(db.sync().is_ok());
 }
+
+#[test]
+fn ok_turbofox_delete() {
+    let temp = TempDb::new("ok_delete");
+    let cfg = TurboCfg::new(&temp.path);
+
+    let db = TurboFox::new(cfg).unwrap();
+    assert!(temp.versioned.exists());
+
+    db.delete().unwrap();
+    assert!(!temp.versioned.exists());
+}
+
+#[test]
+fn err_turbofox_delete_with_active_clones() {
+    let temp = TempDb::new("err_delete_clones");
+    let cfg = TurboCfg::new(&temp.path);
+
+    let db1 = TurboFox::new(cfg).unwrap();
+    let db2 = db1.clone();
+    assert!(temp.versioned.exists());
+
+    let err = db1.delete().unwrap_err();
+    match err {
+        TurboError::ResourceBusy(_) => {}
+        other => panic!("unexpected error variant: {:?}", other),
+    }
+
+    assert!(temp.versioned.exists());
+    db2.delete().unwrap();
+    assert!(!temp.versioned.exists());
+}

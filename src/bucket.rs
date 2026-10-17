@@ -25,22 +25,12 @@ impl BucketEntry {
 
     #[inline(always)]
     pub(crate) const fn empty() -> Self {
-        Self {
-            klen: 0,
-            vlen: 0,
-            buf_idx: 0,
-            hash: Self::HASH_EMPTY,
-        }
+        Self { klen: 0, vlen: 0, buf_idx: 0, hash: Self::HASH_EMPTY }
     }
 
     #[inline(always)]
     pub(crate) const fn tombstone() -> Self {
-        Self {
-            klen: 0,
-            vlen: 0,
-            buf_idx: 0,
-            hash: Self::HASH_TOMBSTONE,
-        }
+        Self { klen: 0, vlen: 0, buf_idx: 0, hash: Self::HASH_TOMBSTONE }
     }
 
     #[inline(always)]
@@ -153,10 +143,7 @@ impl Bucket {
 
     #[inline(always)]
     pub(crate) const fn new() -> Self {
-        Self {
-            header: Self::BUCKET_BIT,
-            entries: [BucketEntry::empty(); Self::ENTRY_COUNT],
-        }
+        Self { header: Self::BUCKET_BIT, entries: [BucketEntry::empty(); Self::ENTRY_COUNT] }
     }
 
     #[inline(always)]

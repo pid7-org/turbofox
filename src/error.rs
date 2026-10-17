@@ -32,6 +32,12 @@ pub enum TurboError {
     InvalidRootNode,
     /// Resource is currently busy or referenced by active handles
     ResourceBusy(&'static str),
+    /// Key type mismatch (e.g. KV op on List or vice versa)
+    InvalidType(&'static str),
+    /// Payload exceeds maximum single DataBuf storage capacity
+    PayloadTooLarge,
+    /// Payload data failed CRC32 validation or offset integrity
+    CorruptedPayload(&'static str),
 }
 
 impl From<frozen_core::error::FrozenError> for TurboError {
@@ -54,6 +60,24 @@ impl From<std::io::Error> for TurboError {
     }
 }
 
+impl From<crate::databuf::DataBufError> for TurboError {
+    #[inline]
+    fn from(err: crate::databuf::DataBufError) -> Self {
+        match err {
+            crate::databuf::DataBufError::PayloadTooLarge => Self::PayloadTooLarge,
+            crate::databuf::DataBufError::CrcMismatch { .. } => {
+                Self::CorruptedPayload("databuf payload crc32 mismatch")
+            }
+            crate::databuf::DataBufError::OutOfSpace => {
+                Self::ResourceBusy("databuf out of space")
+            }
+            crate::databuf::DataBufError::InvalidIndex => {
+                Self::CorruptedPayload("invalid databuf index")
+            }
+        }
+    }
+}
+
 impl core::fmt::Display for TurboError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -72,6 +96,9 @@ impl core::fmt::Display for TurboError {
             }
             Self::InvalidRootNode => write!(f, "invalid root node discriminator"),
             Self::ResourceBusy(reason) => write!(f, "resource busy: {}", reason),
+            Self::InvalidType(reason) => write!(f, "invalid key type: {}", reason),
+            Self::PayloadTooLarge => write!(f, "payload exceeds max buffer capacity"),
+            Self::CorruptedPayload(reason) => write!(f, "corrupted payload: {}", reason),
         }
     }
 }

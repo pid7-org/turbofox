@@ -3,6 +3,7 @@
 //! Ref: `DESIGN.md` §3.2, §3.4, §4.3, §5.2
 
 use crate::node::Node;
+use crate::slot::Slot;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -262,6 +263,26 @@ impl Bucket {
             let child_idx = ((e.hash >> shift) & 0x3F) as usize;
             (child_idx, e)
         })
+    }
+
+    #[inline(always)]
+    pub(crate) fn as_slots(&self) -> &[Slot; 2] {
+        unsafe { &*(self as *const Self as *const [Slot; 2]) }
+    }
+
+    #[inline(always)]
+    pub(crate) fn as_slots_mut(&mut self) -> &mut [Slot; 2] {
+        unsafe { &mut *(self as *mut Self as *mut [Slot; 2]) }
+    }
+
+    #[inline(always)]
+    pub(crate) fn from_slots(slots: &[Slot; 2]) -> &Self {
+        unsafe { &*(slots.as_ptr() as *const Self) }
+    }
+
+    #[inline(always)]
+    pub(crate) fn from_slots_mut(slots: &mut [Slot; 2]) -> &mut Self {
+        unsafe { &mut *(slots.as_mut_ptr() as *mut Self) }
     }
 }
 

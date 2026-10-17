@@ -45,3 +45,4 @@ debug-assertions = false
 [dependencies]
 twox-hash = { version = "2.1.5", features = ["xxhash32"] }
 frozen-core = { version = "0.0.36", features = ["memmap", "ack", "hints", "isa", "error"] }
+turbo_crc = { version = "0.0.4" }

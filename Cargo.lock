@@ -80,10 +80,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
+name = "turbo_crc"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8eb73ad0e04ede98cf0232ffd04ce8da7aa87618589cb1fd52c6cfa521d2f53e"
+
+[[package]]
 name = "turbofox"
 version = "0.0.1"
 dependencies = [
  "frozen-core",
+ "turbo_crc",
  "twox-hash",
 ]
 

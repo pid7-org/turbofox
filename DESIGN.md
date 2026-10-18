@@ -363,3 +363,31 @@ Writer (Atomic Multi-Slot OCC):
   if array becomes empty, unlink and return array to block bitmap
 - `first` / `last` / `get_at(idx)` / `iter`:
   Zero-copy indexed traversal over `(buf_idx, vlen)` pointers, validating CRC32 per item
+
+## 8. Lifecycle & Versioning
+
+### 8.1 Database Instantiation
+
+Initialization delegates lifecycle and presence validation entirely to `MemMap`,
+
+- `create(cfg)`:
+  Initializes new database backing file through `MemMap::new(memmap_cfg)`;
+  fails if file already exists on disk (`err::EXS`);
+  formats initial 8-page topography (Metadata, Root Node, Buckets, DataBufs, AdjArrays);
+  synchronizes initial state to disk writeback
+
+- `open(cfg)`:
+  Attaches to existing database file through `MemMap::open(memmap_cfg)`;
+  fails if backing file does not exist (`err::NEX`) or path is directory (`err::PTH`);
+  verifies minimum file size, physical page quantization, and slot alignment;
+  validates Slot 0 `Metadata` magic signature and layout version
+
+### 8.2 Versioned Mapping
+
+`TurboCfg` accepts an explicit `version: u32` parameter forwarded to `MemMapCfg`,
+
+- Filesystem naming follows `<stem>_<version>.<ext>` convention managed by `MemMap`
+- Callers may maintain multiple isolated database instances across distinct schema versions;
+  or allocate parallel sidecar databases against identical base directory paths
+- Engine logic executes zero manual filesystem presence checks;
+  file existence, creation exclusivity, and descriptor locking remain encapsulated in `MemMap`

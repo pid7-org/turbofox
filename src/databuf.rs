@@ -1,12 +1,6 @@
 //! DataBuf storage layout (0x0400 Bytes / 8 Slots)
 //!
 //! Ref: `DESIGN.md` §1, §3.5, §5.3, §7
-//!
-//! Stores key and value payload bytes across 0x3F 0x10-byte aligned buffers (0x03F0 bytes);
-//! Buffer allocation is tracked via a 0x40-bit bitmap where bits 0..0x3E mark buffer
-//! occupancy (1 = occupied, 0 = free) and bit 0x3F indicates a fully occupied DataBuf;
-//! Payloads are formatted as:
-//! `[ CRC32 (4B) ][ Key Bytes (klen) ][ Value Bytes (vlen) ][ 0-Padding ]`
 
 use crate::slot::Slot;
 
@@ -54,12 +48,7 @@ impl DataBuf {
 
     #[inline(always)]
     pub const fn new() -> Self {
-        Self {
-            buffers: [[0u8; 0x10]; 0x3F],
-            bitmap: 0,
-            next_dbuf: 0,
-            padding: [0u8; 4],
-        }
+        Self { buffers: [[0u8; 0x10]; 0x3F], bitmap: 0, next_dbuf: 0, padding: [0u8; 4] }
     }
 
     #[inline(always)]
@@ -109,11 +98,7 @@ impl DataBuf {
         if count == 0 || start_idx + count > Self::BUF_COUNT {
             return false;
         }
-        let mask = if count == 0x40 {
-            u64::MAX
-        } else {
-            ((1u64 << count) - 1) << start_idx
-        };
+        let mask = if count == 0x40 { u64::MAX } else { ((1u64 << count) - 1) << start_idx };
         (self.bitmap & mask) == 0
     }
 
@@ -122,11 +107,7 @@ impl DataBuf {
             return None;
         }
         let max_start = Self::BUF_COUNT - count;
-        let test_mask = if count == 0x40 {
-            u64::MAX
-        } else {
-            (1u64 << count) - 1
-        };
+        let test_mask = if count == 0x40 { u64::MAX } else { (1u64 << count) - 1 };
 
         for idx in 0..=max_start {
             if (self.bitmap & (test_mask << idx)) == 0 {
@@ -138,11 +119,7 @@ impl DataBuf {
 
     pub(crate) fn alloc_contiguous(&mut self, count: usize) -> Option<usize> {
         let start = self.find_contiguous_free(count)?;
-        let mask = if count == 0x40 {
-            u64::MAX
-        } else {
-            ((1u64 << count) - 1) << start
-        };
+        let mask = if count == 0x40 { u64::MAX } else { ((1u64 << count) - 1) << start };
         self.bitmap |= mask;
         if (self.bitmap & Self::OCCUPANCY_MASK) == Self::OCCUPANCY_MASK {
             self.bitmap |= Self::FULL_BIT;
@@ -155,11 +132,7 @@ impl DataBuf {
         if count == 0 {
             return;
         }
-        let mask = if count == 0x40 {
-            u64::MAX
-        } else {
-            ((1u64 << count) - 1) << start_idx
-        };
+        let mask = if count == 0x40 { u64::MAX } else { ((1u64 << count) - 1) << start_idx };
         self.bitmap &= !mask;
         self.bitmap &= !Self::FULL_BIT;
     }
@@ -258,10 +231,7 @@ impl DataBuf {
         let actual_crc = turbo_crc::crc32c(data);
 
         if actual_crc != expected_crc {
-            return Err(DataBufError::CrcMismatch {
-                expected: expected_crc,
-                found: actual_crc,
-            });
+            return Err(DataBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
         }
 
         let key = &data[..klen];
@@ -316,10 +286,7 @@ impl DataBuf {
         let actual_crc = turbo_crc::crc32c(key);
 
         if actual_crc != expected_crc {
-            return Err(DataBufError::CrcMismatch {
-                expected: expected_crc,
-                found: actual_crc,
-            });
+            return Err(DataBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
         }
 
         Ok(key)
@@ -372,10 +339,7 @@ impl DataBuf {
         let actual_crc = turbo_crc::crc32c(val);
 
         if actual_crc != expected_crc {
-            return Err(DataBufError::CrcMismatch {
-                expected: expected_crc,
-                found: actual_crc,
-            });
+            return Err(DataBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
         }
 
         Ok(val)

@@ -1,46 +1,52 @@
-//! TurboFox embedded key-value storage engine
+//! NA
 
-use std::sync::Arc;
+mod adjarr;
+mod bucket;
+mod cfg;
+mod databuf;
+mod engine;
+mod error;
+mod hash;
+mod meta;
+mod node;
+mod slot;
 
-pub mod cfg;
-pub mod error;
-
-pub(crate) mod adjarr;
-pub(crate) mod bucket;
-pub(crate) mod databuf;
-pub(crate) mod engine;
-pub mod hash;
-pub(crate) mod meta;
-pub(crate) mod node;
-pub(crate) mod slot;
-
-pub use cfg::{MODULE_ID, PAGE_SIZE, TurboCfg};
+pub use cfg::TurboCfg;
 pub use error::{TurboError, TurboResult};
 pub use frozen_core::ack::AckTicket;
 
 use engine::Engine;
+use std::sync::Arc;
 
 /// Embedded Key-Value database handle
 #[derive(Debug, Clone)]
 pub struct TurboFox {
-    pub(crate) engine: Arc<Engine>,
+    engine: Arc<Engine>,
 }
 
 impl TurboFox {
-    /// Opens an existing database or formats a new one per provided configuration
-    pub fn new(cfg: TurboCfg) -> TurboResult<Self> {
-        let engine = Engine::open_or_create(cfg)?;
+    /// Initializes brand new database backing file and layout;
+    /// fails if backing file already exists
+    pub fn create(cfg: TurboCfg) -> TurboResult<Self> {
+        let engine = Engine::create(cfg)?;
+        Ok(Self { engine: Arc::new(engine) })
+    }
+
+    /// Opens existing database file and verifies structure invariants;
+    /// fails if backing file does not exist
+    pub fn open(cfg: TurboCfg) -> TurboResult<Self> {
+        let engine = Engine::open(cfg)?;
         Ok(Self { engine: Arc::new(engine) })
     }
 
     /// Sets a key-value pair, expanding storage dynamically when needed
-    #[inline]
+    #[inline(always)]
     pub fn set(&self, key: &[u8], val: &[u8]) -> TurboResult<AckTicket> {
         self.engine.set(key, val)
     }
 
     /// Retrieves value payload for the specified key
-    #[inline]
+    #[inline(always)]
     pub fn get(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
         self.engine.get(key)
     }
@@ -55,12 +61,6 @@ impl TurboFox {
     #[inline]
     pub fn sync(&self) -> TurboResult<()> {
         self.engine.sync()
-    }
-
-    /// Total operational slots allocated in the mapping
-    #[inline]
-    pub fn total_slots(&self) -> u32 {
-        self.engine.total_slots()
     }
 
     /// Unmaps memory, terminates background sync, and removes database from filesystem

@@ -7,6 +7,7 @@ mod databuf;
 mod engine;
 mod error;
 mod hash;
+mod list;
 mod meta;
 mod node;
 mod slot;
@@ -15,6 +16,7 @@ mod ticket;
 pub use cfg::TurboCfg;
 pub use error::{TurboError, TurboResult};
 pub use frozen_core::ack::AckTicket;
+pub use list::{TurboList, TurboListIter};
 pub use ticket::{Completion, TEpoch, TurboTicket};
 
 use engine::Engine;
@@ -58,6 +60,18 @@ impl TurboFox {
     #[inline(always)]
     pub fn del(&self, key: &[u8]) -> TurboResult<bool> {
         self.engine.del(key)
+    }
+
+    /// Accesses or creates a list handle associated with key
+    #[inline(always)]
+    pub fn list(&self, key: &[u8]) -> TurboList {
+        TurboList::new(Arc::clone(&self.engine), key.to_vec())
+    }
+
+    /// Deletes a list entry and frees associated memory blocks
+    #[inline(always)]
+    pub fn list_del(&self, key: &[u8]) -> TurboResult<bool> {
+        self.engine.list_del(key)
     }
 
     /// Total active key-value and list entries in the database

@@ -438,6 +438,14 @@ impl Engine {
 
     /// Locates an active DataBuf in the freelist chain with contiguous buffer capacity
     fn find_free_databuf(&self, needed: usize) -> TurboResult<Option<DbufAllocPlan>> {
+        self.find_free_databuf_excluding(needed, 0)
+    }
+
+    fn find_free_databuf_excluding(
+        &self,
+        needed: usize,
+        exclude_slot: usize,
+    ) -> TurboResult<Option<DbufAllocPlan>> {
         let head = self.read_metadata()?.databuf_head as usize;
         if head == 0 {
             return Ok(None);
@@ -446,6 +454,12 @@ impl Engine {
         if needed <= DataBuf::BUF_COUNT {
             let mut curr = head;
             while curr != 0 {
+                if curr == exclude_slot {
+                    curr = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
+                        d.next_dbuf_index() as usize
+                    })?;
+                    continue;
+                }
                 let (next, opt_alloc) = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
                     let next = d.next_dbuf_index() as usize;
                     let mut mutated = *d;
@@ -471,6 +485,12 @@ impl Engine {
         let mut curr = head;
 
         while curr != 0 {
+            if curr == exclude_slot {
+                curr = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
+                    d.next_dbuf_index() as usize
+                })?;
+                continue;
+            }
             let (next, fits, touched) = self.check_contiguous_dbuf_fit(curr, num_dbufs, needed)?;
             if fits {
                 return Ok(Some(DbufAllocPlan {
@@ -517,6 +537,121 @@ impl Engine {
             rem_buffers -= count;
             is_first = false;
         }
+    }
+
+    fn write_key_payload_spanned(
+        touched: &mut [(usize, DataBuf, DataBuf)],
+        local_idx: usize,
+        req: usize,
+        key: &[u8],
+    ) {
+        let total_bytes = req * DataBuf::BUF_SIZE;
+        let mut frame = vec![0u8; total_bytes];
+        frame[DataBuf::CRC_SIZE..DataBuf::CRC_SIZE + key.len()].copy_from_slice(key);
+        let crc = turbo_crc::crc32c(key);
+        frame[..DataBuf::CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
+
+        let mut src_off = 0;
+        let mut rem_buffers = req;
+        let mut is_first = true;
+
+        for (_slot, _orig, mutated) in touched.iter_mut() {
+            let curr_local = if is_first { local_idx } else { 0 };
+            let count = (DataBuf::BUF_COUNT - curr_local).min(rem_buffers);
+            let dst_start = curr_local * DataBuf::BUF_SIZE;
+            let bytes_len = count * DataBuf::BUF_SIZE;
+
+            mutated.payload_bytes_mut()[dst_start..dst_start + bytes_len]
+                .copy_from_slice(&frame[src_off..src_off + bytes_len]);
+
+            src_off += bytes_len;
+            rem_buffers -= count;
+            is_first = false;
+        }
+    }
+
+    fn write_item_payload_spanned(
+        touched: &mut [(usize, DataBuf, DataBuf)],
+        local_idx: usize,
+        req: usize,
+        val: &[u8],
+    ) {
+        let total_bytes = req * DataBuf::BUF_SIZE;
+        let mut frame = vec![0u8; total_bytes];
+        frame[DataBuf::CRC_SIZE..DataBuf::CRC_SIZE + val.len()].copy_from_slice(val);
+        let crc = turbo_crc::crc32c(val);
+        frame[..DataBuf::CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
+
+        let mut src_off = 0;
+        let mut rem_buffers = req;
+        let mut is_first = true;
+
+        for (_slot, _orig, mutated) in touched.iter_mut() {
+            let curr_local = if is_first { local_idx } else { 0 };
+            let count = (DataBuf::BUF_COUNT - curr_local).min(rem_buffers);
+            let dst_start = curr_local * DataBuf::BUF_SIZE;
+            let bytes_len = count * DataBuf::BUF_SIZE;
+
+            mutated.payload_bytes_mut()[dst_start..dst_start + bytes_len]
+                .copy_from_slice(&frame[src_off..src_off + bytes_len]);
+
+            src_off += bytes_len;
+            rem_buffers -= count;
+            is_first = false;
+        }
+    }
+
+    fn read_item_payload_spanned(
+        &self,
+        dbuf_slot: usize,
+        local_idx: usize,
+        vlen: usize,
+    ) -> TurboResult<Vec<u8>> {
+        let req = DataBuf::required_val_buffers(vlen);
+        if local_idx + req <= DataBuf::BUF_COUNT {
+            return self.mmap.read_exact::<DataBuf, _, _>(dbuf_slot, |dbuf| {
+                let v = dbuf.read_val_payload(local_idx, vlen)?;
+                Ok(v.to_vec())
+            })?;
+        }
+
+        let total_bytes = req * DataBuf::BUF_SIZE;
+        let mut frame = vec![0u8; total_bytes];
+        let mut dest_offset = 0;
+        let mut remaining_buffers = req;
+        let mut curr_slot = dbuf_slot;
+        let mut is_first = true;
+
+        while remaining_buffers > 0 {
+            let curr_local = if is_first { local_idx } else { 0 };
+            let count = (DataBuf::BUF_COUNT - curr_local).min(remaining_buffers);
+            let src_start = curr_local * DataBuf::BUF_SIZE;
+            let bytes_len = count * DataBuf::BUF_SIZE;
+
+            self.mmap.read_exact::<DataBuf, _, _>(curr_slot, |dbuf| {
+                let raw = dbuf.payload_bytes();
+                frame[dest_offset..dest_offset + bytes_len]
+                    .copy_from_slice(&raw[src_start..src_start + bytes_len]);
+            })?;
+
+            dest_offset += bytes_len;
+            remaining_buffers -= count;
+            curr_slot += DataBuf::SLOT_COUNT;
+            is_first = false;
+        }
+
+        let mut crc_bytes = [0u8; DataBuf::CRC_SIZE];
+        crc_bytes.copy_from_slice(&frame[..DataBuf::CRC_SIZE]);
+        let expected_crc = u32::from_le_bytes(crc_bytes);
+
+        let data = &frame[DataBuf::CRC_SIZE..DataBuf::CRC_SIZE + vlen];
+        let actual_crc = turbo_crc::crc32c(data);
+
+        if actual_crc != expected_crc {
+            return Err(TurboError::CorruptedPayload("databuf payload crc32 mismatch"));
+        }
+
+        Ok(data.to_vec())
     }
 
     fn free_spanned_databufs(
@@ -613,6 +748,76 @@ impl Engine {
 
         self.mmap.write_exact::<Metadata, _, _>(0, |m| {
             m.databuf_head = old_slots as u32;
+            m.record_growth(pages as u32);
+        })?;
+
+        Ok(())
+    }
+
+    /// Finds first vacant array entry across AdjArray blocks chain
+    fn find_free_adjarr(&self) -> TurboResult<Option<(u16, usize, AdjArrayBlock, AdjArrayBlock)>> {
+        let head = self.read_metadata()?.adj_arr_head as usize;
+        let mut curr = head;
+        let total_slots = self.total_slots.load(Ordering::Acquire) as usize;
+
+        while curr != 0 && curr < total_slots {
+            let (next, opt_alloc) = self.mmap.read_exact::<AdjArrayBlock, _, _>(curr, |b| {
+                let next = b.next_block() as usize;
+                if !b.is_full() {
+                    let mut mutated = *b;
+                    if let Some(arr_idx) = mutated.alloc_array() {
+                        if mutated.is_full() {
+                            mutated.set_occupied(true);
+                        }
+                        return (next, Some((arr_idx, *b, mutated)));
+                    }
+                }
+                (next, None)
+            })?;
+
+            if let Some((arr_idx, orig, mutated)) = opt_alloc {
+                let global_idx = crate::adjarr::global_index(curr as u32, arr_idx);
+                return Ok(Some((global_idx, curr, orig, mutated)));
+            }
+
+            curr = next;
+        }
+
+        Ok(None)
+    }
+
+    /// Expands Adjacent Array block chain by allocating 1 physical OS page (§5.4)
+    fn grow_adjarr(&self) -> TurboResult<()> {
+        let _guard = self.growth_mutex.lock().unwrap();
+
+        if self.find_free_adjarr()?.is_some() {
+            return Ok(());
+        }
+
+        let pages = 1;
+        let added_slots = 0x20;
+        let old_slots = self.total_slots.load(Ordering::Acquire) as usize;
+
+        self.mmap.grow(pages)?;
+        self.total_slots.store((old_slots + added_slots) as u32, Ordering::Release);
+
+        let num_blocks = 0x20;
+        let old_head = self.read_metadata()?.adj_arr_head;
+
+        for i in 0..num_blocks {
+            let slot = old_slots + i;
+            let next = if i + 1 < num_blocks {
+                (old_slots + i + 1) as u32
+            } else {
+                old_head
+            };
+            let mut block = AdjArrayBlock::new();
+            block.set_next_block(next);
+            self.mmap.write_exact::<AdjArrayBlock, _, _>(slot, |b| *b = block)?;
+        }
+
+        self.mmap.write_exact::<Metadata, _, _>(0, |m| {
+            m.adj_arr_head = old_slots as u32;
             m.record_growth(pages as u32);
         })?;
 
@@ -1013,6 +1218,833 @@ impl Engine {
 
                     match tx.commit() {
                         Ok(_ticket) => {
+                            self.total_entries.fetch_sub(1, Ordering::Relaxed);
+                            return Ok(true);
+                        }
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
+                    }
+                }
+                _ => return Ok(false),
+            }
+        }
+
+        Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
+    }
+
+    /// Allocates databufs for a newly initialized list key and item payload
+    fn alloc_new_list_databufs(
+        &self,
+        key: &[u8],
+        item: &[u8],
+        req_k: usize,
+        req_v: usize,
+    ) -> TurboResult<(u32, u32, Vec<(usize, DataBuf, DataBuf)>)> {
+        if req_k + req_v <= DataBuf::BUF_COUNT {
+            if let Some(mut plan) = self.find_free_databuf(req_k + req_v)? {
+                let k_buf_idx = DataBuf::global_buf_idx(plan.start_slot as u32, plan.local_idx);
+                let v_buf_idx =
+                    DataBuf::global_buf_idx(plan.start_slot as u32, plan.local_idx + req_k);
+                Self::write_key_payload_spanned(
+                    &mut plan.touched,
+                    plan.local_idx,
+                    req_k,
+                    key,
+                );
+                Self::write_item_payload_spanned(
+                    &mut plan.touched,
+                    plan.local_idx + req_k,
+                    req_v,
+                    item,
+                );
+                return Ok((k_buf_idx, v_buf_idx, plan.touched));
+            }
+        }
+
+        let mut plan_k = match self.find_free_databuf(req_k)? {
+            Some(p) => p,
+            None => {
+                self.grow_databufs(req_k)?;
+                self.find_free_databuf(req_k)?
+                    .ok_or(TurboError::ResourceBusy("databuf out of space"))?
+            }
+        };
+        let k_buf_idx = DataBuf::global_buf_idx(plan_k.start_slot as u32, plan_k.local_idx);
+        Self::write_key_payload_spanned(&mut plan_k.touched, plan_k.local_idx, req_k, key);
+
+        let mut plan_v = match self.find_free_databuf_excluding(req_v, plan_k.start_slot)? {
+            Some(p) => p,
+            None => {
+                self.grow_databufs(req_v)?;
+                self.find_free_databuf_excluding(req_v, plan_k.start_slot)?
+                    .ok_or(TurboError::ResourceBusy("databuf out of space"))?
+            }
+        };
+        let v_buf_idx = DataBuf::global_buf_idx(plan_v.start_slot as u32, plan_v.local_idx);
+        Self::write_item_payload_spanned(&mut plan_v.touched, plan_v.local_idx, req_v, item);
+
+        let merged = Self::merge_dbuf_diffs(plan_k.touched, plan_v.touched);
+        Ok((k_buf_idx, v_buf_idx, merged))
+    }
+
+    /// Creates a brand new list key and inserts the first item payload
+    fn create_and_append_list(
+        &self,
+        bucket_slot: usize,
+        bucket: Bucket,
+        vacant_slot: usize,
+        key: &[u8],
+        hash: u32,
+        item: &[u8],
+    ) -> TurboResult<Option<TurboTicket>> {
+        let req_k = DataBuf::required_key_buffers(key.len());
+        let req_v = DataBuf::required_val_buffers(item.len());
+
+        if self.find_free_databuf(req_k)?.is_none() {
+            self.grow_databufs(req_k)?;
+        }
+        if self.find_free_databuf(req_v)?.is_none() {
+            self.grow_databufs(req_v)?;
+        }
+
+        if self.find_free_adjarr()?.is_none() {
+            self.grow_adjarr()?;
+        }
+
+        let (head_global_idx, block_slot, orig_block, mut mut_block) =
+            match self.find_free_adjarr()? {
+                Some(alloc) => alloc,
+                None => {
+                    self.grow_adjarr()?;
+                    match self.find_free_adjarr()? {
+                        Some(alloc) => alloc,
+                        None => return Err(TurboError::ResourceBusy("adjarr out of space")),
+                    }
+                }
+            };
+
+        let (_, head_arr_idx) = crate::adjarr::decompose_global_index(head_global_idx);
+        let (k_buf_idx, v_buf_idx, dbuf_diffs) =
+            self.alloc_new_list_databufs(key, item, req_k, req_v)?;
+
+        mut_block.array_mut(head_arr_idx).push(v_buf_idx, item.len() as u16);
+
+        let mut new_bucket = bucket;
+        new_bucket.entry_mut(vacant_slot).set_list(
+            key.len() as u16,
+            head_global_idx,
+            k_buf_idx,
+            hash,
+        );
+
+        let mut changes = Vec::with_capacity(2 + 1 + dbuf_diffs.len() * 8);
+        for i in 0..2 {
+            changes.push((
+                bucket_slot + i,
+                bucket.as_slots()[i],
+                new_bucket.as_slots()[i],
+            ));
+        }
+        changes.push((
+            block_slot,
+            *orig_block.as_slot(),
+            *mut_block.as_slot(),
+        ));
+        for (slot, orig, mutated) in &dbuf_diffs {
+            for i in 0..DataBuf::SLOT_COUNT {
+                let s = slot + i;
+                let o = orig.as_slots()[i];
+                let n = mutated.as_slots()[i];
+                if o != n {
+                    changes.push((s, o, n));
+                }
+            }
+        }
+
+        changes.sort_by_key(|(s, _, _)| *s);
+        let mut tx = self.mmap.new_tx();
+        for (s, o, n) in &changes {
+            tx.write(o, n, *s)?;
+        }
+
+        match tx.commit() {
+            Ok(ack) => {
+                self.total_entries.fetch_add(1, Ordering::Relaxed);
+                Ok(Some(TurboTicket::new(ack)))
+            }
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Appends an item payload to an already existing list key
+    fn append_to_existing_list(
+        &self,
+        bucket_slot: usize,
+        bucket: Bucket,
+        head_global_idx: u16,
+        item: &[u8],
+    ) -> TurboResult<Option<TurboTicket>> {
+        let req_v = DataBuf::required_val_buffers(item.len());
+        if self.find_free_databuf(req_v)?.is_none() {
+            self.grow_databufs(req_v)?;
+        }
+
+        let mut plan_v = match self.find_free_databuf(req_v)? {
+            Some(p) => p,
+            None => {
+                self.grow_databufs(req_v)?;
+                self.find_free_databuf(req_v)?
+                    .ok_or(TurboError::ResourceBusy("databuf out of space"))?
+            }
+        };
+        let v_buf_idx = DataBuf::global_buf_idx(plan_v.start_slot as u32, plan_v.local_idx);
+        Self::write_item_payload_spanned(&mut plan_v.touched, plan_v.local_idx, req_v, item);
+
+        let mut curr_global = head_global_idx;
+        loop {
+            let (block_slot, array_idx) = crate::adjarr::decompose_global_index(curr_global);
+            let block =
+                self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+            let next = block.array(array_idx).next_array();
+            if next == 0 {
+                break;
+            }
+            curr_global = next;
+        }
+
+        let (tail_block_slot, tail_array_idx) = crate::adjarr::decompose_global_index(curr_global);
+        let tail_block =
+            self.mmap.read_exact::<AdjArrayBlock, _, _>(tail_block_slot as usize, |b| *b)?;
+        let mut new_tail_block = tail_block;
+
+        let mut changes = Vec::new();
+
+        if !tail_block.array(tail_array_idx).is_full() {
+            new_tail_block.array_mut(tail_array_idx).push(v_buf_idx, item.len() as u16);
+            changes.push((
+                tail_block_slot as usize,
+                *tail_block.as_slot(),
+                *new_tail_block.as_slot(),
+            ));
+        } else {
+            if self.find_free_adjarr()?.is_none() {
+                self.grow_adjarr()?;
+            }
+            let (new_global_idx, new_block_slot, orig_new_block, mut mut_new_block) =
+                match self.find_free_adjarr()? {
+                    Some(alloc) => alloc,
+                    None => {
+                        self.grow_adjarr()?;
+                        self.find_free_adjarr()?
+                            .ok_or(TurboError::ResourceBusy("adjarr out of space"))?
+                    }
+                };
+            let (_, new_array_idx) = crate::adjarr::decompose_global_index(new_global_idx);
+            mut_new_block.array_mut(new_array_idx).push(v_buf_idx, item.len() as u16);
+
+            if new_block_slot == (tail_block_slot as usize) {
+                mut_new_block.array_mut(tail_array_idx).set_next_array(new_global_idx);
+                changes.push((
+                    tail_block_slot as usize,
+                    *tail_block.as_slot(),
+                    *mut_new_block.as_slot(),
+                ));
+            } else {
+                new_tail_block.array_mut(tail_array_idx).set_next_array(new_global_idx);
+                changes.push((
+                    tail_block_slot as usize,
+                    *tail_block.as_slot(),
+                    *new_tail_block.as_slot(),
+                ));
+                changes.push((
+                    new_block_slot,
+                    *orig_new_block.as_slot(),
+                    *mut_new_block.as_slot(),
+                ));
+            }
+        }
+
+        for i in 0..2 {
+            changes.push((
+                bucket_slot + i,
+                bucket.as_slots()[i],
+                bucket.as_slots()[i],
+            ));
+        }
+
+        for (slot, orig, mutated) in &plan_v.touched {
+            for i in 0..DataBuf::SLOT_COUNT {
+                let s = slot + i;
+                let o = orig.as_slots()[i];
+                let n = mutated.as_slots()[i];
+                if o != n {
+                    changes.push((s, o, n));
+                }
+            }
+        }
+
+        changes.sort_by_key(|(s, _, _)| *s);
+        let mut tx = self.mmap.new_tx();
+        for (s, o, n) in &changes {
+            tx.write(o, n, *s)?;
+        }
+
+        match tx.commit() {
+            Ok(ack) => Ok(Some(TurboTicket::new(ack))),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Appends an item payload to the tail of a list key
+    pub(crate) fn list_append(&self, key: &[u8], item: &[u8]) -> TurboResult<TurboTicket> {
+        if key.len() > 0xFFFF || item.len() > 0xFFFF {
+            return Err(TurboError::PayloadTooLarge);
+        }
+
+        let hash = hash_key(key);
+
+        for attempt in 0..0x20 {
+            let (bucket_slot, depth) = self.find_bucket(hash)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
+            let probe_res = bucket.probe(hash, depth, |entry| self.match_entry_key(entry, key));
+
+            match probe_res {
+                ProbeResult::Full => {
+                    self.split_bucket(bucket_slot, depth)?;
+                    continue;
+                }
+                ProbeResult::Found(entry_idx) => {
+                    let entry = bucket.entry(entry_idx);
+                    if !entry.is_list() {
+                        return Err(TurboError::InvalidType("cannot append to KV entry"));
+                    }
+
+                    let head_global_idx = entry.vlen();
+                    match self.append_to_existing_list(
+                        bucket_slot,
+                        bucket,
+                        head_global_idx,
+                        item,
+                    )? {
+                        Some(ticket) => return Ok(ticket),
+                        None => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
+                    }
+                }
+                ProbeResult::Vacant(vacant_slot) => {
+                    match self.create_and_append_list(
+                        bucket_slot,
+                        bucket,
+                        vacant_slot,
+                        key,
+                        hash,
+                        item,
+                    )? {
+                        Some(ticket) => return Ok(ticket),
+                        None => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
+    }
+
+    /// Pops the tail item payload from an existing list
+    fn pop_from_existing_list(
+        &self,
+        bucket_slot: usize,
+        bucket: Bucket,
+        head_global_idx: u16,
+    ) -> TurboResult<Option<Option<Vec<u8>>>> {
+        let mut curr_global = head_global_idx;
+        let mut prev_global = 0u16;
+        loop {
+            let (block_slot, array_idx) = crate::adjarr::decompose_global_index(curr_global);
+            let block =
+                self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+            let next = block.array(array_idx).next_array();
+            if next == 0 {
+                break;
+            }
+            prev_global = curr_global;
+            curr_global = next;
+        }
+
+        let (tail_block_slot, tail_array_idx) = crate::adjarr::decompose_global_index(curr_global);
+        let tail_block =
+            self.mmap.read_exact::<AdjArrayBlock, _, _>(tail_block_slot as usize, |b| *b)?;
+        let mut new_tail_block = tail_block;
+
+        let popped = new_tail_block.array_mut(tail_array_idx).pop();
+        if popped.is_none() {
+            return Ok(Some(None));
+        }
+        let item_entry = popped.unwrap();
+
+        let (dbuf_slot, local_idx) = DataBuf::decompose_buf_idx(item_entry.buf_idx());
+        let val = self.read_item_payload_spanned(
+            dbuf_slot as usize,
+            local_idx,
+            item_entry.vlen() as usize,
+        )?;
+
+        let req_v = DataBuf::required_val_buffers(item_entry.vlen() as usize);
+        let dbuf_diffs = self.free_spanned_databufs(dbuf_slot as usize, local_idx, req_v)?;
+
+        let mut changes = Vec::new();
+
+        if new_tail_block.array(tail_array_idx).is_empty() && prev_global != 0 {
+            new_tail_block.free_array(tail_array_idx);
+            new_tail_block.set_occupied(false);
+
+            let (prev_block_slot, prev_array_idx) =
+                crate::adjarr::decompose_global_index(prev_global);
+            if (prev_block_slot as usize) == (tail_block_slot as usize) {
+                new_tail_block.array_mut(prev_array_idx).set_next_array(0);
+                changes.push((
+                    tail_block_slot as usize,
+                    *tail_block.as_slot(),
+                    *new_tail_block.as_slot(),
+                ));
+            } else {
+                let prev_block = self.mmap.read_exact::<AdjArrayBlock, _, _>(
+                    prev_block_slot as usize,
+                    |b| *b,
+                )?;
+                let mut new_prev_block = prev_block;
+                new_prev_block.array_mut(prev_array_idx).set_next_array(0);
+
+                changes.push((
+                    tail_block_slot as usize,
+                    *tail_block.as_slot(),
+                    *new_tail_block.as_slot(),
+                ));
+                changes.push((
+                    prev_block_slot as usize,
+                    *prev_block.as_slot(),
+                    *new_prev_block.as_slot(),
+                ));
+            }
+        } else {
+            changes.push((
+                tail_block_slot as usize,
+                *tail_block.as_slot(),
+                *new_tail_block.as_slot(),
+            ));
+        }
+
+        for i in 0..2 {
+            changes.push((
+                bucket_slot + i,
+                bucket.as_slots()[i],
+                bucket.as_slots()[i],
+            ));
+        }
+
+        for (slot, orig, mutated) in &dbuf_diffs {
+            for i in 0..DataBuf::SLOT_COUNT {
+                let s = slot + i;
+                let o = orig.as_slots()[i];
+                let n = mutated.as_slots()[i];
+                if o != n {
+                    changes.push((s, o, n));
+                }
+            }
+        }
+
+        changes.sort_by_key(|(s, _, _)| *s);
+        let mut tx = self.mmap.new_tx();
+        for (s, o, n) in &changes {
+            tx.write(o, n, *s)?;
+        }
+
+        match tx.commit() {
+            Ok(_) => Ok(Some(Some(val))),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Pops and removes the item payload at the tail of a list key
+    pub(crate) fn list_pop(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
+        if key.len() > 0xFFFF {
+            return Ok(None);
+        }
+
+        let hash = hash_key(key);
+
+        for attempt in 0..0x20 {
+            let (bucket_slot, depth) = self.find_bucket(hash)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
+            let probe_res = bucket.probe(hash, depth, |entry| self.match_entry_key(entry, key));
+
+            match probe_res {
+                ProbeResult::Found(entry_idx) => {
+                    let entry = bucket.entry(entry_idx);
+                    if !entry.is_list() {
+                        return Err(TurboError::InvalidType("key is a KV entry"));
+                    }
+
+                    let head_global_idx = entry.vlen();
+                    match self.pop_from_existing_list(
+                        bucket_slot,
+                        bucket,
+                        head_global_idx,
+                    )? {
+                        Some(opt_val) => return Ok(opt_val),
+                        None => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
+                    }
+                }
+                _ => return Ok(None),
+            }
+        }
+
+        Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
+    }
+
+    /// Retrieves first item payload in list without modifying it
+    pub(crate) fn list_first(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
+        if key.len() > 0xFFFF {
+            return Ok(None);
+        }
+
+        let hash = hash_key(key);
+        let (bucket_slot, depth) = self.find_bucket(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
+        let probe_res = bucket.probe(hash, depth, |entry| self.match_entry_key(entry, key));
+
+        match probe_res {
+            ProbeResult::Found(entry_idx) => {
+                let entry = bucket.entry(entry_idx);
+                if !entry.is_list() {
+                    return Err(TurboError::InvalidType("key is a KV entry"));
+                }
+                let head_global = entry.vlen();
+                let (block_slot, array_idx) = crate::adjarr::decompose_global_index(head_global);
+                let block =
+                    self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+                let array = block.array(array_idx);
+                if let Some(first_entry) = array.entry(0) {
+                    if !first_entry.is_empty() {
+                        let (dbuf_slot, local_idx) =
+                            DataBuf::decompose_buf_idx(first_entry.buf_idx());
+                        let val = self.read_item_payload_spanned(
+                            dbuf_slot as usize,
+                            local_idx,
+                            first_entry.vlen() as usize,
+                        )?;
+                        return Ok(Some(val));
+                    }
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Retrieves last item payload in list without modifying it
+    pub(crate) fn list_last(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
+        if key.len() > 0xFFFF {
+            return Ok(None);
+        }
+
+        let hash = hash_key(key);
+        let (bucket_slot, depth) = self.find_bucket(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
+        let probe_res = bucket.probe(hash, depth, |entry| self.match_entry_key(entry, key));
+
+        match probe_res {
+            ProbeResult::Found(entry_idx) => {
+                let entry = bucket.entry(entry_idx);
+                if !entry.is_list() {
+                    return Err(TurboError::InvalidType("key is a KV entry"));
+                }
+                let mut curr_global = entry.vlen();
+                let mut last_entry: Option<crate::adjarr::AdjArrayEntry> = None;
+                while curr_global != 0 {
+                    let (block_slot, array_idx) =
+                        crate::adjarr::decompose_global_index(curr_global);
+                    let block =
+                        self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+                    let array = block.array(array_idx);
+                    for i in (0..crate::adjarr::AdjArrayList::ENTRY_COUNT).rev() {
+                        if let Some(e) = array.entry(i) {
+                            if !e.is_empty() {
+                                last_entry = Some(*e);
+                                break;
+                            }
+                        }
+                    }
+                    curr_global = array.next_array();
+                }
+                if let Some(e) = last_entry {
+                    let (dbuf_slot, local_idx) = DataBuf::decompose_buf_idx(e.buf_idx());
+                    let val = self.read_item_payload_spanned(
+                        dbuf_slot as usize,
+                        local_idx,
+                        e.vlen() as usize,
+                    )?;
+                    return Ok(Some(val));
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Retrieves item payload at specified 0-based index
+    pub(crate) fn list_get_at(
+        &self,
+        key: &[u8],
+        target_idx: usize,
+    ) -> TurboResult<Option<Vec<u8>>> {
+        if key.len() > 0xFFFF {
+            return Ok(None);
+        }
+
+        let hash = hash_key(key);
+        let (bucket_slot, depth) = self.find_bucket(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
+        let probe_res = bucket.probe(hash, depth, |entry| self.match_entry_key(entry, key));
+
+        match probe_res {
+            ProbeResult::Found(entry_idx) => {
+                let entry = bucket.entry(entry_idx);
+                if !entry.is_list() {
+                    return Err(TurboError::InvalidType("key is a KV entry"));
+                }
+                let mut curr_global = entry.vlen();
+                let mut current_offset = 0;
+                while curr_global != 0 {
+                    let (block_slot, array_idx) =
+                        crate::adjarr::decompose_global_index(curr_global);
+                    let block =
+                        self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+                    let array = block.array(array_idx);
+                    for i in 0..crate::adjarr::AdjArrayList::ENTRY_COUNT {
+                        if let Some(e) = array.entry(i) {
+                            if !e.is_empty() {
+                                if current_offset == target_idx {
+                                    let (dbuf_slot, local_idx) =
+                                        DataBuf::decompose_buf_idx(e.buf_idx());
+                                    let val = self.read_item_payload_spanned(
+                                        dbuf_slot as usize,
+                                        local_idx,
+                                        e.vlen() as usize,
+                                    )?;
+                                    return Ok(Some(val));
+                                }
+                                current_offset += 1;
+                            }
+                        }
+                    }
+                    curr_global = array.next_array();
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Counts total active item entries in a list
+    pub(crate) fn list_len(&self, key: &[u8]) -> TurboResult<usize> {
+        if key.len() > 0xFFFF {
+            return Ok(0);
+        }
+
+        let hash = hash_key(key);
+        let (bucket_slot, depth) = self.find_bucket(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
+        let probe_res = bucket.probe(hash, depth, |entry| self.match_entry_key(entry, key));
+
+        match probe_res {
+            ProbeResult::Found(entry_idx) => {
+                let entry = bucket.entry(entry_idx);
+                if !entry.is_list() {
+                    return Err(TurboError::InvalidType("key is a KV entry"));
+                }
+                let mut count = 0;
+                let mut curr_global = entry.vlen();
+                while curr_global != 0 {
+                    let (block_slot, array_idx) =
+                        crate::adjarr::decompose_global_index(curr_global);
+                    let block =
+                        self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+                    let array = block.array(array_idx);
+                    count += array.len();
+                    curr_global = array.next_array();
+                }
+                Ok(count)
+            }
+            _ => Ok(0),
+        }
+    }
+
+    /// Collects all item payloads of a list
+    pub(crate) fn list_items(&self, key: &[u8]) -> TurboResult<Vec<Vec<u8>>> {
+        if key.len() > 0xFFFF {
+            return Ok(Vec::new());
+        }
+
+        let hash = hash_key(key);
+        let (bucket_slot, depth) = self.find_bucket(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
+        let probe_res = bucket.probe(hash, depth, |entry| self.match_entry_key(entry, key));
+
+        match probe_res {
+            ProbeResult::Found(entry_idx) => {
+                let entry = bucket.entry(entry_idx);
+                if !entry.is_list() {
+                    return Err(TurboError::InvalidType("key is a KV entry"));
+                }
+                let mut items = Vec::new();
+                let mut curr_global = entry.vlen();
+                while curr_global != 0 {
+                    let (block_slot, array_idx) =
+                        crate::adjarr::decompose_global_index(curr_global);
+                    let block =
+                        self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+                    let array = block.array(array_idx);
+                    for i in 0..crate::adjarr::AdjArrayList::ENTRY_COUNT {
+                        if let Some(e) = array.entry(i) {
+                            if !e.is_empty() {
+                                let (dbuf_slot, local_idx) =
+                                    DataBuf::decompose_buf_idx(e.buf_idx());
+                                let val = self.read_item_payload_spanned(
+                                    dbuf_slot as usize,
+                                    local_idx,
+                                    e.vlen() as usize,
+                                )?;
+                                items.push(val);
+                            }
+                        }
+                    }
+                    curr_global = array.next_array();
+                }
+                Ok(items)
+            }
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    /// Deletes a list entry and reclaims all payload and array block allocations
+    pub(crate) fn list_del(&self, key: &[u8]) -> TurboResult<bool> {
+        if key.len() > 0xFFFF {
+            return Ok(false);
+        }
+
+        let hash = hash_key(key);
+
+        for attempt in 0..0x20 {
+            let (bucket_slot, depth) = self.find_bucket(hash)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
+            let probe_res = bucket.probe(hash, depth, |entry| self.match_entry_key(entry, key));
+
+            match probe_res {
+                ProbeResult::Found(entry_idx) => {
+                    let entry = bucket.entry(entry_idx);
+                    if !entry.is_list() {
+                        return Err(TurboError::InvalidType("key is a KV entry"));
+                    }
+
+                    let head_global_idx = entry.vlen();
+                    let (k_slot, k_local) = DataBuf::decompose_buf_idx(entry.buffer_index());
+                    let req_k = DataBuf::required_key_buffers(entry.klen() as usize);
+                    let mut dbuf_diffs =
+                        self.free_spanned_databufs(k_slot as usize, k_local, req_k)?;
+
+                    use std::collections::BTreeMap;
+                    let mut block_map: BTreeMap<usize, (AdjArrayBlock, AdjArrayBlock)> =
+                        BTreeMap::new();
+
+                    let mut curr_global = head_global_idx;
+                    while curr_global != 0 {
+                        let (block_slot, array_idx) =
+                            crate::adjarr::decompose_global_index(curr_global);
+                        let slot_usize = block_slot as usize;
+
+                        let orig_block = if let Some((o, _)) = block_map.get(&slot_usize) {
+                            *o
+                        } else {
+                            self.mmap.read_exact::<AdjArrayBlock, _, _>(slot_usize, |b| *b)?
+                        };
+
+                        let mut mut_block = if let Some((_, m)) = block_map.get(&slot_usize) {
+                            *m
+                        } else {
+                            orig_block
+                        };
+
+                        let next_global = mut_block.array(array_idx).next_array();
+
+                        for entry_idx in 0..crate::adjarr::AdjArrayList::ENTRY_COUNT {
+                            if let Some(item_entry) = mut_block.array(array_idx).entry(entry_idx) {
+                                if !item_entry.is_empty() {
+                                    let (v_slot, v_local) =
+                                        DataBuf::decompose_buf_idx(item_entry.buf_idx());
+                                    let req_v =
+                                        DataBuf::required_val_buffers(item_entry.vlen() as usize);
+                                    let diffs = self.free_spanned_databufs(
+                                        v_slot as usize,
+                                        v_local,
+                                        req_v,
+                                    )?;
+                                    dbuf_diffs = Self::merge_dbuf_diffs(dbuf_diffs, diffs);
+                                }
+                            }
+                        }
+
+                        mut_block.free_array(array_idx);
+                        mut_block.set_occupied(false);
+                        block_map.insert(slot_usize, (orig_block, mut_block));
+
+                        curr_global = next_global;
+                    }
+
+                    let mut new_bucket = bucket;
+                    new_bucket.entry_mut(entry_idx).mark_tombstone();
+
+                    let mut changes =
+                        Vec::with_capacity(2 + block_map.len() + dbuf_diffs.len() * 8);
+                    for i in 0..2 {
+                        changes.push((
+                            bucket_slot + i,
+                            bucket.as_slots()[i],
+                            new_bucket.as_slots()[i],
+                        ));
+                    }
+                    for (slot, (orig, mutated)) in &block_map {
+                        changes.push((*slot, *orig.as_slot(), *mutated.as_slot()));
+                    }
+                    for (slot, orig, mutated) in &dbuf_diffs {
+                        for i in 0..DataBuf::SLOT_COUNT {
+                            let s = slot + i;
+                            let o = orig.as_slots()[i];
+                            let n = mutated.as_slots()[i];
+                            if o != n {
+                                changes.push((s, o, n));
+                            }
+                        }
+                    }
+
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+                    for (s, o, n) in &changes {
+                        tx.write(o, n, *s)?;
+                    }
+
+                    match tx.commit() {
+                        Ok(_) => {
                             self.total_entries.fetch_sub(1, Ordering::Relaxed);
                             return Ok(true);
                         }

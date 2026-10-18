@@ -969,6 +969,87 @@ impl Engine {
         Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
     }
 
+    /// Deletes a key-value entry;
+    /// returns Ok(true) if deleted, Ok(false) if key was not found
+    pub(crate) fn del(&self, key: &[u8]) -> TurboResult<bool> {
+        if key.len() > 0xFFFF {
+            return Ok(false);
+        }
+
+        let hash = hash_key(key);
+
+        for attempt in 0..0x20 {
+            let (bucket_slot, depth) = self.find_bucket(hash)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
+            let probe_res = bucket.probe(hash, depth, |entry| self.match_entry_key(entry, key));
+
+            match probe_res {
+                ProbeResult::Found(entry_idx) => {
+                    let entry = bucket.entry(entry_idx);
+                    if entry.is_list() {
+                        return Err(TurboError::InvalidType("key is a list"));
+                    }
+
+                    let old_buf_idx = entry.buffer_index();
+                    let (old_dbuf_slot, old_local_idx) = DataBuf::decompose_buf_idx(old_buf_idx);
+                    let old_req = DataBuf::required_kv_buffers(
+                        entry.klen() as usize,
+                        entry.vlen() as usize,
+                    );
+
+                    let dbuf_diffs = self.free_spanned_databufs(
+                        old_dbuf_slot as usize,
+                        old_local_idx,
+                        old_req,
+                    )?;
+
+                    let mut new_bucket = bucket;
+                    *new_bucket.entry_mut(entry_idx) = crate::bucket::BucketEntry::tombstone();
+
+                    let mut changes = Vec::with_capacity(2 + dbuf_diffs.len() * 8);
+                    for i in 0..2 {
+                        let s = bucket_slot + i;
+                        let o = bucket.as_slots()[i];
+                        let n = new_bucket.as_slots()[i];
+                        if o != n {
+                            changes.push((s, o, n));
+                        }
+                    }
+                    for (slot, orig, mutated) in &dbuf_diffs {
+                        for i in 0..DataBuf::SLOT_COUNT {
+                            let s = slot + i;
+                            let o = orig.as_slots()[i];
+                            let n = mutated.as_slots()[i];
+                            if o != n {
+                                changes.push((s, o, n));
+                            }
+                        }
+                    }
+
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+                    for (s, o, n) in &changes {
+                        tx.write(o, n, *s)?;
+                    }
+
+                    match tx.commit() {
+                        Ok(_ticket) => {
+                            self.total_entries.fetch_sub(1, Ordering::Relaxed);
+                            return Ok(true);
+                        }
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
+                    }
+                }
+                _ => return Ok(false),
+            }
+        }
+
+        Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
+    }
+
     /// Consumes engine, unmaps memory, terminates worker, and deletes backing file
     pub(crate) fn delete(self) -> TurboResult<()> {
         self.mmap.delete()?;
@@ -1360,6 +1441,61 @@ mod tests {
             let v = format!("drop_v_{:02x}", i);
             assert_eq!(reopened.get(k.as_bytes()).unwrap(), Some(v.into_bytes()));
         }
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
+
+    #[test]
+    fn ok_engine_del_non_existent() {
+        let temp = TempFile::new("ok_engine_del_non_existent");
+        let cfg = TurboCfg::new(&temp.path);
+        let engine = Engine::create(cfg).unwrap();
+
+        assert_eq!(engine.del(b"missing_key").unwrap(), false);
+        assert_eq!(engine.total_entries(), 0);
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
+
+    #[test]
+    fn ok_engine_del_existing_roundtrip() {
+        let temp = TempFile::new("ok_engine_del_existing");
+        let cfg = TurboCfg::new(&temp.path);
+        let engine = Engine::create(cfg).unwrap();
+
+        engine.set(b"del_key_1", b"val_1").unwrap();
+        engine.set(b"del_key_2", b"val_2").unwrap();
+        assert_eq!(engine.total_entries(), 2);
+
+        assert_eq!(engine.del(b"del_key_1").unwrap(), true);
+        assert_eq!(engine.total_entries(), 1);
+        assert_eq!(engine.get(b"del_key_1").unwrap(), None);
+        assert_eq!(engine.get(b"del_key_2").unwrap(), Some(b"val_2".to_vec()));
+
+        assert_eq!(engine.del(b"del_key_1").unwrap(), false);
+        assert_eq!(engine.total_entries(), 1);
+
+        assert_eq!(engine.del(b"del_key_2").unwrap(), true);
+        assert_eq!(engine.total_entries(), 0);
+        assert_eq!(engine.get(b"del_key_2").unwrap(), None);
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
+
+    #[test]
+    fn ok_engine_del_spanned_multibuf() {
+        let temp = TempFile::new("ok_engine_del_spanned");
+        let cfg = TurboCfg::new(&temp.path);
+        let engine = Engine::create(cfg).unwrap();
+
+        let large_val = vec![0x5A; 0x0800];
+        engine.set(b"spanned_del_key", &large_val).unwrap();
+        assert_eq!(engine.total_entries(), 1);
+        assert_eq!(engine.get(b"spanned_del_key").unwrap(), Some(large_val));
+
+        assert_eq!(engine.del(b"spanned_del_key").unwrap(), true);
+        assert_eq!(engine.total_entries(), 0);
+        assert_eq!(engine.get(b"spanned_del_key").unwrap(), None);
 
         let _ = std::fs::remove_file(&temp.versioned);
     }

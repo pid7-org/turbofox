@@ -245,3 +245,83 @@ fn ok_turbofox_multibuf_large_spanned_payloads() {
 
     reopened.delete().unwrap();
 }
+
+#[test]
+fn ok_turbofox_del_lifecycle() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("del_lifecycle.db"));
+    let db = TurboFox::create(cfg).unwrap();
+
+    assert_eq!(db.del(b"missing").unwrap(), false);
+    assert_eq!(db.total_entries(), 0);
+
+    db.set(b"k1", b"val1").unwrap();
+    db.set(b"k2", b"val2").unwrap();
+    db.set(b"k3", b"val3").unwrap();
+    assert_eq!(db.total_entries(), 3);
+
+    assert_eq!(db.del(b"k2").unwrap(), true);
+    assert_eq!(db.total_entries(), 2);
+    assert_eq!(db.get(b"k2").unwrap(), None);
+    assert_eq!(db.get(b"k1").unwrap(), Some(b"val1".to_vec()));
+    assert_eq!(db.get(b"k3").unwrap(), Some(b"val3".to_vec()));
+
+    // Repeated del on already deleted key
+    assert_eq!(db.del(b"k2").unwrap(), false);
+    assert_eq!(db.total_entries(), 2);
+
+    assert_eq!(db.del(b"k1").unwrap(), true);
+    assert_eq!(db.del(b"k3").unwrap(), true);
+    assert_eq!(db.total_entries(), 0);
+    assert_eq!(db.get(b"k1").unwrap(), None);
+    assert_eq!(db.get(b"k3").unwrap(), None);
+
+    db.delete().unwrap();
+}
+
+#[test]
+fn ok_turbofox_del_tombstone_reuse_and_reinsert() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("tombstone_reuse.db"));
+    let db = TurboFox::create(cfg).unwrap();
+
+    db.set(b"reuse_key", b"initial").unwrap();
+    assert_eq!(db.get(b"reuse_key").unwrap(), Some(b"initial".to_vec()));
+    assert_eq!(db.total_entries(), 1);
+
+    assert_eq!(db.del(b"reuse_key").unwrap(), true);
+    assert_eq!(db.get(b"reuse_key").unwrap(), None);
+    assert_eq!(db.total_entries(), 0);
+
+    // Re-inserting previously deleted key reuses tombstone slot
+    db.set(b"reuse_key", b"reborn").unwrap();
+    assert_eq!(db.get(b"reuse_key").unwrap(), Some(b"reborn".to_vec()));
+    assert_eq!(db.total_entries(), 1);
+
+    db.delete().unwrap();
+}
+
+#[test]
+fn ok_turbofox_del_persistence() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("del_persist.db"));
+
+    {
+        let db = TurboFox::create(cfg.clone()).unwrap();
+        db.set(b"survivor", b"persisted_val").unwrap();
+        db.set(b"doomed", b"temporary_val").unwrap();
+        assert_eq!(db.total_entries(), 2);
+
+        assert_eq!(db.del(b"doomed").unwrap(), true);
+        assert_eq!(db.total_entries(), 1);
+        db.sync().unwrap();
+    }
+
+    let reopened = TurboFox::open(cfg).unwrap();
+    assert_eq!(reopened.total_entries(), 1);
+    assert_eq!(reopened.get(b"survivor").unwrap(), Some(b"persisted_val".to_vec()));
+    assert_eq!(reopened.get(b"doomed").unwrap(), None);
+
+    reopened.delete().unwrap();
+}
+

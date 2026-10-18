@@ -53,6 +53,13 @@ impl TurboFox {
         self.engine.get(key)
     }
 
+    /// Deletes a key-value entry from database;
+    /// returns Ok(true) if entry existed and was deleted, Ok(false) if entry was not found
+    #[inline(always)]
+    pub fn del(&self, key: &[u8]) -> TurboResult<bool> {
+        self.engine.del(key)
+    }
+
     /// Total active key-value and list entries in the database
     #[inline]
     pub fn total_entries(&self) -> u64 {

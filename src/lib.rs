@@ -1,4 +1,4 @@
-//! NA
+//! TurboFox is an embedded Key-Value database for on-device storage
 
 mod adjarr;
 mod bucket;
@@ -15,63 +15,55 @@ mod ticket;
 
 pub use cfg::TurboCfg;
 pub use error::{TurboError, TurboResult};
-pub use frozen_core::ack::AckTicket;
 pub use list::{TurboList, TurboListIter};
 pub use ticket::{Completion, TEpoch, TurboTicket};
 
 use engine::Engine;
 use std::sync::Arc;
 
-/// Embedded Key-Value database handle
+/// TurboFox is an embedded Key-Value database for on-device storage
 #[derive(Debug, Clone)]
 pub struct TurboFox {
     engine: Arc<Engine>,
 }
 
 impl TurboFox {
-    /// Initializes brand new database backing file and layout;
-    /// fails if backing file already exists
+    /// Initi new instance of [`TurboFox`]
     pub fn create(cfg: TurboCfg) -> TurboResult<Self> {
         let engine = Engine::create(cfg)?;
         Ok(Self { engine: Arc::new(engine) })
     }
 
-    /// Opens existing database file and verifies structure invariants;
-    /// fails if backing file does not exist
+    /// Open an existing instance [`TurboFox`]
     pub fn open(cfg: TurboCfg) -> TurboResult<Self> {
         let engine = Engine::open(cfg)?;
         Ok(Self { engine: Arc::new(engine) })
     }
 
-    /// Sets a key-value pair, expanding storage dynamically when needed
+    /// Insert new or update existing Key-Value pair
     #[inline(always)]
     pub fn set(&self, key: &[u8], val: &[u8]) -> TurboResult<TurboTicket> {
         self.engine.set(key, val)
     }
 
-    /// Retrieves value payload for the specified key
+    /// Retrieve value payload for the specified key
     #[inline(always)]
     pub fn get(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
         self.engine.get(key)
     }
 
-    /// Deletes a key-value entry from database;
-    /// returns Ok(true) if entry existed and was deleted, Ok(false) if entry was not found
+    /// Delete an existing Key-Value or [`TurboList`] entry from [`TurboFox`]
+    ///
+    /// It returns `Ok(true)` if entry existed and was deleted, `Ok(false)` if entry was not found
     #[inline(always)]
     pub fn del(&self, key: &[u8]) -> TurboResult<bool> {
         self.engine.del(key)
     }
 
-    /// Accesses or creates a list handle associated with key
+    /// Access or create a new [`TurboList`] instance
     #[inline(always)]
     pub fn list(&self, key: &[u8]) -> TurboList {
         TurboList::new(Arc::clone(&self.engine), key.to_vec())
-    }
-
-    /// Deletes a list entry and frees associated memory blocks
-    #[inline(always)]
-    pub fn list_del(&self, key: &[u8]) -> TurboResult<bool> {
-        self.engine.list_del(key)
     }
 
     /// Total active key-value and list entries in the database

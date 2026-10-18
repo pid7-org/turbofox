@@ -210,19 +210,22 @@ impl Engine {
 
     /// Total operational slots allocated in the mapping
     #[inline]
-    pub(crate) fn total_slots(&self) -> u32 {
+    #[allow(unused)]
+    fn total_slots(&self) -> u32 {
         self.total_slots.load(Ordering::Acquire)
     }
 
     /// Reference to growth mutex coordinating multi-transaction expansion
     #[inline]
-    pub(crate) fn growth_mutex(&self) -> &Mutex<()> {
+    #[allow(unused)]
+    fn growth_mutex(&self) -> &Mutex<()> {
         &self.growth_mutex
     }
 
     /// Underlying memory-mapped array reference
     #[inline]
-    pub(crate) fn mmap(&self) -> &MemMap<Slot> {
+    #[allow(unused)]
+    fn mmap(&self) -> &MemMap<Slot> {
         &self.mmap
     }
 
@@ -455,9 +458,9 @@ impl Engine {
             let mut curr = head;
             while curr != 0 {
                 if curr == exclude_slot {
-                    curr = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
-                        d.next_dbuf_index() as usize
-                    })?;
+                    curr = self
+                        .mmap
+                        .read_exact::<DataBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
                     continue;
                 }
                 let (next, opt_alloc) = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
@@ -486,18 +489,14 @@ impl Engine {
 
         while curr != 0 {
             if curr == exclude_slot {
-                curr = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
-                    d.next_dbuf_index() as usize
-                })?;
+                curr = self
+                    .mmap
+                    .read_exact::<DataBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
                 continue;
             }
             let (next, fits, touched) = self.check_contiguous_dbuf_fit(curr, num_dbufs, needed)?;
             if fits {
-                return Ok(Some(DbufAllocPlan {
-                    start_slot: curr,
-                    local_idx: 0,
-                    touched,
-                }));
+                return Ok(Some(DbufAllocPlan { start_slot: curr, local_idx: 0, touched }));
             }
             curr = next;
         }
@@ -806,11 +805,7 @@ impl Engine {
 
         for i in 0..num_blocks {
             let slot = old_slots + i;
-            let next = if i + 1 < num_blocks {
-                (old_slots + i + 1) as u32
-            } else {
-                old_head
-            };
+            let next = if i + 1 < num_blocks { (old_slots + i + 1) as u32 } else { old_head };
             let mut block = AdjArrayBlock::new();
             block.set_next_block(next);
             self.mmap.write_exact::<AdjArrayBlock, _, _>(slot, |b| *b = block)?;
@@ -1098,10 +1093,8 @@ impl Engine {
                         key,
                         val,
                     );
-                    let new_buf_idx = DataBuf::global_buf_idx(
-                        alloc_res.start_slot as u32,
-                        alloc_res.local_idx,
-                    );
+                    let new_buf_idx =
+                        DataBuf::global_buf_idx(alloc_res.start_slot as u32, alloc_res.local_idx);
                     let dbuf_diffs = alloc_res.touched;
 
                     let mut new_bucket = bucket;
@@ -1177,16 +1170,11 @@ impl Engine {
 
                     let old_buf_idx = entry.buffer_index();
                     let (old_dbuf_slot, old_local_idx) = DataBuf::decompose_buf_idx(old_buf_idx);
-                    let old_req = DataBuf::required_kv_buffers(
-                        entry.klen() as usize,
-                        entry.vlen() as usize,
-                    );
+                    let old_req =
+                        DataBuf::required_kv_buffers(entry.klen() as usize, entry.vlen() as usize);
 
-                    let dbuf_diffs = self.free_spanned_databufs(
-                        old_dbuf_slot as usize,
-                        old_local_idx,
-                        old_req,
-                    )?;
+                    let dbuf_diffs =
+                        self.free_spanned_databufs(old_dbuf_slot as usize, old_local_idx, old_req)?;
 
                     let mut new_bucket = bucket;
                     *new_bucket.entry_mut(entry_idx) = crate::bucket::BucketEntry::tombstone();
@@ -1247,12 +1235,7 @@ impl Engine {
                 let k_buf_idx = DataBuf::global_buf_idx(plan.start_slot as u32, plan.local_idx);
                 let v_buf_idx =
                     DataBuf::global_buf_idx(plan.start_slot as u32, plan.local_idx + req_k);
-                Self::write_key_payload_spanned(
-                    &mut plan.touched,
-                    plan.local_idx,
-                    req_k,
-                    key,
-                );
+                Self::write_key_payload_spanned(&mut plan.touched, plan.local_idx, req_k, key);
                 Self::write_item_payload_spanned(
                     &mut plan.touched,
                     plan.local_idx + req_k,
@@ -1341,17 +1324,9 @@ impl Engine {
 
         let mut changes = Vec::with_capacity(2 + 1 + dbuf_diffs.len() * 8);
         for i in 0..2 {
-            changes.push((
-                bucket_slot + i,
-                bucket.as_slots()[i],
-                new_bucket.as_slots()[i],
-            ));
+            changes.push((bucket_slot + i, bucket.as_slots()[i], new_bucket.as_slots()[i]));
         }
-        changes.push((
-            block_slot,
-            *orig_block.as_slot(),
-            *mut_block.as_slot(),
-        ));
+        changes.push((block_slot, *orig_block.as_slot(), *mut_block.as_slot()));
         for (slot, orig, mutated) in &dbuf_diffs {
             for i in 0..DataBuf::SLOT_COUNT {
                 let s = slot + i;
@@ -1405,8 +1380,7 @@ impl Engine {
         let mut curr_global = head_global_idx;
         loop {
             let (block_slot, array_idx) = crate::adjarr::decompose_global_index(curr_global);
-            let block =
-                self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+            let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
             let next = block.array(array_idx).next_array();
             if next == 0 {
                 break;
@@ -1458,20 +1432,12 @@ impl Engine {
                     *tail_block.as_slot(),
                     *new_tail_block.as_slot(),
                 ));
-                changes.push((
-                    new_block_slot,
-                    *orig_new_block.as_slot(),
-                    *mut_new_block.as_slot(),
-                ));
+                changes.push((new_block_slot, *orig_new_block.as_slot(), *mut_new_block.as_slot()));
             }
         }
 
         for i in 0..2 {
-            changes.push((
-                bucket_slot + i,
-                bucket.as_slots()[i],
-                bucket.as_slots()[i],
-            ));
+            changes.push((bucket_slot + i, bucket.as_slots()[i], bucket.as_slots()[i]));
         }
 
         for (slot, orig, mutated) in &plan_v.touched {
@@ -1568,8 +1534,7 @@ impl Engine {
         let mut prev_global = 0u16;
         loop {
             let (block_slot, array_idx) = crate::adjarr::decompose_global_index(curr_global);
-            let block =
-                self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+            let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
             let next = block.array(array_idx).next_array();
             if next == 0 {
                 break;
@@ -1615,10 +1580,9 @@ impl Engine {
                     *new_tail_block.as_slot(),
                 ));
             } else {
-                let prev_block = self.mmap.read_exact::<AdjArrayBlock, _, _>(
-                    prev_block_slot as usize,
-                    |b| *b,
-                )?;
+                let prev_block = self
+                    .mmap
+                    .read_exact::<AdjArrayBlock, _, _>(prev_block_slot as usize, |b| *b)?;
                 let mut new_prev_block = prev_block;
                 new_prev_block.array_mut(prev_array_idx).set_next_array(0);
 
@@ -1642,11 +1606,7 @@ impl Engine {
         }
 
         for i in 0..2 {
-            changes.push((
-                bucket_slot + i,
-                bucket.as_slots()[i],
-                bucket.as_slots()[i],
-            ));
+            changes.push((bucket_slot + i, bucket.as_slots()[i], bucket.as_slots()[i]));
         }
 
         for (slot, orig, mutated) in &dbuf_diffs {
@@ -1693,11 +1653,7 @@ impl Engine {
                     }
 
                     let head_global_idx = entry.vlen();
-                    match self.pop_from_existing_list(
-                        bucket_slot,
-                        bucket,
-                        head_global_idx,
-                    )? {
+                    match self.pop_from_existing_list(bucket_slot, bucket, head_global_idx)? {
                         Some(opt_val) => return Ok(opt_val),
                         None => {
                             Self::occ_backoff(attempt);
@@ -2539,8 +2495,7 @@ mod tests {
         }
         assert_eq!(engine.list_len(b"recycle_key").unwrap(), 6);
 
-        let block1_after_pop1 =
-            engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
+        let block1_after_pop1 = engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
         assert_eq!(block1_after_pop1.occupied_count(), 2);
         assert!(block1_after_pop1.is_array_occupied(0));
         assert!(block1_after_pop1.is_array_occupied(1));
@@ -2552,8 +2507,7 @@ mod tests {
         }
         assert_eq!(engine.list_len(b"recycle_key").unwrap(), 3);
 
-        let block1_after_pop2 =
-            engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
+        let block1_after_pop2 = engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
         assert_eq!(block1_after_pop2.occupied_count(), 1);
         assert!(block1_after_pop2.is_array_occupied(0));
         assert!(!block1_after_pop2.is_array_occupied(1));
@@ -2566,8 +2520,7 @@ mod tests {
         assert_eq!(engine.list_len(b"recycle_key").unwrap(), 0);
         assert_eq!(engine.list_pop(b"recycle_key").unwrap(), None);
 
-        let block1_empty_list =
-            engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
+        let block1_empty_list = engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
         assert_eq!(block1_empty_list.occupied_count(), 1);
         assert_eq!(block1_empty_list.array(0).len(), 0);
 
@@ -2575,8 +2528,7 @@ mod tests {
         assert_eq!(engine.del(b"recycle_key").unwrap(), true);
         assert_eq!(engine.total_entries(), 0);
 
-        let block1_deleted =
-            engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
+        let block1_deleted = engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
         assert_eq!(block1_deleted.occupied_count(), 0);
         assert!(!block1_deleted.is_array_occupied(0));
 

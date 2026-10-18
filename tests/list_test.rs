@@ -267,3 +267,62 @@ fn ok_turbofox_concurrent_list_append() {
     let list = db.list(b"shared_list");
     assert_eq!(list.len().unwrap(), thread_count * items_per_thread);
 }
+
+#[test]
+fn ok_turbofox_list_grow_and_reduction_recycles_without_page_growth() {
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("list_recycle.db");
+    let cfg = TurboCfg::new(&db_path);
+    let db = TurboFox::create(cfg).unwrap();
+    let list = db.list(b"recycle_list");
+
+    // File initially formatted to 8 pages (0x8000 bytes)
+    let versioned_file = dir.path().join("list_recycle_1.db");
+    let init_len = std::fs::metadata(&versioned_file).unwrap().len();
+    assert_eq!(init_len, 0x8000);
+
+    // Repeat grow and shrink across 8 AdjArrayList nodes (2 blocks) 0x0A times
+    let cycles = 0x0A;
+    let batch_items = 0x18;
+
+    for c in 0..cycles {
+        for i in 0..batch_items {
+            let item = format!("c{:02x}_i{:02x}", c, i);
+            list.append(item.as_bytes()).unwrap();
+        }
+
+        assert_eq!(list.len().unwrap(), batch_items);
+
+        // Pop down to 3 items (leaving only head array occupied)
+        for _ in 0..(batch_items - 3) {
+            assert!(list.pop().unwrap().is_some());
+        }
+        assert_eq!(list.len().unwrap(), 3);
+
+        // Verify remaining 3 items
+        for i in 0..3 {
+            let expected = format!("c{:02x}_i{:02x}", c, i);
+            assert_eq!(list.get_at(i).unwrap(), Some(expected.into_bytes()));
+        }
+
+        // Pop final 3 items
+        for _ in 0..3 {
+            assert!(list.pop().unwrap().is_some());
+        }
+        assert_eq!(list.len().unwrap(), 0);
+        assert_eq!(list.pop().unwrap(), None);
+
+        // Flush dirty pages to verify file size on storage media
+        db.sync().unwrap();
+        let cur_len = std::fs::metadata(&versioned_file).unwrap().len();
+        assert_eq!(cur_len, 0x8000);
+    }
+
+    // Delete list completely and verify final zero-growth state
+    assert_eq!(db.del(b"recycle_list").unwrap(), true);
+    assert_eq!(db.total_entries(), 0);
+
+    db.sync().unwrap();
+    let final_len = std::fs::metadata(&versioned_file).unwrap().len();
+    assert_eq!(final_len, 0x8000);
+}

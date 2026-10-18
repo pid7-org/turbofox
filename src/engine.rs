@@ -2510,4 +2510,76 @@ mod tests {
 
         let _ = std::fs::remove_file(&temp.versioned);
     }
+
+    #[test]
+    fn ok_engine_list_grow_and_reduction_reclaims_adjarr_block() {
+        let temp = TempFile::new("ok_engine_list_recycle");
+        let cfg = TurboCfg::new(&temp.path);
+        let engine = Engine::create(cfg).unwrap();
+
+        // Append 9 items (occupying 3 AdjArrayList nodes: array 0, 1, 2 in block 1)
+        for i in 0..9 {
+            let item = format!("item_{}", i);
+            engine.list_append(b"recycle_key", item.as_bytes()).unwrap();
+        }
+
+        assert_eq!(engine.list_len(b"recycle_key").unwrap(), 9);
+
+        // Inspect block 1 bitmap directly from mmap
+        let block1 = engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
+        assert_eq!(block1.occupied_count(), 3);
+        assert!(block1.is_array_occupied(0));
+        assert!(block1.is_array_occupied(1));
+        assert!(block1.is_array_occupied(2));
+        assert!(!block1.is_array_occupied(3));
+
+        // Pop 3 items (Array 2 becomes empty and must be freed back to block bitmap)
+        for _ in 0..3 {
+            assert!(engine.list_pop(b"recycle_key").unwrap().is_some());
+        }
+        assert_eq!(engine.list_len(b"recycle_key").unwrap(), 6);
+
+        let block1_after_pop1 =
+            engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
+        assert_eq!(block1_after_pop1.occupied_count(), 2);
+        assert!(block1_after_pop1.is_array_occupied(0));
+        assert!(block1_after_pop1.is_array_occupied(1));
+        assert!(!block1_after_pop1.is_array_occupied(2));
+
+        // Pop 3 more items (Array 1 becomes empty and must be freed back to block bitmap)
+        for _ in 0..3 {
+            assert!(engine.list_pop(b"recycle_key").unwrap().is_some());
+        }
+        assert_eq!(engine.list_len(b"recycle_key").unwrap(), 3);
+
+        let block1_after_pop2 =
+            engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
+        assert_eq!(block1_after_pop2.occupied_count(), 1);
+        assert!(block1_after_pop2.is_array_occupied(0));
+        assert!(!block1_after_pop2.is_array_occupied(1));
+        assert!(!block1_after_pop2.is_array_occupied(2));
+
+        // Pop remaining 3 items (Array 0 entries cleared, array remains as head)
+        for _ in 0..3 {
+            assert!(engine.list_pop(b"recycle_key").unwrap().is_some());
+        }
+        assert_eq!(engine.list_len(b"recycle_key").unwrap(), 0);
+        assert_eq!(engine.list_pop(b"recycle_key").unwrap(), None);
+
+        let block1_empty_list =
+            engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
+        assert_eq!(block1_empty_list.occupied_count(), 1);
+        assert_eq!(block1_empty_list.array(0).len(), 0);
+
+        // Delete list completely (Array 0 is freed back to block bitmap)
+        assert_eq!(engine.del(b"recycle_key").unwrap(), true);
+        assert_eq!(engine.total_entries(), 0);
+
+        let block1_deleted =
+            engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
+        assert_eq!(block1_deleted.occupied_count(), 0);
+        assert!(!block1_deleted.is_array_occupied(0));
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
 }

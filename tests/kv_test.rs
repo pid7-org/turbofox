@@ -1,5 +1,5 @@
 use tempfile::tempdir;
-use turbofox::{TurboCfg, TurboFox};
+use turbofox::{TurboCfg, TurboFox, TurboTicket};
 
 #[test]
 fn ok_turbofox_basic_set_get() {
@@ -10,7 +10,7 @@ fn ok_turbofox_basic_set_get() {
     assert_eq!(db.total_entries(), 0);
     assert_eq!(db.get(b"alpha").unwrap(), None);
 
-    let ticket = db.set(b"alpha", b"val_one").unwrap();
+    let ticket: TurboTicket = db.set(b"alpha", b"val_one").unwrap();
     assert!(ticket.epoch() > 0);
     assert_eq!(db.total_entries(), 1);
     assert_eq!(db.get(b"alpha").unwrap(), Some(b"val_one".to_vec()));
@@ -20,6 +20,12 @@ fn ok_turbofox_basic_set_get() {
     assert_eq!(db.total_entries(), 2);
     assert_eq!(db.get(b"beta").unwrap(), Some(b"val_two".to_vec()));
     assert_eq!(db.get(b"alpha").unwrap(), Some(b"val_one".to_vec()));
+
+    db.sync().unwrap();
+    assert!(ticket.is_durable());
+    assert_eq!(ticket.wait().unwrap(), ticket.epoch());
+    assert!(ticket2.is_durable());
+    assert_eq!(ticket2.wait().unwrap(), ticket2.epoch());
 
     db.delete().unwrap();
 }

@@ -1,7 +1,6 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use frozen_core::ack::AckTicket;
 use frozen_core::memmap::{MemMap, MemMapCfg, PageSize};
 
 use crate::adjarr::AdjArrayBlock;
@@ -13,6 +12,7 @@ use crate::hash::hash_key;
 use crate::meta::Metadata;
 use crate::node::Node;
 use crate::slot::Slot;
+use crate::ticket::TurboTicket;
 
 const INITIAL_PAGES: u32 = 8;
 const INITIAL_SLOTS: usize = 0x0100;
@@ -423,7 +423,7 @@ impl Engine {
     }
 
     /// Inserts or updates a key-value pair using atomic OCC transaction commit
-    pub(crate) fn set(&self, key: &[u8], val: &[u8]) -> TurboResult<AckTicket> {
+    pub(crate) fn set(&self, key: &[u8], val: &[u8]) -> TurboResult<TurboTicket> {
         let req = DataBuf::required_kv_buffers(key.len(), val.len());
         if req > DataBuf::BUF_COUNT {
             return Err(TurboError::PayloadTooLarge);
@@ -501,7 +501,7 @@ impl Engine {
                         }
 
                         match tx.commit() {
-                            Ok(ticket) => return Ok(ticket),
+                            Ok(ticket) => return Ok(TurboTicket::from(ticket)),
                             Err(_) => {
                                 Self::occ_backoff(attempt);
                                 continue;
@@ -594,7 +594,7 @@ impl Engine {
                         }
 
                         match tx.commit() {
-                            Ok(ticket) => return Ok(ticket),
+                            Ok(ticket) => return Ok(TurboTicket::from(ticket)),
                             Err(_) => {
                                 Self::occ_backoff(attempt);
                                 continue;
@@ -660,7 +660,7 @@ impl Engine {
                     match tx.commit() {
                         Ok(ticket) => {
                             self.total_entries.fetch_add(1, Ordering::Relaxed);
-                            return Ok(ticket);
+                            return Ok(TurboTicket::from(ticket));
                         }
                         Err(_) => {
                             Self::occ_backoff(attempt);

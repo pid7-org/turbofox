@@ -327,7 +327,7 @@ Writer (Atomic Multi-Slot OCC):
 5. On `hash == 0` or 21 probes exhausted:
    Return `Ok(None)`
 
-### 7.2 `set(key: &[u8], val: &[u8]) -> Result<AckTicket>`
+### 7.2 `set(key: &[u8], val: &[u8]) -> Result<TurboTicket>`
 
 1. Traverse to target Bucket and slot
 2. If update and `new_len <= old_allocated`:

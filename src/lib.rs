@@ -10,10 +10,12 @@ mod hash;
 mod meta;
 mod node;
 mod slot;
+mod ticket;
 
 pub use cfg::TurboCfg;
 pub use error::{TurboError, TurboResult};
 pub use frozen_core::ack::AckTicket;
+pub use ticket::{Completion, TEpoch, TurboTicket};
 
 use engine::Engine;
 use std::sync::Arc;
@@ -41,7 +43,7 @@ impl TurboFox {
 
     /// Sets a key-value pair, expanding storage dynamically when needed
     #[inline(always)]
-    pub fn set(&self, key: &[u8], val: &[u8]) -> TurboResult<AckTicket> {
+    pub fn set(&self, key: &[u8], val: &[u8]) -> TurboResult<TurboTicket> {
         self.engine.set(key, val)
     }
 

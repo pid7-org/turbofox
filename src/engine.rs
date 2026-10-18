@@ -1172,7 +1172,7 @@ impl Engine {
                 ProbeResult::Found(entry_idx) => {
                     let entry = bucket.entry(entry_idx);
                     if entry.is_list() {
-                        return Err(TurboError::InvalidType("key is a list"));
+                        return self.list_del(key);
                     }
 
                     let old_buf_idx = entry.buffer_index();

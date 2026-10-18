@@ -140,7 +140,7 @@ fn ok_turbofox_list_type_isolation_and_invariants() {
         Err(TurboError::InvalidType(_))
     ));
 
-    // 2. Creating a list then attempting KV operations must error
+    // 2. Creating a list then attempting KV get and set must error
     let list_key = db.list(b"actual_list");
     list_key.append(b"first_item").unwrap();
     assert!(matches!(
@@ -151,10 +151,12 @@ fn ok_turbofox_list_type_isolation_and_invariants() {
         db.set(b"actual_list", b"new_val"),
         Err(TurboError::InvalidType(_))
     ));
-    assert!(matches!(
-        db.del(b"actual_list"),
-        Err(TurboError::InvalidType(_))
-    ));
+
+    // 3. Unified delete succeeds on both KV and list entries
+    assert_eq!(db.del(b"kv_key").unwrap(), true);
+    assert_eq!(db.del(b"actual_list").unwrap(), true);
+    assert_eq!(db.total_entries(), 0);
+    assert_eq!(list_key.len().unwrap(), 0);
 }
 
 #[test]
@@ -169,14 +171,14 @@ fn ok_turbofox_list_delete_and_recreation() {
     assert_eq!(list.len().unwrap(), 0x08);
     assert_eq!(db.total_entries(), 1);
 
-    // Delete list
-    assert_eq!(db.list_del(b"to_delete").unwrap(), true);
+    // Unified delete works identically through db.del
+    assert_eq!(db.del(b"to_delete").unwrap(), true);
     assert_eq!(db.total_entries(), 0);
     assert_eq!(list.len().unwrap(), 0);
     assert_eq!(list.pop().unwrap(), None);
 
     // Deleting again returns false
-    assert_eq!(db.list_del(b"to_delete").unwrap(), false);
+    assert_eq!(db.del(b"to_delete").unwrap(), false);
 
     // Recreate with new items
     list.append(b"resurrected_item").unwrap();

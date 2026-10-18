@@ -48,4 +48,9 @@ frozen-core = { version = "0.0.36", features = ["memmap", "ack", "hints", "isa",
 turbo_crc = { version = "0.0.4" }
 
 [dev-dependencies]
+hdrhistogram = "7.5.4"
 tempfile = "3.27.0"
+
+[[bench]]
+name = "write_ingest"
+harness = false

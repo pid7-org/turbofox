@@ -46,3 +46,6 @@ debug-assertions = false
 twox-hash = { version = "2.1.5", features = ["xxhash32"] }
 frozen-core = { version = "0.0.36", features = ["memmap", "ack", "hints", "isa", "error"] }
 turbo_crc = { version = "0.0.4" }
+
+[dev-dependencies]
+tempfile = "3.27.0"

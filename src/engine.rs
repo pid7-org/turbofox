@@ -994,4 +994,54 @@ mod tests {
 
         let _ = std::fs::remove_file(&temp.versioned);
     }
+
+    #[test]
+    fn ok_engine_explicit_sync_flushes_metadata() {
+        let temp = TempFile::new("ok_engine_sync_metadata");
+        let cfg = TurboCfg::new(&temp.path);
+        let engine = Engine::create(cfg.clone()).unwrap();
+
+        engine.set(b"meta_sync_k1", b"v1").unwrap();
+        engine.set(b"meta_sync_k2", b"v2").unwrap();
+        assert_eq!(engine.total_entries(), 2);
+
+        // Explicit sync flushes metadata slot 0
+        engine.sync().unwrap();
+        drop(engine);
+
+        let reopened = Engine::open(cfg).unwrap();
+        assert_eq!(reopened.total_entries(), 2);
+        let header = reopened.read_metadata().unwrap();
+        assert_eq!(header.total_entries, 2);
+        assert_eq!(reopened.get(b"meta_sync_k1").unwrap(), Some(b"v1".to_vec()));
+        assert_eq!(reopened.get(b"meta_sync_k2").unwrap(), Some(b"v2".to_vec()));
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
+
+    #[test]
+    fn ok_engine_drop_and_reopen_invariants() {
+        let temp = TempFile::new("ok_engine_drop_invariants");
+        let cfg = TurboCfg::new(&temp.path);
+
+        {
+            let engine = Engine::create(cfg.clone()).unwrap();
+            for i in 0..0x08 {
+                let k = format!("drop_k_{:02x}", i);
+                let v = format!("drop_v_{:02x}", i);
+                engine.set(k.as_bytes(), v.as_bytes()).unwrap();
+            }
+            engine.sync().unwrap();
+        }
+
+        let reopened = Engine::open(cfg).unwrap();
+        assert_eq!(reopened.total_entries(), 0x08);
+        for i in 0..0x08 {
+            let k = format!("drop_k_{:02x}", i);
+            let v = format!("drop_v_{:02x}", i);
+            assert_eq!(reopened.get(k.as_bytes()).unwrap(), Some(v.into_bytes()));
+        }
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
 }

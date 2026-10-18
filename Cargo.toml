@@ -58,3 +58,7 @@ harness = false
 [[bench]]
 name = "read_perf"
 harness = false
+
+[[bench]]
+name = "del_perf"
+harness = false

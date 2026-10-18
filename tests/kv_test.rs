@@ -325,3 +325,117 @@ fn ok_turbofox_del_persistence() {
     reopened.delete().unwrap();
 }
 
+#[test]
+fn ok_turbofox_del_reclaims_databuf_without_growth() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("reclaim_nogrowth.db"));
+    let db = TurboFox::create(cfg).unwrap();
+
+    // Fill initial pool with 0x20 keys having 0x30 bytes payload
+    for i in 0..0x20 {
+        let key = format!("pre_reclaim_key_{:04x}", i);
+        let val = vec![0xAA; 0x30];
+        db.set(key.as_bytes(), &val).unwrap();
+    }
+    assert_eq!(db.total_entries(), 0x20);
+
+    // Delete half of them (0x10 keys)
+    for i in 0..0x10 {
+        let key = format!("pre_reclaim_key_{:04x}", i);
+        assert_eq!(db.del(key.as_bytes()).unwrap(), true);
+    }
+    assert_eq!(db.total_entries(), 0x10);
+
+    // Insert 0x10 new keys into the reclaimed space
+    for i in 0..0x10 {
+        let key = format!("post_reclaim_key_{:04x}", i);
+        let val = vec![0xBB; 0x30];
+        db.set(key.as_bytes(), &val).unwrap();
+    }
+    assert_eq!(db.total_entries(), 0x20);
+
+    // Verify both surviving and new keys are readable
+    for i in 0x10..0x20 {
+        let key = format!("pre_reclaim_key_{:04x}", i);
+        assert_eq!(db.get(key.as_bytes()).unwrap(), Some(vec![0xAA; 0x30]));
+    }
+    for i in 0..0x10 {
+        let key = format!("post_reclaim_key_{:04x}", i);
+        assert_eq!(db.get(key.as_bytes()).unwrap(), Some(vec![0xBB; 0x30]));
+    }
+
+    db.delete().unwrap();
+}
+
+#[test]
+fn ok_turbofox_del_probe_across_consecutive_tombstones() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("tombstone_chain.db"));
+    let db = TurboFox::create(cfg).unwrap();
+
+    // Insert 0x0A keys
+    for i in 0..0x0A {
+        let key = format!("probe_chain_k_{:02x}", i);
+        let val = format!("val_{:02x}", i);
+        db.set(key.as_bytes(), val.as_bytes()).unwrap();
+    }
+
+    // Delete first 0x05 keys creating consecutive tombstones in probe paths
+    for i in 0..0x05 {
+        let key = format!("probe_chain_k_{:02x}", i);
+        assert_eq!(db.del(key.as_bytes()).unwrap(), true);
+    }
+
+    // Verify trailing keys are still reachable across tombstones
+    for i in 0x05..0x0A {
+        let key = format!("probe_chain_k_{:02x}", i);
+        let val = format!("val_{:02x}", i);
+        assert_eq!(db.get(key.as_bytes()).unwrap(), Some(val.into_bytes()));
+    }
+
+    // Delete remaining keys across tombstones
+    for i in 0x05..0x0A {
+        let key = format!("probe_chain_k_{:02x}", i);
+        assert_eq!(db.del(key.as_bytes()).unwrap(), true);
+    }
+    assert_eq!(db.total_entries(), 0);
+
+    db.delete().unwrap();
+}
+
+#[test]
+fn ok_turbofox_max_payload_roundtrip_and_del() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("max_payload.db"));
+    let db = TurboFox::create(cfg).unwrap();
+
+    // Max allowed key (0x0100 B) and max allowed payload (0x8000 B)
+    let key = vec![0x4B; 0x0100];
+    let val = vec![0x56; 0x8000];
+
+    db.set(&key, &val).unwrap();
+    assert_eq!(db.total_entries(), 1);
+    assert_eq!(db.get(&key).unwrap(), Some(val.clone()));
+
+    assert_eq!(db.del(&key).unwrap(), true);
+    assert_eq!(db.total_entries(), 0);
+    assert_eq!(db.get(&key).unwrap(), None);
+
+    db.delete().unwrap();
+}
+
+#[test]
+fn err_turbofox_oversized_key_del_and_get() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("oversized.db"));
+    let db = TurboFox::create(cfg).unwrap();
+
+    // Key exceeding u16::MAX (0x0001_0000 bytes)
+    let huge_key = vec![0x58; 0x0001_0000];
+
+    assert_eq!(db.get(&huge_key).unwrap(), None);
+    assert_eq!(db.del(&huge_key).unwrap(), false);
+
+    db.delete().unwrap();
+}
+

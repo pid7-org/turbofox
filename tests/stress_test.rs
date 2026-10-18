@@ -224,3 +224,85 @@ fn ok_stress_hotspot_key_contention() {
 
     db.delete().unwrap();
 }
+
+#[test]
+fn ok_stress_concurrent_mixed_set_del_get() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("mixed_set_del_get.db"));
+    let db = TurboFox::create(cfg).unwrap();
+
+    let key_space: usize = 0x20;
+    for i in 0..key_space {
+        let key = format!("dynamic_k_{:04x}", i);
+        let val = vec![(i & 0xFF) as u8; 0x20];
+        db.set(key.as_bytes(), &val).unwrap();
+    }
+
+    let running = Arc::new(AtomicBool::new(true));
+    let mut handles = Vec::new();
+
+    // 0x03 mutators continuously writing keys
+    for t in 0..0x03 {
+        let db_clone = db.clone();
+        let running_clone = running.clone();
+        handles.push(thread::spawn(move || {
+            let mut iter: usize = 0;
+            while running_clone.load(Ordering::Relaxed) {
+                let idx = (t * 0x07 + iter) % key_space;
+                let key = format!("dynamic_k_{:04x}", idx);
+                let val = vec![((t + iter) & 0xFF) as u8; 0x18];
+                let _ = db_clone.set(key.as_bytes(), &val);
+                iter = iter.wrapping_add(1);
+            }
+        }));
+    }
+
+    // 0x03 removers continuously deleting keys
+    for t in 0..0x03 {
+        let db_clone = db.clone();
+        let running_clone = running.clone();
+        handles.push(thread::spawn(move || {
+            let mut iter: usize = 0;
+            while running_clone.load(Ordering::Relaxed) {
+                let idx = (t * 0x0B + iter) % key_space;
+                let key = format!("dynamic_k_{:04x}", idx);
+                let _ = db_clone.del(key.as_bytes());
+                iter = iter.wrapping_add(1);
+            }
+        }));
+    }
+
+    // 0x03 readers continuously querying keys
+    for _ in 0..0x03 {
+        let db_clone = db.clone();
+        let running_clone = running.clone();
+        handles.push(thread::spawn(move || {
+            let mut iter: usize = 0;
+            while running_clone.load(Ordering::Relaxed) {
+                let idx = iter % key_space;
+                let key = format!("dynamic_k_{:04x}", idx);
+                let _ = db_clone.get(key.as_bytes());
+                iter = iter.wrapping_add(1);
+            }
+        }));
+    }
+
+    thread::sleep(std::time::Duration::from_millis(0x32));
+    running.store(false, Ordering::Relaxed);
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    // Verify consistency: total_entries matches actual occupied entries found by get
+    let mut actual_found: u64 = 0;
+    for i in 0..key_space {
+        let key = format!("dynamic_k_{:04x}", i);
+        if let Ok(Some(_)) = db.get(key.as_bytes()) {
+            actual_found += 1;
+        }
+    }
+    assert_eq!(db.total_entries(), actual_found);
+
+    db.delete().unwrap();
+}

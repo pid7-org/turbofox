@@ -598,4 +598,28 @@ mod tests {
 
         assert_ne!(DataBufError::OutOfSpace, DataBufError::InvalidIndex);
     }
+
+    #[test]
+    fn ok_databuf_realloc_expansion_and_shrinkage() {
+        let mut dbuf = DataBuf::new();
+        let idx = dbuf.alloc_contiguous(0x04).unwrap();
+        assert_eq!(idx, 0);
+        assert_eq!(dbuf.occupied_count(), 0x04);
+
+        // Shrink allocation from 0x04 buffers to 1 buffer
+        dbuf.free_contiguous(idx + 1, 3);
+        assert_eq!(dbuf.occupied_count(), 1);
+
+        // Next allocation should reuse freed contiguous space
+        let idx2 = dbuf.alloc_contiguous(3).unwrap();
+        assert_eq!(idx2, 1);
+        assert_eq!(dbuf.occupied_count(), 0x04);
+
+        // Expand by freeing all and reallocating 0x08
+        dbuf.free_contiguous(0, 0x04);
+        assert!(dbuf.is_empty());
+        let idx3 = dbuf.alloc_contiguous(0x08).unwrap();
+        assert_eq!(idx3, 0);
+        assert_eq!(dbuf.occupied_count(), 0x08);
+    }
 }

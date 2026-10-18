@@ -203,3 +203,45 @@ fn ok_turbofox_full_update_lifecycle() {
 
     reopened.delete().unwrap();
 }
+
+#[test]
+fn ok_turbofox_multibuf_large_spanned_payloads() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("spanned.db"));
+
+    {
+        let db = TurboFox::create(cfg.clone()).unwrap();
+
+        // 0x0800 bytes spanning across multiple DataBufs
+        let payload_2k = vec![0x41; 0x0800];
+        db.set(b"spanned_2k", &payload_2k).unwrap();
+        assert_eq!(db.get(b"spanned_2k").unwrap(), Some(payload_2k.clone()));
+
+        // 0x4000 bytes triggering multi-page dynamic growth
+        let payload_16k = vec![0x42; 0x4000];
+        db.set(b"spanned_16k", &payload_16k).unwrap();
+        assert_eq!(db.get(b"spanned_16k").unwrap(), Some(payload_16k.clone()));
+
+        // Overwrite expansion to 0x8000 bytes
+        let payload_32k = vec![0x43; 0x8000];
+        db.set(b"spanned_2k", &payload_32k).unwrap();
+        assert_eq!(db.get(b"spanned_2k").unwrap(), Some(payload_32k));
+
+        // Overwrite shrink down to 0x20 bytes
+        let small_val = vec![0x44; 0x20];
+        db.set(b"spanned_16k", &small_val).unwrap();
+        assert_eq!(db.get(b"spanned_16k").unwrap(), Some(small_val));
+
+        db.sync().unwrap();
+    }
+
+    // Reopen and verify persistence of multi-databuf entries
+    let reopened = TurboFox::open(cfg).unwrap();
+    assert_eq!(reopened.total_entries(), 2);
+    let expected_32k = vec![0x43; 0x8000];
+    assert_eq!(reopened.get(b"spanned_2k").unwrap(), Some(expected_32k));
+    let expected_small = vec![0x44; 0x20];
+    assert_eq!(reopened.get(b"spanned_16k").unwrap(), Some(expected_small));
+
+    reopened.delete().unwrap();
+}

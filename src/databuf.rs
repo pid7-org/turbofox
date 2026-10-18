@@ -170,6 +170,16 @@ impl DataBuf {
     }
 
     #[inline(always)]
+    pub const fn spanned_databuf_count(start_idx: usize, req_buffers: usize) -> usize {
+        if req_buffers <= Self::BUF_COUNT - start_idx {
+            1
+        } else {
+            1 + (req_buffers - (Self::BUF_COUNT - start_idx) + Self::BUF_COUNT - 1)
+                / Self::BUF_COUNT
+        }
+    }
+
+    #[inline(always)]
     pub(crate) fn payload_bytes(&self) -> &[u8; Self::PAYLOAD_BYTES] {
         unsafe { &*(self.buffers.as_ptr() as *const [u8; Self::PAYLOAD_BYTES]) }
     }

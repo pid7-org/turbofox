@@ -319,71 +319,53 @@ impl Engine {
             return false;
         }
         let (dbuf_slot, local_idx) = DataBuf::decompose_buf_idx(entry.buffer_index());
-        let req = DataBuf::required_kv_buffers(entry.klen() as usize, entry.vlen() as usize);
-        if local_idx + req <= DataBuf::BUF_COUNT {
+        let klen = entry.klen() as usize;
+        let req_key = DataBuf::required_key_buffers(klen);
+
+        if local_idx + req_key <= DataBuf::BUF_COUNT {
             return self
                 .mmap
                 .read_exact::<DataBuf, _, _>(dbuf_slot as usize, |dbuf| {
-                    match dbuf.read_kv_payload(
-                        local_idx,
-                        entry.klen() as usize,
-                        entry.vlen() as usize,
-                    ) {
-                        Ok((k, _v)) => k == key,
-                        Err(_) => false,
-                    }
+                    dbuf.verify_key(local_idx, key)
                 })
                 .unwrap_or(false);
         }
 
-        let klen = entry.klen() as usize;
-        let vlen = entry.vlen() as usize;
-        let total_bytes = req * DataBuf::BUF_SIZE;
-        let mut frame = vec![0u8; total_bytes];
-        let mut dest_offset = 0;
-        let mut remaining_buffers = req;
+        let mut key_buf = vec![0u8; klen];
+        let mut key_read = 0;
         let mut curr_slot = dbuf_slot as usize;
         let mut is_first = true;
 
-        while remaining_buffers > 0 {
+        while key_read < klen {
             let curr_local = if is_first { local_idx } else { 0 };
-            let count = (DataBuf::BUF_COUNT - curr_local).min(remaining_buffers);
-            let src_start = curr_local * DataBuf::BUF_SIZE;
-            let bytes_len = count * DataBuf::BUF_SIZE;
+            let offset = if is_first { DataBuf::CRC_SIZE } else { 0 };
+            let start_byte = curr_local * DataBuf::BUF_SIZE + offset;
+            let avail = (DataBuf::BUF_SIZE * DataBuf::BUF_COUNT).saturating_sub(start_byte);
+            let to_read = avail.min(klen - key_read);
 
             let read_res = self.mmap.read_exact::<DataBuf, _, _>(curr_slot, |dbuf| {
                 let raw = dbuf.payload_bytes();
-                frame[dest_offset..dest_offset + bytes_len]
-                    .copy_from_slice(&raw[src_start..src_start + bytes_len]);
+                key_buf[key_read..key_read + to_read]
+                    .copy_from_slice(&raw[start_byte..start_byte + to_read]);
             });
             if read_res.is_err() {
                 return false;
             }
 
-            dest_offset += bytes_len;
-            remaining_buffers -= count;
+            key_read += to_read;
             curr_slot += DataBuf::SLOT_COUNT;
             is_first = false;
         }
 
-        let mut crc_bytes = [0u8; DataBuf::CRC_SIZE];
-        crc_bytes.copy_from_slice(&frame[..DataBuf::CRC_SIZE]);
-        let expected_crc = u32::from_le_bytes(crc_bytes);
-
-        let data_len = klen + vlen;
-        let data = &frame[DataBuf::CRC_SIZE..DataBuf::CRC_SIZE + data_len];
-        let actual_crc = turbo_crc::crc32c(data);
-
-        if actual_crc != expected_crc {
-            return false;
-        }
-
-        let k = &data[..klen];
-        k == key
+        key_buf == key
     }
 
     /// Retrieves value payload for the specified key
     pub(crate) fn get(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
+        if key.len() > 0xFFFF {
+            return Ok(None);
+        }
+
         let hash = hash_key(key);
         let (bucket_slot, depth) = self.find_bucket(hash)?;
         let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot, |b| *b)?;
@@ -858,12 +840,11 @@ impl Engine {
 
                     let mut changes = Vec::with_capacity(2 + dbuf_diffs.len() * 8);
                     for i in 0..2 {
-                        let s = bucket_slot + i;
-                        let o = bucket.as_slots()[i];
-                        let n = new_bucket.as_slots()[i];
-                        if o != n {
-                            changes.push((s, o, n));
-                        }
+                        changes.push((
+                            bucket_slot + i,
+                            bucket.as_slots()[i],
+                            new_bucket.as_slots()[i],
+                        ));
                     }
                     for (slot, orig, mutated) in &dbuf_diffs {
                         for i in 0..DataBuf::SLOT_COUNT {
@@ -928,12 +909,11 @@ impl Engine {
 
                     let mut changes = Vec::with_capacity(2 + dbuf_diffs.len() * 8);
                     for i in 0..2 {
-                        let s = bucket_slot + i;
-                        let o = bucket.as_slots()[i];
-                        let n = new_bucket.as_slots()[i];
-                        if o != n {
-                            changes.push((s, o, n));
-                        }
+                        changes.push((
+                            bucket_slot + i,
+                            bucket.as_slots()[i],
+                            new_bucket.as_slots()[i],
+                        ));
                     }
                     for (slot, orig, mutated) in &dbuf_diffs {
                         for i in 0..DataBuf::SLOT_COUNT {
@@ -1008,12 +988,11 @@ impl Engine {
 
                     let mut changes = Vec::with_capacity(2 + dbuf_diffs.len() * 8);
                     for i in 0..2 {
-                        let s = bucket_slot + i;
-                        let o = bucket.as_slots()[i];
-                        let n = new_bucket.as_slots()[i];
-                        if o != n {
-                            changes.push((s, o, n));
-                        }
+                        changes.push((
+                            bucket_slot + i,
+                            bucket.as_slots()[i],
+                            new_bucket.as_slots()[i],
+                        ));
                     }
                     for (slot, orig, mutated) in &dbuf_diffs {
                         for i in 0..DataBuf::SLOT_COUNT {

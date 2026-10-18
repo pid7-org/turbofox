@@ -54,3 +54,7 @@ tempfile = "3.27.0"
 [[bench]]
 name = "write_ingest"
 harness = false
+
+[[bench]]
+name = "read_perf"
+harness = false

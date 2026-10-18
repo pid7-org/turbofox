@@ -1,4 +1,20 @@
 //! Durability ticket abstraction wrapping underlying acknowledgement handle
+//!
+//! ## Example
+//!
+//! ```
+//! use std::sync::Arc;
+//! use turbofox::{Completion, TurboTicket};
+//!
+//! let completion = Arc::new(Completion::default());
+//! let ticket = TurboTicket::from_raw(1, completion.clone());
+//!
+//! assert_eq!(ticket.epoch(), 1);
+//! assert!(!ticket.is_durable());
+//!
+//! completion.mark_epoch_as_durable(1);
+//! assert!(ticket.is_durable());
+//! ```
 
 use crate::error::{TurboError, TurboResult};
 use frozen_core::ack::AckTicket;
@@ -8,6 +24,17 @@ use std::sync::Arc;
 pub use frozen_core::ack::{Completion, TEpoch};
 
 /// Durability acknowledgement handle tracking write persistence
+///
+/// ## Example
+///
+/// ```
+/// use std::sync::Arc;
+/// use turbofox::{Completion, TurboTicket};
+///
+/// let completion = Arc::new(Completion::default());
+/// let ticket = TurboTicket::from_raw(0x0A, completion);
+/// assert_eq!(ticket.epoch(), 0x0A);
+/// ```
 #[derive(Debug, Clone)]
 #[repr(transparent)]
 pub struct TurboTicket {
@@ -16,61 +43,159 @@ pub struct TurboTicket {
 
 impl TurboTicket {
     /// Constructs a new [`TurboTicket`] wrapping an [`AckTicket`]
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use frozen_core::ack::AckTicket;
+    /// use std::sync::Arc;
+    /// use turbofox::{Completion, TurboTicket};
+    ///
+    /// let completion = Arc::new(Completion::default());
+    /// let ack = AckTicket::new(1, completion);
+    /// let ticket = TurboTicket::new(ack);
+    /// assert_eq!(ticket.epoch(), 1);
+    /// ```
     #[inline(always)]
     pub const fn new(inner: AckTicket) -> Self {
         Self { inner }
     }
 
-    /// Constructs a new [`TurboTicket`] from raw epoch and completion primitives
+    /// Constructs a new [`TurboTicket`] from raw epoch and completion primitives while binding
+    /// durability tracking to the shared completion state
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use turbofox::{Completion, TurboTicket};
+    ///
+    /// let completion = Arc::new(Completion::default());
+    /// let ticket = TurboTicket::from_raw(2, completion);
+    /// assert_eq!(ticket.epoch(), 2);
+    /// ```
     #[inline(always)]
     pub const fn from_raw(epoch: TEpoch, completion: Arc<Completion>) -> Self {
-        Self {
-            inner: AckTicket::new(epoch, completion),
-        }
+        Self { inner: AckTicket::new(epoch, completion) }
     }
 
-    /// Read assigned durability epoch for the ticket
+    /// Reads assigned durability epoch for the ticket
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use turbofox::{Completion, TurboTicket};
+    ///
+    /// let completion = Arc::new(Completion::default());
+    /// let ticket = TurboTicket::from_raw(3, completion);
+    /// assert_eq!(ticket.epoch(), 3);
+    /// ```
     #[inline(always)]
     pub const fn epoch(&self) -> TEpoch {
         self.inner.epoch()
     }
 
-    /// Check if the ticket is already durable without blocking
+    /// Checks if the ticket is already durable without blocking
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use turbofox::{Completion, TurboTicket};
+    ///
+    /// let completion = Arc::new(Completion::default());
+    /// let ticket = TurboTicket::from_raw(1, completion.clone());
+    /// assert!(!ticket.is_durable());
+    ///
+    /// completion.mark_epoch_as_durable(1);
+    /// assert!(ticket.is_durable());
+    /// ```
     #[inline(always)]
     pub fn is_durable(&self) -> bool {
         self.inner.is_durable()
     }
 
-    /// Blocks the current thread until the ticket becomes durable;
-    /// translates low-level durability failure into [`TurboError`]
+    /// Blocks the current thread until the ticket becomes durable; translates low-level durability
+    /// failure into [`TurboError`]
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`TurboError::Storage`] if sync worker reports a writeback failure
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use turbofox::{Completion, TurboTicket};
+    ///
+    /// let completion = Arc::new(Completion::default());
+    /// let ticket = TurboTicket::from_raw(1, completion.clone());
+    /// completion.mark_epoch_as_durable(1);
+    ///
+    /// assert_eq!(ticket.wait().unwrap(), 1);
+    /// ```
     #[inline]
     pub fn wait(&self) -> TurboResult<TEpoch> {
         self.inner.wait().map_err(TurboError::from)
     }
 
-    /// Forces synchronization for this ticket and blocks until durable;
-    /// translates low-level durability failure into [`TurboError`]
+    /// Forces synchronization for this ticket and blocks until durable; while translating low-level
+    /// durability failure into [`TurboError`]
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`TurboError::Storage`] if sync trigger or flush execution fails
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use turbofox::{Completion, TurboTicket};
+    ///
+    /// let completion = Arc::new(Completion::default());
+    /// let ticket = TurboTicket::from_raw(1, completion.clone());
+    /// completion.mark_epoch_as_durable(1);
+    ///
+    /// assert_eq!(ticket.force().unwrap(), 1);
+    /// ```
     #[inline]
     pub fn force(&self) -> TurboResult<TEpoch> {
         self.inner.force().map_err(TurboError::from)
     }
 
     /// Reference to the underlying shared [`Completion`] state
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use turbofox::{Completion, TurboTicket};
+    ///
+    /// let completion = Arc::new(Completion::default());
+    /// let ticket = TurboTicket::from_raw(1, completion.clone());
+    /// assert_eq!(ticket.completion().read_durable_epoch(), 0);
+    /// ```
     #[inline(always)]
     pub fn completion(&self) -> &Arc<Completion> {
         self.inner.completion()
     }
 
     /// Immutable reference to the wrapped [`AckTicket`]
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use turbofox::{Completion, TurboTicket};
+    ///
+    /// let completion = Arc::new(Completion::default());
+    /// let ticket = TurboTicket::from_raw(1, completion);
+    /// assert_eq!(ticket.inner().epoch(), 1);
+    /// ```
     #[inline(always)]
     pub const fn inner(&self) -> &AckTicket {
         &self.inner
-    }
-
-    /// Unwraps the inner [`AckTicket`]
-    #[inline(always)]
-    pub fn into_inner(self) -> AckTicket {
-        self.inner
     }
 }
 
@@ -113,14 +238,8 @@ mod tests {
 
     #[test]
     fn ok_ticket_transparent_layout() {
-        assert_eq!(
-            std::mem::size_of::<TurboTicket>(),
-            std::mem::size_of::<AckTicket>()
-        );
-        assert_eq!(
-            std::mem::align_of::<TurboTicket>(),
-            std::mem::align_of::<AckTicket>()
-        );
+        assert_eq!(std::mem::size_of::<TurboTicket>(), std::mem::size_of::<AckTicket>());
+        assert_eq!(std::mem::align_of::<TurboTicket>(), std::mem::align_of::<AckTicket>());
     }
 
     #[test]

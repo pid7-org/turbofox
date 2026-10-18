@@ -1,41 +1,90 @@
-//! TurboFox error taxonomy and result type definitions
+//! Error taxonomy and result type definitions
+//!
+//! ## Example
+//!
+//! ```
+//! use turbofox::{TurboError, TurboResult};
+//!
+//! fn check_capacity(size: usize) -> TurboResult<()> {
+//!     if size > 0x1000 {
+//!         return Err(TurboError::PayloadTooLarge);
+//!     }
+//!     Ok(())
+//! }
+//!
+//! assert!(check_capacity(0x0100).is_ok());
+//! assert!(matches!(check_capacity(0x2000), Err(TurboError::PayloadTooLarge)));
+//! ```
 
+/// Specialized [`Result`] type alias for [`TurboFox`] engine operations; returns a [`TurboError`]
+/// on failure
+///
+/// ## Example
+///
+/// ```
+/// use turbofox::{TurboError, TurboResult};
+///
+/// fn sample_op(succeed: bool) -> TurboResult<u32> {
+///     if succeed {
+///         Ok(1)
+///     } else {
+///         Err(TurboError::InvalidMagic)
+///     }
+/// }
+///
+/// assert_eq!(sample_op(true).unwrap(), 1);
+/// assert!(sample_op(false).is_err());
+/// ```
 pub type TurboResult<T> = Result<T, TurboError>;
 
-/// TurboFox engine error variants
+/// [`TurboFox`] engine error variants
+///
+/// ## Example
+///
+/// ```
+/// use turbofox::TurboError;
+///
+/// let err = TurboError::InvalidMagic;
+/// assert_eq!(err.to_string(), "invalid file magic header");
+///
+/// let busy = TurboError::ResourceBusy("active reader handles");
+/// assert_eq!(busy.to_string(), "resource busy: active reader handles");
+/// ```
 #[derive(Debug)]
 pub enum TurboError {
     /// Low-level memory mapping, paging, or synchronization failures
-    Storage {
-        code: u32,
-        context: Box<str>,
-    },
+    Storage { code: u32, context: Box<str> },
+
     /// Operating system file descriptor IO failures
     Io(std::io::Error),
+
     /// Corrupted database header metadata
     CorruptedHeader(&'static str),
+
     /// File header magic bytes do not match expected signature
     InvalidMagic,
+
     /// Database format layout version mismatch
-    VersionMismatch {
-        expected: u32,
-        found: u32,
-    },
+    VersionMismatch { expected: u32, found: u32 },
+
     /// Host page size violates power-of-two or minimum size constraints
     InvalidPageSize(u32),
+
     /// File length is not an exact multiple of the physical page size
-    InvalidSize {
-        expected: usize,
-        found: usize,
-    },
+    InvalidSize { expected: usize, found: usize },
+
     /// Root node virtual page failed type discriminator check
     InvalidRootNode,
+
     /// Resource is currently busy or referenced by active handles
     ResourceBusy(&'static str),
-    /// Key type mismatch (e.g. KV op on List or vice versa)
+
+    /// Key type mismatch such as key-value operations on list structures
     InvalidType(&'static str),
+
     /// Payload exceeds maximum single DataBuf storage capacity
     PayloadTooLarge,
+
     /// Payload data failed CRC32 validation or offset integrity
     CorruptedPayload(&'static str),
 }
@@ -43,13 +92,8 @@ pub enum TurboError {
 impl From<frozen_core::error::FrozenError> for TurboError {
     #[inline]
     fn from(err: frozen_core::error::FrozenError) -> Self {
-        let code = ((err.module as u32) << 0x10)
-            | ((err.domain as u32) << 8)
-            | (err.reason as u32);
-        Self::Storage {
-            code,
-            context: err.context,
-        }
+        let code = ((err.module as u32) << 0x10) | ((err.domain as u32) << 8) | (err.reason as u32);
+        Self::Storage { code, context: err.context }
     }
 }
 
@@ -68,9 +112,7 @@ impl From<crate::databuf::DataBufError> for TurboError {
             crate::databuf::DataBufError::CrcMismatch { .. } => {
                 Self::CorruptedPayload("databuf payload crc32 mismatch")
             }
-            crate::databuf::DataBufError::OutOfSpace => {
-                Self::ResourceBusy("databuf out of space")
-            }
+            crate::databuf::DataBufError::OutOfSpace => Self::ResourceBusy("databuf out of space"),
             crate::databuf::DataBufError::InvalidIndex => {
                 Self::CorruptedPayload("invalid databuf index")
             }

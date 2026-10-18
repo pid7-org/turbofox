@@ -930,4 +930,68 @@ mod tests {
             other => panic!("unexpected error: {:?}", other),
         }
     }
+
+    #[test]
+    fn ok_engine_set_update_shrink_frees_buffers() {
+        let temp = TempFile::new("ok_engine_shrink");
+        let cfg = TurboCfg::new(&temp.path);
+        let engine = Engine::create(cfg).unwrap();
+
+        let initial_val = vec![0x11; 0x60];
+        engine.set(b"shrink_key", &initial_val).unwrap();
+        assert_eq!(engine.get(b"shrink_key").unwrap(), Some(initial_val));
+        assert_eq!(engine.total_entries(), 1);
+
+        // Update in-place with smaller payload
+        let tiny_val = b"tiny";
+        engine.set(b"shrink_key", tiny_val).unwrap();
+        assert_eq!(engine.get(b"shrink_key").unwrap(), Some(tiny_val.to_vec()));
+        assert_eq!(engine.total_entries(), 1);
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
+
+    #[test]
+    fn ok_engine_update_expansion_triggers_databuf_growth() {
+        let temp = TempFile::new("ok_engine_expansion_growth");
+        let cfg = TurboCfg::new(&temp.path);
+        let engine = Engine::create(cfg).unwrap();
+
+        let initial_slots = engine.total_slots();
+
+        // Seed with baseline key
+        engine.set(b"target_expand", b"small").unwrap();
+
+        // Saturate initial databufs with bulk allocations
+        for i in 0..0x64 {
+            let k = format!("fill_key_{:04x}", i);
+            let v = vec![(i & 0xFF) as u8; 0x70];
+            engine.set(k.as_bytes(), &v).unwrap();
+        }
+
+        // Expand target_expand to require large contiguous allocation
+        let large_val = vec![0x7A; 0x0180];
+        engine.set(b"target_expand", &large_val).unwrap();
+
+        assert!(engine.total_slots() > initial_slots);
+        assert_eq!(engine.get(b"target_expand").unwrap(), Some(large_val));
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
+
+    #[test]
+    fn err_engine_set_payload_limits() {
+        let temp = TempFile::new("err_engine_payload_limits");
+        let cfg = TurboCfg::new(&temp.path);
+        let engine = Engine::create(cfg).unwrap();
+
+        let oversized_val = vec![0xEE; 0x0400];
+        let err = engine.set(b"oversized", &oversized_val).unwrap_err();
+        match err {
+            TurboError::PayloadTooLarge => {}
+            other => panic!("unexpected error variant: {:?}", other),
+        }
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
 }

@@ -162,3 +162,44 @@ fn ok_turbofox_concurrent_writers() {
 
     db.delete().unwrap();
 }
+
+#[test]
+fn ok_turbofox_full_update_lifecycle() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("lifecycle.db"));
+
+    {
+        let db = TurboFox::create(cfg.clone()).unwrap();
+
+        // 1: Initial Set
+        db.set(b"lifecycle_key", b"v1_initial").unwrap();
+        assert_eq!(db.total_entries(), 1);
+        assert_eq!(db.get(b"lifecycle_key").unwrap(), Some(b"v1_initial".to_vec()));
+
+        // 2: In-place Update with matched length
+        db.set(b"lifecycle_key", b"v2_matched").unwrap();
+        assert_eq!(db.total_entries(), 1);
+        assert_eq!(db.get(b"lifecycle_key").unwrap(), Some(b"v2_matched".to_vec()));
+
+        // 3: Shrinking Update
+        db.set(b"lifecycle_key", b"v3").unwrap();
+        assert_eq!(db.total_entries(), 1);
+        assert_eq!(db.get(b"lifecycle_key").unwrap(), Some(b"v3".to_vec()));
+
+        // 4: Expanding Update
+        let expanded = vec![0x3C; 0x0120];
+        db.set(b"lifecycle_key", &expanded).unwrap();
+        assert_eq!(db.total_entries(), 1);
+        assert_eq!(db.get(b"lifecycle_key").unwrap(), Some(expanded.clone()));
+
+        db.sync().unwrap();
+    }
+
+    // Verify durability and persistence of updated key across reopen
+    let reopened = TurboFox::open(cfg).unwrap();
+    assert_eq!(reopened.total_entries(), 1);
+    let expected = vec![0x3C; 0x0120];
+    assert_eq!(reopened.get(b"lifecycle_key").unwrap(), Some(expected));
+
+    reopened.delete().unwrap();
+}

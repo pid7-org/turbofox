@@ -63,8 +63,7 @@ Offset  Type     Field          Description
 24..31  u64      total_entries  Active key count (KV + List)
 32..35  u32      adj_arr_head   Head block index of AdjArray free-list
 36..39  u32      databuf_head   Head index of DataBuf allocation chain
-40..47  u64      last_epoch     Last durable sync epoch ticket
-48..127 [u8; 80] reserved       Zero-padded reserved space
+40..127 [u8; 88] reserved       Zero-padded reserved space
 ```
 
 ### 3.2 Virtual Page Discrimination (Offset 0..3)

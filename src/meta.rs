@@ -16,8 +16,7 @@ pub(crate) struct Metadata {
     pub(crate) total_entries: u64,
     pub(crate) adj_arr_head: u32,
     pub(crate) databuf_head: u32,
-    pub(crate) last_epoch: u64,
-    pub(crate) reserved: [u8; 0x50],
+    pub(crate) reserved: [u8; 0x58],
 }
 
 const _: () = assert!(core::mem::size_of::<Metadata>() == 0x80);
@@ -48,6 +47,7 @@ impl Metadata {
     #[inline(always)]
     pub(crate) const fn init(page_size: u32) -> Self {
         let total_slots = (Self::DEFAULT_INITIAL_PAGES * page_size) / (Slot::SIZE as u32);
+
         Self {
             magic: Self::MAGIC,
             version: Self::CURRENT_VERSION,
@@ -58,8 +58,7 @@ impl Metadata {
             total_entries: 0,
             adj_arr_head: Self::DEFAULT_ADJ_ARR_HEAD,
             databuf_head: Self::DEFAULT_DATABUF_HEAD,
-            last_epoch: 0,
-            reserved: [0u8; 0x50],
+            reserved: [0u8; 0x58],
         }
     }
 
@@ -102,8 +101,7 @@ mod tests {
         assert_eq!(core::mem::offset_of!(Metadata, total_entries), 0x18);
         assert_eq!(core::mem::offset_of!(Metadata, adj_arr_head), 0x20);
         assert_eq!(core::mem::offset_of!(Metadata, databuf_head), 0x24);
-        assert_eq!(core::mem::offset_of!(Metadata, last_epoch), 0x28);
-        assert_eq!(core::mem::offset_of!(Metadata, reserved), 0x30);
+        assert_eq!(core::mem::offset_of!(Metadata, reserved), 0x28);
     }
 
     #[test]

@@ -439,3 +439,20 @@ fn err_turbofox_oversized_key_del_and_get() {
     db.delete().unwrap();
 }
 
+#[test]
+fn ok_turbofox_capacity_metrics_and_invariants() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("cap.db"));
+    let db = TurboFox::create(cfg).unwrap();
+
+    let init_pages = db.total_pages().unwrap();
+    assert_eq!(init_pages, 8);
+
+    let remaining_pages = db.remaining_pages().unwrap();
+    assert_eq!(remaining_pages, 0x0010_4104 - 8);
+
+    let remaining_bytes = db.remaining_bytes().unwrap();
+    assert_eq!(remaining_bytes, (remaining_pages as u64) * 0x1000);
+
+    db.delete().unwrap();
+}

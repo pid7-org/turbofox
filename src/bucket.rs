@@ -1,4 +1,4 @@
-//! Hash Bucket and BucketEntry structures (0x0100 B / 2 Slots)
+//! Hash Bucket and BucketEntry structures
 //!
 //! Ref: `DESIGN.md` §3.2, §3.4, §4.3, §5.2
 
@@ -142,6 +142,7 @@ impl Bucket {
             Some(s) => s,
             None => 0,
         };
+
         ((hash >> shift) % (Self::ENTRY_COUNT as u32)) as usize
     }
 
@@ -163,12 +164,14 @@ impl Bucket {
             if entry.is_empty() {
                 return ProbeResult::Vacant(first_tombstone.unwrap_or(slot));
             }
+
             if entry.is_tombstone() {
                 if first_tombstone.is_none() {
                     first_tombstone = Some(slot);
                 }
                 continue;
             }
+
             if entry.hash == hash && key_match(entry) {
                 return ProbeResult::Found(slot);
             }

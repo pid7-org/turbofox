@@ -31,6 +31,7 @@ use frozen_core::ack::AckTicket;
 /// let dir = tempfile::tempdir().unwrap();
 /// let path = dir.path().join("ticket_type.db");
 /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+///
 /// let ticket = db.set(b"key", b"value").unwrap();
 /// assert!(ticket.epoch() > 0);
 ///

@@ -291,6 +291,24 @@ impl TurboFox {
         self.engine.total_entries()
     }
 
+    /// Returns the total number of physical OS pages currently allocated to the database file
+    #[inline]
+    pub fn total_pages(&self) -> TurboResult<u32> {
+        self.engine.total_pages()
+    }
+
+    /// Returns remaining physical OS pages that can be grown before reaching storage ceiling
+    #[inline]
+    pub fn remaining_pages(&self) -> TurboResult<u32> {
+        self.engine.remaining_pages()
+    }
+
+    /// Returns remaining storage capacity in bytes before reaching architectural address limit
+    #[inline]
+    pub fn remaining_bytes(&self) -> TurboResult<u64> {
+        self.engine.remaining_bytes()
+    }
+
     /// Performs an explicit flush of dirty memory-mapped pages to durable storage, to ensure all
     /// preceding writes are persisted across power-loss boundaries
     ///

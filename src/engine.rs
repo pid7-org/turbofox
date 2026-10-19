@@ -6,7 +6,7 @@ use std::sync::{
 
 use crate::adjarr::AdjArrayBlock;
 use crate::bucket::{Bucket, ProbeResult};
-use crate::cfg::{MODULE_ID, PAGE_SIZE, TurboCfg};
+use crate::cfg::{MAX_STORAGE_PAGES, MODULE_ID, PAGE_SIZE, TurboCfg};
 use crate::databuf::DataBuf;
 use crate::error::{TurboError, TurboResult};
 use crate::hash::hash_key;
@@ -62,6 +62,7 @@ impl Engine {
 
         engine.format_initial_topography()?;
         engine.sync()?;
+
         Ok(engine)
     }
 
@@ -77,6 +78,7 @@ impl Engine {
 
         let mmap = MemMap::<Slot>::open(memmap_cfg)?;
         let file_len = mmap.length();
+
         if file_len < MIN_FILE_LEN {
             return Err(TurboError::InvalidSize { expected: MIN_FILE_LEN, found: file_len });
         }
@@ -131,6 +133,7 @@ impl Engine {
 
         let total_slots = meta.total_slots;
         let total_entries = meta.total_entries;
+
         Ok(Self {
             mmap,
             growth_mutex: Mutex::new(()),
@@ -144,6 +147,7 @@ impl Engine {
         let mut meta = Metadata::init(PAGE_SIZE);
         meta.adj_arr_head = 1;
         meta.databuf_head = DATABUF_SLOTS[0] as u32;
+
         self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
 
         for slot in 1..=4 {
@@ -168,19 +172,23 @@ impl Engine {
         for i in 0..DATABUF_SLOTS.len() {
             let slot = DATABUF_SLOTS[i];
             let next = if i + 1 < DATABUF_SLOTS.len() { DATABUF_SLOTS[i + 1] as u32 } else { 0 };
+
             let mut dbuf = DataBuf::new();
             dbuf.set_next_dbuf_index(next);
+
             self.mmap.write_exact::<DataBuf, _, _>(slot, |d| *d = dbuf)?;
         }
 
         for slot in 0xC0..=0xC6 {
             let mut block = AdjArrayBlock::new();
             block.set_next_block((slot + 1) as u32);
+
             self.mmap.write_exact::<AdjArrayBlock, _, _>(slot, |b| *b = block)?;
         }
 
         let mut block199 = AdjArrayBlock::new();
         block199.set_next_block(0);
+
         self.mmap.write_exact::<AdjArrayBlock, _, _>(0xC7, |b| *b = block199)?;
 
         Ok(())
@@ -192,6 +200,7 @@ impl Engine {
         let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| {
             m.total_entries = entries;
         });
+
         self.mmap.sync()?;
         Ok(())
     }
@@ -199,6 +208,7 @@ impl Engine {
     #[inline]
     pub(crate) fn read_metadata(&self) -> TurboResult<Metadata> {
         let meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
+
         Ok(meta)
     }
 
@@ -225,6 +235,39 @@ impl Engine {
         self.total_entries.load(Ordering::Acquire)
     }
 
+    #[inline]
+    pub(crate) fn total_pages(&self) -> TurboResult<u32> {
+        let meta = self.read_metadata()?;
+        Ok(meta.total_pages)
+    }
+
+    #[inline]
+    pub(crate) fn remaining_pages(&self) -> TurboResult<u32> {
+        let current = self.total_pages()?;
+        Ok(MAX_STORAGE_PAGES.saturating_sub(current))
+    }
+
+    #[inline]
+    pub(crate) fn remaining_bytes(&self) -> TurboResult<u64> {
+        let remaining_pages = self.remaining_pages()? as u64;
+        let page_size = PAGE_SIZE as u64;
+        Ok(remaining_pages * page_size)
+    }
+
+    #[inline]
+    fn ensure_page_capacity(&self, additional_pages: u32) -> TurboResult<()> {
+        let current = self.read_metadata()?.total_pages;
+        let target = current
+            .checked_add(additional_pages)
+            .ok_or(TurboError::DatabaseFull)?;
+
+        if target > MAX_STORAGE_PAGES {
+            return Err(TurboError::DatabaseFull);
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn find_bucket(&self, hash: u32) -> TurboResult<(usize, u8)> {
         let mut curr_vp = Metadata::DEFAULT_ROOT_NODE_VP;
         let mut depth: u8 = 0;
@@ -232,6 +275,7 @@ impl Engine {
         loop {
             let slot = (curr_vp * 2) as usize;
             let is_bucket = self.mmap.read_exact::<Bucket, _, _>(slot, |b| b.is_bucket())?;
+
             if is_bucket {
                 return Ok((slot, depth));
             }
@@ -241,8 +285,10 @@ impl Engine {
             if child_vp == 0 {
                 return Err(TurboError::CorruptedHeader("unmapped trie branch"));
             }
+
             curr_vp = child_vp;
             depth += 1;
+
             if depth > 5 {
                 return Err(TurboError::CorruptedHeader("trie depth exceeded maximum limit"));
             }
@@ -309,6 +355,7 @@ impl Engine {
         if (entry.klen() as usize) != key.len() {
             return false;
         }
+
         let (dbuf_slot, local_idx) = DataBuf::decompose_buf_idx(entry.buffer_index());
         let klen = entry.klen() as usize;
         let req_key = DataBuf::required_key_buffers(klen);
@@ -339,6 +386,7 @@ impl Engine {
                 key_buf[key_read..key_read + to_read]
                     .copy_from_slice(&raw[start_byte..start_byte + to_read]);
             });
+
             if read_res.is_err() {
                 return false;
             }
@@ -374,6 +422,7 @@ impl Engine {
                     entry.klen() as usize,
                     entry.vlen() as usize,
                 )?;
+
                 Ok(Some(val))
             }
             _ => Ok(None),
@@ -392,7 +441,6 @@ impl Engine {
             self.mmap.read_exact::<DataBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
 
         let mut rem_buffers = needed;
-
         for i in 0..num_dbufs {
             let expected_slot = curr + i * DataBuf::SLOT_COUNT;
             if expected_slot + DataBuf::SLOT_COUNT > total_slots {
@@ -415,6 +463,7 @@ impl Engine {
             let mut mutated = dbuf;
             let mask = if count == 0x40 { u64::MAX } else { (1u64 << count) - 1 };
             mutated.bitmap |= mask;
+
             if (mutated.bitmap & DataBuf::OCCUPANCY_MASK) == DataBuf::OCCUPANCY_MASK {
                 mutated.bitmap |= DataBuf::FULL_BIT;
             }
@@ -449,9 +498,11 @@ impl Engine {
                         .read_exact::<DataBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
                     continue;
                 }
+
                 let (next, opt_alloc) = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
                     let next = d.next_dbuf_index() as usize;
                     let mut mutated = *d;
+
                     match mutated.alloc_contiguous(needed) {
                         Some(local_idx) => (next, Some((local_idx, *d, mutated))),
                         None => (next, None),
@@ -465,8 +516,10 @@ impl Engine {
                         touched: vec![(curr, orig, mutated)],
                     }));
                 }
+
                 curr = next;
             }
+
             return Ok(None);
         }
 
@@ -480,10 +533,12 @@ impl Engine {
                     .read_exact::<DataBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
                 continue;
             }
+
             let (next, fits, touched) = self.check_contiguous_dbuf_fit(curr, num_dbufs, needed)?;
             if fits {
                 return Ok(Some(DbufAllocPlan { start_slot: curr, local_idx: 0, touched }));
             }
+
             curr = next;
         }
 
@@ -499,9 +554,11 @@ impl Engine {
     ) {
         let total_data = key.len() + val.len();
         let total_bytes = req * DataBuf::BUF_SIZE;
+
         let mut frame = vec![0u8; total_bytes];
         frame[DataBuf::CRC_SIZE..DataBuf::CRC_SIZE + key.len()].copy_from_slice(key);
         frame[DataBuf::CRC_SIZE + key.len()..DataBuf::CRC_SIZE + total_data].copy_from_slice(val);
+
         let crc = turbo_crc::crc32c(&frame[DataBuf::CRC_SIZE..DataBuf::CRC_SIZE + total_data]);
         frame[..DataBuf::CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
 
@@ -531,8 +588,10 @@ impl Engine {
         key: &[u8],
     ) {
         let total_bytes = req * DataBuf::BUF_SIZE;
+
         let mut frame = vec![0u8; total_bytes];
         frame[DataBuf::CRC_SIZE..DataBuf::CRC_SIZE + key.len()].copy_from_slice(key);
+
         let crc = turbo_crc::crc32c(key);
         frame[..DataBuf::CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
 
@@ -562,8 +621,10 @@ impl Engine {
         val: &[u8],
     ) {
         let total_bytes = req * DataBuf::BUF_SIZE;
+
         let mut frame = vec![0u8; total_bytes];
         frame[DataBuf::CRC_SIZE..DataBuf::CRC_SIZE + val.len()].copy_from_slice(val);
+
         let crc = turbo_crc::crc32c(val);
         frame[..DataBuf::CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
 
@@ -673,14 +734,18 @@ impl Engine {
     ) {
         let mut rem_buffers = req;
         let mut is_first = true;
+
         for (_slot, _orig, mutated) in touched.iter_mut() {
             let curr_local = if is_first { local_idx } else { 0 };
             let count = (DataBuf::BUF_COUNT - curr_local).min(rem_buffers);
+
             let mask = if count == 0x40 { u64::MAX } else { ((1u64 << count) - 1) << curr_local };
             mutated.bitmap |= mask;
+
             if (mutated.bitmap & DataBuf::OCCUPANCY_MASK) == DataBuf::OCCUPANCY_MASK {
                 mutated.bitmap |= DataBuf::FULL_BIT;
             }
+
             rem_buffers -= count;
             is_first = false;
         }
@@ -690,11 +755,12 @@ impl Engine {
         freed: Vec<(usize, DataBuf, DataBuf)>,
         allocated: Vec<(usize, DataBuf, DataBuf)>,
     ) -> Vec<(usize, DataBuf, DataBuf)> {
-        use std::collections::BTreeMap;
-        let mut map: BTreeMap<usize, (DataBuf, DataBuf)> = BTreeMap::new();
+        let mut map: std::collections::BTreeMap<usize, (DataBuf, DataBuf)> =
+            std::collections::BTreeMap::new();
         for (slot, orig, mutated) in freed {
             map.insert(slot, (orig, mutated));
         }
+
         for (slot, orig, mutated) in allocated {
             map.entry(slot)
                 .and_modify(|(_entry_orig, entry_mut)| {
@@ -702,6 +768,7 @@ impl Engine {
                 })
                 .or_insert((orig, mutated));
         }
+
         map.into_iter().map(|(slot, (orig, mutated))| (slot, orig, mutated)).collect()
     }
 
@@ -714,6 +781,7 @@ impl Engine {
         }
 
         let pages = if needed <= 0xFC { 1 } else { (needed + 0xFB) / 0xFC };
+        self.ensure_page_capacity(pages as u32)?;
         let added_slots = pages * 0x20;
         let old_slots = self.total_slots.load(Ordering::Acquire) as usize;
 
@@ -726,8 +794,10 @@ impl Engine {
         for i in 0..num_dbufs {
             let slot = old_slots + i * 8;
             let next = if i + 1 < num_dbufs { (old_slots + (i + 1) * 8) as u32 } else { old_head };
+
             let mut dbuf = DataBuf::new();
             dbuf.set_next_dbuf_index(next);
+
             self.mmap.write_exact::<DataBuf, _, _>(slot, |d| *d = dbuf)?;
         }
 
@@ -747,15 +817,18 @@ impl Engine {
         while curr != 0 && curr < total_slots {
             let (next, opt_alloc) = self.mmap.read_exact::<AdjArrayBlock, _, _>(curr, |b| {
                 let next = b.next_block() as usize;
+
                 if !b.is_full() {
                     let mut mutated = *b;
                     if let Some(arr_idx) = mutated.alloc_array() {
                         if mutated.is_full() {
                             mutated.set_occupied(true);
                         }
+
                         return (next, Some((arr_idx, *b, mutated)));
                     }
                 }
+
                 (next, None)
             })?;
 
@@ -773,12 +846,12 @@ impl Engine {
     /// Expands Adjacent Array block chain by allocating 1 physical OS page (§5.4)
     fn grow_adjarr(&self) -> TurboResult<()> {
         let _guard = self.growth_mutex.lock().unwrap();
-
         if self.find_free_adjarr()?.is_some() {
             return Ok(());
         }
 
         let pages = 1;
+        self.ensure_page_capacity(pages as u32)?;
         let added_slots = 0x20;
         let old_slots = self.total_slots.load(Ordering::Acquire) as usize;
 
@@ -791,8 +864,10 @@ impl Engine {
         for i in 0..num_blocks {
             let slot = old_slots + i;
             let next = if i + 1 < num_blocks { (old_slots + i + 1) as u32 } else { old_head };
+
             let mut block = AdjArrayBlock::new();
             block.set_next_block(next);
+
             self.mmap.write_exact::<AdjArrayBlock, _, _>(slot, |b| *b = block)?;
         }
 
@@ -814,6 +889,7 @@ impl Engine {
             return Ok(());
         }
 
+        self.ensure_page_capacity(4)?;
         let old_slots = self.total_slots.load(Ordering::Acquire) as usize;
         self.mmap.grow(4)?;
         let added_slots = 0x80;
@@ -828,6 +904,7 @@ impl Engine {
         for (child_idx, entry) in old_bucket.route_entries_for_split(depth) {
             let cb = &mut child_buckets[child_idx];
             let probe_res = cb.probe(entry.hash(), next_depth, |_| false);
+
             match probe_res {
                 ProbeResult::Vacant(vacant_slot) => {
                     *cb.entry_mut(vacant_slot) = entry;
@@ -865,8 +942,10 @@ impl Engine {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(0);
+
         let jitter_pct = 0x4B + (nanos % 0x33);
         let wait_us = (base_us * jitter_pct) / 0x64;
+
         std::thread::sleep(std::time::Duration::from_micros(wait_us));
     }
 
@@ -893,6 +972,7 @@ impl Engine {
                     if old_entry.is_list() {
                         return Err(TurboError::InvalidType("cannot overwrite list key with KV"));
                     }
+
                     let old_buf_idx = old_entry.buffer_index();
                     let (old_dbuf_slot, old_local_idx) = DataBuf::decompose_buf_idx(old_buf_idx);
                     let old_req = DataBuf::required_kv_buffers(
@@ -908,19 +988,23 @@ impl Engine {
                             let orig_dbuf = self
                                 .mmap
                                 .read_exact::<DataBuf, _, _>(old_dbuf_slot as usize, |d| *d)?;
+
                             let mut mutated_dbuf = orig_dbuf;
                             if req < old_req {
                                 mutated_dbuf.free_contiguous(old_local_idx + req, old_req - req);
                             }
+
                             if let Err(e) = mutated_dbuf.write_kv_payload(old_local_idx, key, val) {
                                 return Err(TurboError::from(e));
                             }
+
                             dbuf_diffs = vec![(old_dbuf_slot as usize, orig_dbuf, mutated_dbuf)];
                             new_buf_idx = old_buf_idx;
                         } else {
                             let orig_old_dbuf = self
                                 .mmap
                                 .read_exact::<DataBuf, _, _>(old_dbuf_slot as usize, |d| *d)?;
+
                             let mut freed_old_dbuf = orig_old_dbuf;
                             freed_old_dbuf.free_contiguous(old_local_idx, old_req);
 
@@ -928,6 +1012,7 @@ impl Engine {
                                 if let Err(e) = freed_old_dbuf.write_kv_payload(idx, key, val) {
                                     return Err(TurboError::from(e));
                                 }
+
                                 dbuf_diffs =
                                     vec![(old_dbuf_slot as usize, orig_old_dbuf, freed_old_dbuf)];
                                 new_buf_idx = DataBuf::global_buf_idx(old_dbuf_slot, idx);
@@ -936,6 +1021,7 @@ impl Engine {
                                     Some(res) => res,
                                     None => {
                                         self.grow_databufs(req)?;
+
                                         match self.find_free_databuf(req)? {
                                             Some(res) => res,
                                             None => {
@@ -952,6 +1038,7 @@ impl Engine {
                                     key,
                                     val,
                                 );
+
                                 new_buf_idx = DataBuf::global_buf_idx(
                                     alloc_res.start_slot as u32,
                                     alloc_res.local_idx,
@@ -968,6 +1055,7 @@ impl Engine {
                             old_local_idx,
                             old_req,
                         )?;
+
                         let mut plan_touched = freed_old;
                         Self::allocate_contiguous_on_touched(&mut plan_touched, old_local_idx, req);
                         Self::write_kv_payload_spanned(
@@ -977,6 +1065,7 @@ impl Engine {
                             key,
                             val,
                         );
+
                         dbuf_diffs = plan_touched;
                         new_buf_idx = old_buf_idx;
                     } else {
@@ -985,6 +1074,7 @@ impl Engine {
                             old_local_idx,
                             old_req,
                         )?;
+
                         let mut alloc_res = match self.find_free_databuf(req)? {
                             Some(res) => res,
                             None => {
@@ -1006,6 +1096,7 @@ impl Engine {
                             key,
                             val,
                         );
+
                         new_buf_idx = DataBuf::global_buf_idx(
                             alloc_res.start_slot as u32,
                             alloc_res.local_idx,
@@ -1029,6 +1120,7 @@ impl Engine {
                             new_bucket.as_slots()[i],
                         ));
                     }
+
                     for (slot, orig, mutated) in &dbuf_diffs {
                         for i in 0..DataBuf::SLOT_COUNT {
                             let s = slot + i;
@@ -1751,14 +1843,18 @@ impl Engine {
                 if !entry.is_list() {
                     return Err(TurboError::InvalidType("key is a KV entry"));
                 }
+
                 let mut curr_global = entry.vlen();
                 let mut current_offset = 0;
+
                 while curr_global != 0 {
                     let (block_slot, array_idx) =
                         crate::adjarr::decompose_global_index(curr_global);
                     let block =
                         self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+
                     let array = block.array(array_idx);
+
                     for i in 0..crate::adjarr::AdjArrayList::ENTRY_COUNT {
                         if let Some(e) = array.entry(i) {
                             if !e.is_empty() {
@@ -1770,12 +1866,15 @@ impl Engine {
                                         local_idx,
                                         e.vlen() as usize,
                                     )?;
+
                                     return Ok(Some(val));
                                 }
+
                                 current_offset += 1;
                             }
                         }
                     }
+
                     curr_global = array.next_array();
                 }
                 Ok(None)
@@ -1800,13 +1899,16 @@ impl Engine {
                 if !entry.is_list() {
                     return Err(TurboError::InvalidType("key is a KV entry"));
                 }
+
                 let mut count = 0;
                 let mut curr_global = entry.vlen();
+
                 while curr_global != 0 {
                     let (block_slot, array_idx) =
                         crate::adjarr::decompose_global_index(curr_global);
                     let block =
                         self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot as usize, |b| *b)?;
+
                     let array = block.array(array_idx);
                     count += array.len();
                     curr_global = array.next_array();
@@ -2485,6 +2587,23 @@ mod tests {
         let block1_deleted = engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
         assert_eq!(block1_deleted.occupied_count(), 0);
         assert!(!block1_deleted.is_array_occupied(0));
+
+        let _ = std::fs::remove_file(&temp.versioned);
+    }
+
+    #[test]
+    fn err_engine_capacity_exhaustion() {
+        let temp = TempFile::new("err_engine_cap_exhaustion");
+        let cfg = TurboCfg::new(&temp.path);
+        let engine = Engine::create(cfg).unwrap();
+
+        assert!(engine.ensure_page_capacity(1).is_ok());
+        let remaining = engine.remaining_pages().unwrap();
+        assert!(engine.ensure_page_capacity(remaining).is_ok());
+        assert!(matches!(
+            engine.ensure_page_capacity(remaining + 1),
+            Err(TurboError::DatabaseFull)
+        ));
 
         let _ = std::fs::remove_file(&temp.versioned);
     }

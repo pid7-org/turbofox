@@ -1,4 +1,4 @@
-//! DataBuf storage layout (0x0400 Bytes / 8 Slots)
+//! DataBuf storage layout
 //!
 //! Ref: `DESIGN.md` §1, §3.5, §5.3, §7
 
@@ -13,11 +13,11 @@ pub(crate) enum DataBufError {
 
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct DataBuf {
-    pub buffers: [[u8; 0x10]; 0x3F],
-    pub bitmap: u64,
-    pub next_dbuf: u32,
-    pub padding: [u8; 4],
+pub(crate) struct DataBuf {
+    pub(crate) buffers: [[u8; 0x10]; 0x3F],
+    pub(crate) bitmap: u64,
+    pub(crate) next_dbuf: u32,
+    pub(crate) padding: [u8; 4],
 }
 
 const _: () = assert!(core::mem::size_of::<DataBuf>() == 0x0400);
@@ -31,22 +31,22 @@ impl Default for DataBuf {
 }
 
 impl DataBuf {
-    pub const SLOT_COUNT: usize = 8;
-    pub const BUF_COUNT: usize = 0x3F;
-    pub const BUF_SIZE: usize = 0x10;
-    pub const PAYLOAD_BYTES: usize = 0x03F0;
-    pub const CRC_SIZE: usize = 4;
-    pub const FULL_BIT: u64 = 0x8000_0000_0000_0000;
-    pub const OCCUPANCY_MASK: u64 = 0x7FFF_FFFF_FFFF_FFFF;
-    pub const NEXT_DBUF_MASK: u32 = 0x7FFF_FFFF;
+    pub(crate) const SLOT_COUNT: usize = 8;
+    pub(crate) const BUF_COUNT: usize = 0x3F;
+    pub(crate) const BUF_SIZE: usize = 0x10;
+    pub(crate) const PAYLOAD_BYTES: usize = 0x03F0;
+    pub(crate) const CRC_SIZE: usize = 4;
+    pub(crate) const FULL_BIT: u64 = 0x8000_0000_0000_0000;
+    pub(crate) const OCCUPANCY_MASK: u64 = 0x7FFF_FFFF_FFFF_FFFF;
+    pub(crate) const NEXT_DBUF_MASK: u32 = 0x7FFF_FFFF;
 
     #[inline(always)]
-    pub const fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self { buffers: [[0u8; 0x10]; 0x3F], bitmap: 0, next_dbuf: 0, padding: [0u8; 4] }
     }
 
     #[inline(always)]
-    pub fn is_full(&self) -> bool {
+    pub(crate) fn is_full(&self) -> bool {
         (self.bitmap & Self::FULL_BIT) != 0
             || (self.bitmap & Self::OCCUPANCY_MASK) == Self::OCCUPANCY_MASK
     }
@@ -56,6 +56,7 @@ impl DataBuf {
         if count == 0 || start_idx + count > Self::BUF_COUNT {
             return false;
         }
+
         let mask = if count == 0x40 { u64::MAX } else { ((1u64 << count) - 1) << start_idx };
         (self.bitmap & mask) == 0
     }
@@ -64,6 +65,7 @@ impl DataBuf {
         if count == 0 || count > Self::BUF_COUNT || self.is_full() {
             return None;
         }
+
         let max_start = Self::BUF_COUNT - count;
         let test_mask = if count == 0x40 { u64::MAX } else { (1u64 << count) - 1 };
 
@@ -72,58 +74,64 @@ impl DataBuf {
                 return Some(idx);
             }
         }
+
         None
     }
 
     pub(crate) fn alloc_contiguous(&mut self, count: usize) -> Option<usize> {
         let start = self.find_contiguous_free(count)?;
         let mask = if count == 0x40 { u64::MAX } else { ((1u64 << count) - 1) << start };
+
         self.bitmap |= mask;
         if (self.bitmap & Self::OCCUPANCY_MASK) == Self::OCCUPANCY_MASK {
             self.bitmap |= Self::FULL_BIT;
         }
+
         Some(start)
     }
 
     pub(crate) fn free_contiguous(&mut self, start_idx: usize, count: usize) {
         debug_assert!(start_idx + count <= Self::BUF_COUNT);
+
         if count == 0 {
             return;
         }
+
         let mask = if count == 0x40 { u64::MAX } else { ((1u64 << count) - 1) << start_idx };
         self.bitmap &= !mask;
         self.bitmap &= !Self::FULL_BIT;
     }
 
     #[inline(always)]
-    pub const fn required_buffers(payload_len: usize) -> usize {
+    pub(crate) const fn required_buffers(payload_len: usize) -> usize {
         (Self::CRC_SIZE + payload_len + 0x0F) / Self::BUF_SIZE
     }
 
     #[inline(always)]
-    pub const fn required_kv_buffers(klen: usize, vlen: usize) -> usize {
+    pub(crate) const fn required_kv_buffers(klen: usize, vlen: usize) -> usize {
         Self::required_buffers(klen + vlen)
     }
 
     #[inline(always)]
-    pub const fn required_key_buffers(klen: usize) -> usize {
+    pub(crate) const fn required_key_buffers(klen: usize) -> usize {
         Self::required_buffers(klen)
     }
 
     #[inline(always)]
-    pub const fn required_val_buffers(vlen: usize) -> usize {
+    pub(crate) const fn required_val_buffers(vlen: usize) -> usize {
         Self::required_buffers(vlen)
     }
 
     #[inline(always)]
-    pub const fn global_buf_idx(dbuf_idx: u32, local_idx: usize) -> u32 {
+    pub(crate) const fn global_buf_idx(dbuf_idx: u32, local_idx: usize) -> u32 {
         dbuf_idx * (Self::BUF_COUNT as u32) + (local_idx as u32)
     }
 
     #[inline(always)]
-    pub const fn decompose_buf_idx(global_idx: u32) -> (u32, usize) {
+    pub(crate) const fn decompose_buf_idx(global_idx: u32) -> (u32, usize) {
         let dbuf_idx = global_idx / (Self::BUF_COUNT as u32);
         let local_idx = (global_idx % (Self::BUF_COUNT as u32)) as usize;
+
         (dbuf_idx, local_idx)
     }
 
@@ -238,12 +246,12 @@ impl DataBuf {
     }
 
     #[inline(always)]
-    pub fn next_dbuf_index(&self) -> u32 {
+    pub(crate) fn next_dbuf_index(&self) -> u32 {
         self.next_dbuf & Self::NEXT_DBUF_MASK
     }
 
     #[inline(always)]
-    pub fn set_next_dbuf_index(&mut self, idx: u32) {
+    pub(crate) fn set_next_dbuf_index(&mut self, idx: u32) {
         self.next_dbuf = idx & Self::NEXT_DBUF_MASK;
     }
 

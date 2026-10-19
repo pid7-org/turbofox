@@ -1,4 +1,4 @@
-//! Trie branch Node structure (0x0100 Bytes / 2 Slots)
+//! Trie branch Node structure
 //!
 //! Ref: `DESIGN.md` §3.2, §3.3, §4.2, §5.2, §7.1
 

@@ -1,4 +1,4 @@
-//! Adjacent Array block for 1-to-N list structures (0x80 Bytes / 1 Slot)
+//! Adjacent Array block for 1-to-N list structures
 //!
 //! Ref: `DESIGN` §3, §5, §7
 
@@ -100,6 +100,7 @@ impl AdjArrayList {
                 return Some(val);
             }
         }
+
         None
     }
 
@@ -210,12 +211,14 @@ impl AdjArrayBlock {
                 return Some(idx);
             }
         }
+
         None
     }
 
     #[inline(always)]
     pub(crate) fn free_array(&mut self, idx: usize) {
         debug_assert!(idx < Self::ARRAY_COUNT);
+
         self.set_array_occupied(idx, false);
         self.arrays[idx].clear();
     }
@@ -234,12 +237,14 @@ impl AdjArrayBlock {
     #[inline(always)]
     pub(crate) fn array(&self, idx: usize) -> &AdjArrayList {
         debug_assert!(idx < Self::ARRAY_COUNT);
+
         &self.arrays[idx]
     }
 
     #[inline(always)]
     pub(crate) fn array_mut(&mut self, idx: usize) -> &mut AdjArrayList {
         debug_assert!(idx < Self::ARRAY_COUNT);
+
         &mut self.arrays[idx]
     }
 

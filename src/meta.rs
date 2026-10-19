@@ -16,7 +16,7 @@ pub(crate) struct Metadata {
     pub(crate) total_entries: u64,
     pub(crate) adj_arr_head: u32,
     pub(crate) databuf_head: u32,
-    pub(crate) reserved: [u8; 0x58],
+    reserved: [u8; 0x58],
 }
 
 const _: () = assert!(core::mem::size_of::<Metadata>() == 0x80);

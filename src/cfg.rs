@@ -22,6 +22,9 @@ use std::time::Duration;
 pub(crate) const MODULE_ID: u8 = 0x46;
 pub(crate) const PAGE_SIZE: u32 = 0x1000;
 pub(crate) const DEFAULT_VERSION: u32 = 1;
+pub(crate) const MAX_BUF_IDX: u32 = 0x7FFF_FFFF;
+pub(crate) const MAX_DBUF_SLOT: u32 = MAX_BUF_IDX / 0x3F;
+pub(crate) const MAX_STORAGE_PAGES: u32 = MAX_DBUF_SLOT / 0x20;
 
 /// Configuration parameters for initializing or opening a [`crate::TurboFox`] instance
 ///

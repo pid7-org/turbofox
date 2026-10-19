@@ -87,6 +87,9 @@ pub enum TurboError {
 
     /// Payload data failed CRC32 validation or offset integrity
     CorruptedPayload(&'static str),
+
+    /// Storage capacity exhausted; cannot allocate additional physical pages
+    DatabaseFull,
 }
 
 impl From<frozen_core::error::FrozenError> for TurboError {
@@ -140,6 +143,7 @@ impl core::fmt::Display for TurboError {
             Self::InvalidType(reason) => write!(f, "invalid key type: {}", reason),
             Self::PayloadTooLarge => write!(f, "payload exceeds max buffer capacity"),
             Self::CorruptedPayload(reason) => write!(f, "corrupted payload: {}", reason),
+            Self::DatabaseFull => write!(f, "database storage capacity exhausted"),
         }
     }
 }

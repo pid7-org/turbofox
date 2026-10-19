@@ -69,13 +69,7 @@ impl DataBuf {
         let max_start = Self::BUF_COUNT - count;
         let test_mask = if count == 0x40 { u64::MAX } else { (1u64 << count) - 1 };
 
-        for idx in 0..=max_start {
-            if (self.bitmap & (test_mask << idx)) == 0 {
-                return Some(idx);
-            }
-        }
-
-        None
+        (0..=max_start).find(|&idx| (self.bitmap & (test_mask << idx)) == 0)
     }
 
     pub(crate) fn alloc_contiguous(&mut self, count: usize) -> Option<usize> {
@@ -173,12 +167,12 @@ impl DataBuf {
         Ok(())
     }
 
-    pub(crate) fn read_kv_payload<'a>(
-        &'a self,
+    pub(crate) fn read_kv_payload(
+        &self,
         start_idx: usize,
         klen: usize,
         vlen: usize,
-    ) -> Result<(&'a [u8], &'a [u8]), DataBufError> {
+    ) -> Result<(&[u8], &[u8]), DataBufError> {
         let req = Self::required_kv_buffers(klen, vlen);
         if req > Self::BUF_COUNT || start_idx + req > Self::BUF_COUNT {
             return Err(DataBufError::InvalidIndex);
@@ -205,11 +199,11 @@ impl DataBuf {
         Ok((key, val))
     }
 
-    pub(crate) fn read_val_payload<'a>(
-        &'a self,
+    pub(crate) fn read_val_payload(
+        &self,
         start_idx: usize,
         vlen: usize,
-    ) -> Result<&'a [u8], DataBufError> {
+    ) -> Result<&[u8], DataBufError> {
         let req = Self::required_val_buffers(vlen);
         if req > Self::BUF_COUNT || start_idx + req > Self::BUF_COUNT {
             return Err(DataBufError::InvalidIndex);

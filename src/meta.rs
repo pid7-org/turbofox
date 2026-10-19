@@ -42,14 +42,11 @@ impl Default for Metadata {
 }
 
 impl Metadata {
-    pub(crate) const SIZE: usize = 0x80;
     pub(crate) const MAGIC: [u8; 4] = *b"TBFX";
-    pub(crate) const MAGIC_U32: u32 = 0x5442_4658;
     pub(crate) const CURRENT_VERSION: u32 = 1;
     pub(crate) const DEFAULT_PAGE_SIZE: u32 = 0x1000;
     pub(crate) const DEFAULT_ROOT_NODE_VP: u32 = 3;
     pub(crate) const DEFAULT_INITIAL_PAGES: u32 = 8;
-    pub(crate) const DEFAULT_INITIAL_SLOTS: u32 = 0x0100;
     pub(crate) const DEFAULT_ADJ_ARR_HEAD: u32 = 0;
     pub(crate) const DEFAULT_DATABUF_HEAD: u32 = 0;
 
@@ -91,69 +88,9 @@ impl Metadata {
     }
 
     #[inline(always)]
-    pub(crate) fn inc_entries(&mut self) -> u64 {
-        self.total_entries = self.total_entries.saturating_add(1);
-        self.total_entries
-    }
-
-    #[inline(always)]
-    pub(crate) fn dec_entries(&mut self) -> u64 {
-        self.total_entries = self.total_entries.saturating_sub(1);
-        self.total_entries
-    }
-
-    #[inline(always)]
-    pub(crate) fn advance_epoch(&mut self) -> u64 {
-        self.last_epoch = self.last_epoch.wrapping_add(1);
-        self.last_epoch
-    }
-
-    #[inline(always)]
     pub(crate) fn record_growth(&mut self, added_pages: u32) {
         self.total_pages = self.total_pages.saturating_add(added_pages);
         self.total_slots = (self.total_pages * self.page_size) / (Slot::SIZE as u32);
-    }
-
-    #[inline(always)]
-    pub(crate) fn as_slot(&self) -> &Slot {
-        unsafe { &*(self as *const Self as *const Slot) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
-        unsafe { &mut *(self as *mut Self as *mut Slot) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_slot(slot: &Slot) -> &Self {
-        unsafe { &*(slot as *const Slot as *const Self) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_slot_mut(slot: &mut Slot) -> &mut Self {
-        unsafe { &mut *(slot as *mut Slot as *mut Self) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn as_bytes(&self) -> &[u8; Self::SIZE] {
-        unsafe { &*(self as *const Self as *const [u8; Self::SIZE]) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn as_bytes_mut(&mut self) -> &mut [u8; Self::SIZE] {
-        unsafe { &mut *(self as *mut Self as *mut [u8; Self::SIZE]) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_bytes(bytes: &[u8; Self::SIZE]) -> &Self {
-        debug_assert_eq!(bytes.as_ptr().align_offset(8), 0);
-        unsafe { &*(bytes.as_ptr() as *const Self) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_bytes_mut(bytes: &mut [u8; Self::SIZE]) -> &mut Self {
-        debug_assert_eq!(bytes.as_mut_ptr().align_offset(8), 0);
-        unsafe { &mut *(bytes.as_mut_ptr() as *mut Self) }
     }
 }
 
@@ -197,42 +134,9 @@ mod tests {
     #[test]
     fn ok_metadata_mutators() {
         let mut meta = Metadata::new_default();
-        assert_eq!(meta.inc_entries(), 1);
-        assert_eq!(meta.total_entries, 1);
-        assert_eq!(meta.dec_entries(), 0);
-        assert_eq!(meta.total_entries, 0);
-        assert_eq!(meta.dec_entries(), 0);
-
-        assert_eq!(meta.advance_epoch(), 1);
-        assert_eq!(meta.last_epoch, 1);
-
         meta.record_growth(4);
         assert_eq!(meta.total_pages, 0x0C);
         assert_eq!(meta.total_slots, 0x0180);
         assert!(meta.validate());
-    }
-
-    #[test]
-    fn ok_metadata_slot_and_byte_views() {
-        let mut meta = Metadata::new_default();
-        meta.advance_epoch();
-
-        let slot = meta.as_slot();
-        let restored = Metadata::from_slot(slot);
-        assert_eq!(restored.last_epoch, 1);
-
-        let slot_mut = meta.as_slot_mut();
-        let restored_mut = Metadata::from_slot_mut(slot_mut);
-        restored_mut.advance_epoch();
-        assert_eq!(meta.last_epoch, 2);
-
-        let bytes = meta.as_bytes();
-        let from_b = Metadata::from_bytes(bytes);
-        assert_eq!(from_b.last_epoch, 2);
-
-        let bytes_mut = meta.as_bytes_mut();
-        let from_b_mut = Metadata::from_bytes_mut(bytes_mut);
-        from_b_mut.advance_epoch();
-        assert_eq!(meta.last_epoch, 3);
     }
 }

@@ -1,39 +1,43 @@
-//! Durability ticket abstraction wrapping underlying acknowledgement handle
+//! Durability ticket abstraction wrapping underlying acknowledgement handle to track or manage
+//! durability of write operations
 //!
 //! ## Example
 //!
 //! ```
-//! use std::sync::Arc;
-//! use turbofox::{Completion, TurboTicket};
+//! use turbofox::{TurboCfg, TurboFox};
 //!
-//! let completion = Arc::new(Completion::default());
-//! let ticket = TurboTicket::from_raw(1, completion.clone());
+//! let dir = tempfile::tempdir().unwrap();
+//! let path = dir.path().join("ticket_mod.db");
+//! let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+//! let ticket = db.set(b"key", b"value").unwrap();
+//! db.sync().unwrap();
 //!
-//! assert_eq!(ticket.epoch(), 1);
-//! assert!(!ticket.is_durable());
+//! assert!(ticket.epoch() > 0);
+//! assert!(ticket.wait().is_ok());
 //!
-//! completion.mark_epoch_as_durable(1);
-//! assert!(ticket.is_durable());
+//! db.delete().unwrap();
 //! ```
 
 use crate::error::{TurboError, TurboResult};
 use frozen_core::ack::AckTicket;
-use std::ops::Deref;
 use std::sync::Arc;
 
-pub use frozen_core::ack::{Completion, TEpoch};
+pub(crate) use frozen_core::ack::{Completion, TEpoch};
 
 /// Durability acknowledgement handle tracking write persistence
 ///
 /// ## Example
 ///
 /// ```
-/// use std::sync::Arc;
-/// use turbofox::{Completion, TurboTicket};
+/// use turbofox::{TurboCfg, TurboFox};
 ///
-/// let completion = Arc::new(Completion::default());
-/// let ticket = TurboTicket::from_raw(0x0A, completion);
-/// assert_eq!(ticket.epoch(), 0x0A);
+/// let dir = tempfile::tempdir().unwrap();
+/// let path = dir.path().join("ticket_type.db");
+/// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+/// let ticket = db.set(b"key", b"value").unwrap();
+/// assert!(ticket.epoch() > 0);
+///
+/// db.delete().unwrap();
 /// ```
 #[derive(Debug, Clone)]
 #[repr(transparent)]
@@ -43,39 +47,15 @@ pub struct TurboTicket {
 
 impl TurboTicket {
     /// Constructs a new [`TurboTicket`] wrapping an [`AckTicket`]
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// use frozen_core::ack::AckTicket;
-    /// use std::sync::Arc;
-    /// use turbofox::{Completion, TurboTicket};
-    ///
-    /// let completion = Arc::new(Completion::default());
-    /// let ack = AckTicket::new(1, completion);
-    /// let ticket = TurboTicket::new(ack);
-    /// assert_eq!(ticket.epoch(), 1);
-    /// ```
     #[inline(always)]
-    pub const fn new(inner: AckTicket) -> Self {
+    pub(crate) const fn new(inner: AckTicket) -> Self {
         Self { inner }
     }
 
     /// Constructs a new [`TurboTicket`] from raw epoch and completion primitives while binding
     /// durability tracking to the shared completion state
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    /// use turbofox::{Completion, TurboTicket};
-    ///
-    /// let completion = Arc::new(Completion::default());
-    /// let ticket = TurboTicket::from_raw(2, completion);
-    /// assert_eq!(ticket.epoch(), 2);
-    /// ```
     #[inline(always)]
-    pub const fn from_raw(epoch: TEpoch, completion: Arc<Completion>) -> Self {
+    pub(crate) const fn from_raw(epoch: u64, completion: Arc<Completion>) -> Self {
         Self { inner: AckTicket::new(epoch, completion) }
     }
 
@@ -84,15 +64,18 @@ impl TurboTicket {
     /// ## Example
     ///
     /// ```
-    /// use std::sync::Arc;
-    /// use turbofox::{Completion, TurboTicket};
+    /// use turbofox::{TurboCfg, TurboFox};
     ///
-    /// let completion = Arc::new(Completion::default());
-    /// let ticket = TurboTicket::from_raw(3, completion);
-    /// assert_eq!(ticket.epoch(), 3);
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path().join("ticket_epoch.db");
+    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let ticket = db.set(b"key", b"value").unwrap();
+    /// assert!(ticket.epoch() > 0);
+    ///
+    /// db.delete().unwrap();
     /// ```
     #[inline(always)]
-    pub const fn epoch(&self) -> TEpoch {
+    pub const fn epoch(&self) -> u64 {
         self.inner.epoch()
     }
 
@@ -101,15 +84,15 @@ impl TurboTicket {
     /// ## Example
     ///
     /// ```
-    /// use std::sync::Arc;
-    /// use turbofox::{Completion, TurboTicket};
+    /// use turbofox::{TurboCfg, TurboFox};
     ///
-    /// let completion = Arc::new(Completion::default());
-    /// let ticket = TurboTicket::from_raw(1, completion.clone());
-    /// assert!(!ticket.is_durable());
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path().join("ticket_durable.db");
+    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let ticket = db.set(b"key", b"value").unwrap();
+    /// let _ = ticket.is_durable();
     ///
-    /// completion.mark_epoch_as_durable(1);
-    /// assert!(ticket.is_durable());
+    /// db.delete().unwrap();
     /// ```
     #[inline(always)]
     pub fn is_durable(&self) -> bool {
@@ -126,17 +109,19 @@ impl TurboTicket {
     /// ## Example
     ///
     /// ```
-    /// use std::sync::Arc;
-    /// use turbofox::{Completion, TurboTicket};
+    /// use turbofox::{TurboCfg, TurboFox};
     ///
-    /// let completion = Arc::new(Completion::default());
-    /// let ticket = TurboTicket::from_raw(1, completion.clone());
-    /// completion.mark_epoch_as_durable(1);
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path().join("ticket_wait.db");
+    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let ticket = db.set(b"key", b"value").unwrap();
+    /// db.sync().unwrap();
+    /// assert!(ticket.wait().is_ok());
     ///
-    /// assert_eq!(ticket.wait().unwrap(), 1);
+    /// db.delete().unwrap();
     /// ```
     #[inline]
-    pub fn wait(&self) -> TurboResult<TEpoch> {
+    pub fn wait(&self) -> TurboResult<u64> {
         self.inner.wait().map_err(TurboError::from)
     }
 
@@ -150,51 +135,30 @@ impl TurboTicket {
     /// ## Example
     ///
     /// ```
-    /// use std::sync::Arc;
-    /// use turbofox::{Completion, TurboTicket};
+    /// use turbofox::{TurboCfg, TurboFox};
     ///
-    /// let completion = Arc::new(Completion::default());
-    /// let ticket = TurboTicket::from_raw(1, completion.clone());
-    /// completion.mark_epoch_as_durable(1);
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path().join("ticket_force.db");
+    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let ticket = db.set(b"key", b"value").unwrap();
+    /// assert!(ticket.force().is_ok());
     ///
-    /// assert_eq!(ticket.force().unwrap(), 1);
+    /// db.delete().unwrap();
     /// ```
     #[inline]
-    pub fn force(&self) -> TurboResult<TEpoch> {
+    pub fn force(&self) -> TurboResult<u64> {
         self.inner.force().map_err(TurboError::from)
     }
 
     /// Reference to the underlying shared [`Completion`] state
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    /// use turbofox::{Completion, TurboTicket};
-    ///
-    /// let completion = Arc::new(Completion::default());
-    /// let ticket = TurboTicket::from_raw(1, completion.clone());
-    /// assert_eq!(ticket.completion().read_durable_epoch(), 0);
-    /// ```
     #[inline(always)]
-    pub fn completion(&self) -> &Arc<Completion> {
+    pub(crate) fn completion(&self) -> &Arc<Completion> {
         self.inner.completion()
     }
 
     /// Immutable reference to the wrapped [`AckTicket`]
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    /// use turbofox::{Completion, TurboTicket};
-    ///
-    /// let completion = Arc::new(Completion::default());
-    /// let ticket = TurboTicket::from_raw(1, completion);
-    /// assert_eq!(ticket.inner().epoch(), 1);
-    /// ```
     #[inline(always)]
-    pub const fn inner(&self) -> &AckTicket {
+    pub(crate) const fn inner(&self) -> &AckTicket {
         &self.inner
     }
 }
@@ -216,15 +180,6 @@ impl From<TurboTicket> for AckTicket {
 impl AsRef<AckTicket> for TurboTicket {
     #[inline(always)]
     fn as_ref(&self) -> &AckTicket {
-        &self.inner
-    }
-}
-
-impl Deref for TurboTicket {
-    type Target = AckTicket;
-
-    #[inline(always)]
-    fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
@@ -258,7 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn ok_ticket_conversions_and_deref() {
+    fn ok_ticket_conversions() {
         let completion = Arc::new(Completion::default());
         let raw_ticket = AckTicket::new(0x0F, completion);
 

@@ -61,7 +61,7 @@ mod ticket;
 pub use cfg::TurboCfg;
 pub use error::{TurboError, TurboResult};
 pub use list::{TurboList, TurboListIter};
-pub use ticket::{Completion, TEpoch, TurboTicket};
+pub use ticket::TurboTicket;
 
 use engine::Engine;
 use std::sync::Arc;

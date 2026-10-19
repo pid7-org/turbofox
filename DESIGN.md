@@ -390,3 +390,59 @@ Initialization delegates lifecycle and presence validation entirely to `MemMap`,
   or allocate parallel sidecar databases against identical base directory paths
 - Engine logic executes zero manual filesystem presence checks;
   file existence, creation exclusivity, and descriptor locking remain encapsulated in `MemMap`
+
+## 9. Architectural Upper Bounds & Capacity Proof
+
+### 9.1 Addressable Ceilings
+
+The primary architectural ceiling stems from `buf_idx` encoding:
+- Bit `0x1F` (bit 31) reserves discriminator flags (`LIST_FLAG` / occupancy)
+- Bits `0..30` (31 bits) encode `global_buf_idx = dbuf_slot * 0x3F + local_idx`
+- Maximum buffer index: $2^{31} - 1 = 0\text{x}7\text{FFF\_FFFF}$ ($2{,}147{,}483{,}647$)
+- Maximum addressable DataBuf slot:
+  $$\text{max\_slot} = \lfloor (2^{31} - 1) / 0\text{x}3\text{F} \rfloor = 34{,}087{,}042$$
+- Maximum addressable DataBufs (8 slots / 1024 B per DataBuf):
+  $$\text{max\_databufs} = \lfloor 34{,}087{,}042 / 8 \rfloor = 4{,}260{,}880$$
+- Maximum backing database file size (quantized to 4096 B OS pages):
+  $$\text{pages} = \lceil 34{,}087{,}042 / 32 \rceil = 1{,}065{,}221$$
+  $$\text{bytes} = 1{,}065{,}221 \times 4096 = 4{,}363{,}145{,}216 \text{ B}$$
+  ($\approx 4.0635 \text{ GiB}$)
+
+### 9.2 Capacity Bounds for Common Payload Formats
+
+- **KV Entries (12 B key + 48 B value $\implies$ 64 B frame $\implies$ 4 buffers)**:
+  - Each DataBuf contains 63 buffers: $\lfloor 63 / 4 \rfloor = 15$ entries per DataBuf (3 slack)
+  - Maximum total KV entries:
+    $$4{,}260{,}880 \times 15 = 63{,}913{,}200 \quad (0\text{x}03\text{CF\_3CF0})$$
+
+- **List Items (44 B value $\implies$ 48 B frame $\implies$ 3 buffers)**:
+  - Each DataBuf fits $63 / 3 = 21$ item payloads ($0$ slack buffers)
+  - Maximum aggregate list items:
+    $$4{,}260{,}880 \times 21 = 89{,}478{,}480 \quad (0\text{x}0555\_5550)$$
+  - Maximum items in a single list chain (bounded by `AdjArrayList.next_arr: u16`):
+    $$(2^{16} - 1) \times 3 = 65{,}535 \times 3 = 196{,}605 \quad (0\text{x}0002\_\text{FFFD})$$
+
+### 9.3 Verification Proof
+
+```python
+MAX_BUF_IDX = (1 << 31) - 1
+BUFS_PER_DBUF = 0x3F
+SLOTS_PER_DBUF = 8
+
+max_dbuf_slot = MAX_BUF_IDX // BUFS_PER_DBUF
+max_databufs = max_dbuf_slot // SLOTS_PER_DBUF
+
+pages = (max_dbuf_slot + 31) // 32
+file_bytes = pages * 4096
+
+kv_limit = max_databufs * (BUFS_PER_DBUF // 4)
+list_item_limit = max_databufs * (BUFS_PER_DBUF // 3)
+single_list_limit = 0xFFFF * 3
+
+assert max_dbuf_slot == 34087042
+assert max_databufs == 4260880
+assert file_bytes == 4363145216
+assert kv_limit == 63913200
+assert list_item_limit == 89478480
+assert single_list_limit == 196605
+```

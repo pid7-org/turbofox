@@ -33,38 +33,32 @@ impl Node {
         Self { children: [0u32; 0x40] }
     }
 
-    /// Computes cyclic 6-bit child branch index for hash at given depth
     #[inline(always)]
     pub(crate) const fn child_index(hash: u32, depth: u32) -> usize {
         let shift = (depth * Self::BITS_PER_LEVEL) % Self::HASH_BITS;
         ((hash >> shift) & Self::CHILD_INDEX_MASK) as usize
     }
 
-    /// Retrieves child virtual page index at `idx` masked to bits 0..0x1E
     #[inline(always)]
     pub(crate) fn get_child(&self, idx: usize) -> u32 {
         self.children[idx] & Self::MASK_INDEX
     }
 
-    /// Sets child virtual page index at `idx`, ensuring bit 0x1F remains 0
     #[inline(always)]
     pub(crate) fn set_child(&mut self, idx: usize, child_idx: u32) {
         self.children[idx] = child_idx & Self::MASK_INDEX;
     }
 
-    /// Routes key hash at given depth and returns masked child virtual page index
     #[inline(always)]
     pub(crate) fn route_child(&self, hash: u32, depth: u32) -> u32 {
         self.get_child(Self::child_index(hash, depth))
     }
 
-    /// Verifies that this page's discriminator bit indicates a Node (`header & 0x8000_0000 == 0`)
     #[inline(always)]
     pub(crate) fn is_node(&self) -> bool {
         (self.children[0] & Self::DISCRIMINATOR_BIT) == 0
     }
 
-    /// Constructs a Node mapping all 0x40 children to contiguous virtual pages
     #[inline(always)]
     pub(crate) fn init_from_contiguous(base_vp: u32) -> Self {
         let mut node = Self::empty();
@@ -72,7 +66,6 @@ impl Node {
         node
     }
 
-    /// Fills all 0x40 entries with sequential target child VPs starting at base_vp
     #[inline(always)]
     pub(crate) fn populate_range(&mut self, base_vp: u32) {
         for i in 0..Self::CHILD_COUNT {
@@ -80,7 +73,6 @@ impl Node {
         }
     }
 
-    /// Views Node as a pair of 0x80-byte Slots
     #[inline(always)]
     pub(crate) fn as_slots(&self) -> &[Slot; 2] {
         unsafe { &*(self as *const Self as *const [Slot; 2]) }

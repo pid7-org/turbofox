@@ -1,7 +1,8 @@
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-
 use frozen_core::memmap::{MemMap, MemMapCfg, PageSize};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicU32, AtomicU64, Ordering},
+};
 
 use crate::adjarr::AdjArrayBlock;
 use crate::bucket::{Bucket, ProbeResult};
@@ -32,7 +33,6 @@ pub(crate) struct DbufAllocPlan {
     pub(crate) touched: Vec<(usize, DataBuf, DataBuf)>,
 }
 
-/// Low-level storage engine coordinating memory mapping and disk topography
 #[derive(Debug)]
 pub(crate) struct Engine {
     mmap: MemMap<Slot>,
@@ -42,8 +42,6 @@ pub(crate) struct Engine {
 }
 
 impl Engine {
-    /// Initializes brand new database layout backed by MemMap;
-    /// fails if backing file already exists
     pub(crate) fn create(cfg: TurboCfg) -> TurboResult<Self> {
         let memmap_cfg = MemMapCfg {
             module_id: MODULE_ID,
@@ -67,8 +65,6 @@ impl Engine {
         Ok(engine)
     }
 
-    /// Opens existing database file and verifies all geometric and structural invariants;
-    /// fails if backing file does not exist
     pub(crate) fn open(cfg: TurboCfg) -> TurboResult<Self> {
         let memmap_cfg = MemMapCfg {
             module_id: MODULE_ID,
@@ -190,7 +186,6 @@ impl Engine {
         Ok(())
     }
 
-    /// Explicitly flushes mapped dirty pages to storage media
     #[inline]
     pub(crate) fn sync(&self) -> TurboResult<()> {
         let entries = self.total_entries.load(Ordering::Acquire);
@@ -201,41 +196,35 @@ impl Engine {
         Ok(())
     }
 
-    /// Read metadata record from slot 0
     #[inline]
     pub(crate) fn read_metadata(&self) -> TurboResult<Metadata> {
         let meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
         Ok(meta)
     }
 
-    /// Total operational slots allocated in the mapping
     #[inline]
     #[allow(unused)]
     fn total_slots(&self) -> u32 {
         self.total_slots.load(Ordering::Acquire)
     }
 
-    /// Reference to growth mutex coordinating multi-transaction expansion
     #[inline]
     #[allow(unused)]
     fn growth_mutex(&self) -> &Mutex<()> {
         &self.growth_mutex
     }
 
-    /// Underlying memory-mapped array reference
     #[inline]
     #[allow(unused)]
     fn mmap(&self) -> &MemMap<Slot> {
         &self.mmap
     }
 
-    /// Total active key-value and list entries in the database
     #[inline]
     pub(crate) fn total_entries(&self) -> u64 {
         self.total_entries.load(Ordering::Acquire)
     }
 
-    /// Traverses the 0x40-way Trie down to target Bucket and returns (bucket_slot, depth)
     pub(crate) fn find_bucket(&self, hash: u32) -> TurboResult<(usize, u8)> {
         let mut curr_vp = Metadata::DEFAULT_ROOT_NODE_VP;
         let mut depth: u8 = 0;
@@ -316,7 +305,6 @@ impl Engine {
         Ok(val.to_vec())
     }
 
-    /// Evaluates whether a bucket entry matches the target key bytes stored in DataBuf
     fn match_entry_key(&self, entry: &crate::bucket::BucketEntry, key: &[u8]) -> bool {
         if (entry.klen() as usize) != key.len() {
             return false;
@@ -363,7 +351,6 @@ impl Engine {
         key_buf == key
     }
 
-    /// Retrieves value payload for the specified key
     pub(crate) fn get(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
         if key.len() > 0xFFFF {
             return Ok(None);
@@ -439,7 +426,6 @@ impl Engine {
         Ok((first_next, true, touched))
     }
 
-    /// Locates an active DataBuf in the freelist chain with contiguous buffer capacity
     fn find_free_databuf(&self, needed: usize) -> TurboResult<Option<DbufAllocPlan>> {
         self.find_free_databuf_excluding(needed, 0)
     }
@@ -753,7 +739,6 @@ impl Engine {
         Ok(())
     }
 
-    /// Finds first vacant array entry across AdjArray blocks chain
     fn find_free_adjarr(&self) -> TurboResult<Option<(u16, usize, AdjArrayBlock, AdjArrayBlock)>> {
         let head = self.read_metadata()?.adj_arr_head as usize;
         let mut curr = head;
@@ -874,7 +859,6 @@ impl Engine {
         Ok(())
     }
 
-    /// Exponential backoff with pseudo-random jitter under OCC contention
     fn occ_backoff(attempt: u32) {
         let base_us = 0x32u64.saturating_mul(1u64 << attempt.min(8)).min(0x2710);
         let nanos = std::time::SystemTime::now()
@@ -886,7 +870,6 @@ impl Engine {
         std::thread::sleep(std::time::Duration::from_micros(wait_us));
     }
 
-    /// Inserts or updates a key-value pair using atomic OCC transaction commit
     pub(crate) fn set(&self, key: &[u8], val: &[u8]) -> TurboResult<TurboTicket> {
         if key.len() > 0xFFFF || val.len() > 0xFFFF {
             return Err(TurboError::PayloadTooLarge);
@@ -1147,8 +1130,6 @@ impl Engine {
         Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
     }
 
-    /// Deletes a key-value entry;
-    /// returns Ok(true) if deleted, Ok(false) if key was not found
     pub(crate) fn del(&self, key: &[u8]) -> TurboResult<bool> {
         if key.len() > 0xFFFF {
             return Ok(false);
@@ -1222,7 +1203,6 @@ impl Engine {
         Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
     }
 
-    /// Allocates databufs for a newly initialized list key and item payload
     fn alloc_new_list_databufs(
         &self,
         key: &[u8],
@@ -1272,7 +1252,6 @@ impl Engine {
         Ok((k_buf_idx, v_buf_idx, merged))
     }
 
-    /// Creates a brand new list key and inserts the first item payload
     fn create_and_append_list(
         &self,
         bucket_slot: usize,
@@ -1353,7 +1332,6 @@ impl Engine {
         }
     }
 
-    /// Appends an item payload to an already existing list key
     fn append_to_existing_list(
         &self,
         bucket_slot: usize,
@@ -1463,7 +1441,6 @@ impl Engine {
         }
     }
 
-    /// Appends an item payload to the tail of a list key
     pub(crate) fn list_append(&self, key: &[u8], item: &[u8]) -> TurboResult<TurboTicket> {
         if key.len() > 0xFFFF || item.len() > 0xFFFF {
             return Err(TurboError::PayloadTooLarge);
@@ -1523,7 +1500,6 @@ impl Engine {
         Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
     }
 
-    /// Pops the tail item payload from an existing list
     fn pop_from_existing_list(
         &self,
         bucket_slot: usize,
@@ -1632,7 +1608,6 @@ impl Engine {
         }
     }
 
-    /// Pops and removes the item payload at the tail of a list key
     pub(crate) fn list_pop(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
         if key.len() > 0xFFFF {
             return Ok(None);
@@ -1668,7 +1643,6 @@ impl Engine {
         Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
     }
 
-    /// Retrieves first item payload in list without modifying it
     pub(crate) fn list_first(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
         if key.len() > 0xFFFF {
             return Ok(None);
@@ -1708,7 +1682,6 @@ impl Engine {
         }
     }
 
-    /// Retrieves last item payload in list without modifying it
     pub(crate) fn list_last(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
         if key.len() > 0xFFFF {
             return Ok(None);
@@ -1758,7 +1731,6 @@ impl Engine {
         }
     }
 
-    /// Retrieves item payload at specified 0-based index
     pub(crate) fn list_get_at(
         &self,
         key: &[u8],
@@ -1812,7 +1784,6 @@ impl Engine {
         }
     }
 
-    /// Counts total active item entries in a list
     pub(crate) fn list_len(&self, key: &[u8]) -> TurboResult<usize> {
         if key.len() > 0xFFFF {
             return Ok(0);
@@ -1846,7 +1817,6 @@ impl Engine {
         }
     }
 
-    /// Collects all item payloads of a list
     pub(crate) fn list_items(&self, key: &[u8]) -> TurboResult<Vec<Vec<u8>>> {
         if key.len() > 0xFFFF {
             return Ok(Vec::new());
@@ -1893,7 +1863,6 @@ impl Engine {
         }
     }
 
-    /// Deletes a list entry and reclaims all payload and array block allocations
     pub(crate) fn list_del(&self, key: &[u8]) -> TurboResult<bool> {
         if key.len() > 0xFFFF {
             return Ok(false);
@@ -2017,7 +1986,6 @@ impl Engine {
         Err(TurboError::ResourceBusy("transaction aborted due to OCC contention"))
     }
 
-    /// Consumes engine, unmaps memory, terminates worker, and deletes backing file
     pub(crate) fn delete(self) -> TurboResult<()> {
         self.mmap.delete()?;
         Ok(())
@@ -2285,7 +2253,6 @@ mod tests {
         assert_eq!(engine.get(b"shrink_key").unwrap(), Some(initial_val));
         assert_eq!(engine.total_entries(), 1);
 
-        // Update in-place with smaller payload
         let tiny_val = b"tiny";
         engine.set(b"shrink_key", tiny_val).unwrap();
         assert_eq!(engine.get(b"shrink_key").unwrap(), Some(tiny_val.to_vec()));
@@ -2302,17 +2269,14 @@ mod tests {
 
         let initial_slots = engine.total_slots();
 
-        // Seed with baseline key
         engine.set(b"target_expand", b"small").unwrap();
 
-        // Saturate initial databufs with bulk allocations
         for i in 0..0x64 {
             let k = format!("fill_key_{:04x}", i);
             let v = vec![(i & 0xFF) as u8; 0x70];
             engine.set(k.as_bytes(), &v).unwrap();
         }
 
-        // Expand target_expand to require large contiguous allocation
         let large_val = vec![0x7A; 0x0180];
         engine.set(b"target_expand", &large_val).unwrap();
 
@@ -2344,17 +2308,14 @@ mod tests {
         let cfg = TurboCfg::new(&temp.path);
         let engine = Engine::create(cfg).unwrap();
 
-        // 0x0800 bytes payload spanning multiple consecutive DataBufs
         let large_val = vec![0xAB; 0x0800];
         engine.set(b"large_key", &large_val).unwrap();
         assert_eq!(engine.get(b"large_key").unwrap(), Some(large_val));
 
-        // Update expansion: 0x1200 bytes spanning across ~5 DataBufs
         let huge_val = vec![0xCD; 0x1200];
         engine.set(b"large_key", &huge_val).unwrap();
         assert_eq!(engine.get(b"large_key").unwrap(), Some(huge_val));
 
-        // Update shrink: 0x0200 bytes
         let small_val = vec![0xEF; 0x0200];
         engine.set(b"large_key", &small_val).unwrap();
         assert_eq!(engine.get(b"large_key").unwrap(), Some(small_val));
@@ -2372,7 +2333,6 @@ mod tests {
         engine.set(b"meta_sync_k2", b"v2").unwrap();
         assert_eq!(engine.total_entries(), 2);
 
-        // Explicit sync flushes metadata slot 0
         engine.sync().unwrap();
         drop(engine);
 
@@ -2473,7 +2433,6 @@ mod tests {
         let cfg = TurboCfg::new(&temp.path);
         let engine = Engine::create(cfg).unwrap();
 
-        // Append 9 items (occupying 3 AdjArrayList nodes: array 0, 1, 2 in block 1)
         for i in 0..9 {
             let item = format!("item_{}", i);
             engine.list_append(b"recycle_key", item.as_bytes()).unwrap();
@@ -2481,7 +2440,6 @@ mod tests {
 
         assert_eq!(engine.list_len(b"recycle_key").unwrap(), 9);
 
-        // Inspect block 1 bitmap directly from mmap
         let block1 = engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();
         assert_eq!(block1.occupied_count(), 3);
         assert!(block1.is_array_occupied(0));
@@ -2489,7 +2447,6 @@ mod tests {
         assert!(block1.is_array_occupied(2));
         assert!(!block1.is_array_occupied(3));
 
-        // Pop 3 items (Array 2 becomes empty and must be freed back to block bitmap)
         for _ in 0..3 {
             assert!(engine.list_pop(b"recycle_key").unwrap().is_some());
         }
@@ -2501,7 +2458,6 @@ mod tests {
         assert!(block1_after_pop1.is_array_occupied(1));
         assert!(!block1_after_pop1.is_array_occupied(2));
 
-        // Pop 3 more items (Array 1 becomes empty and must be freed back to block bitmap)
         for _ in 0..3 {
             assert!(engine.list_pop(b"recycle_key").unwrap().is_some());
         }
@@ -2513,7 +2469,6 @@ mod tests {
         assert!(!block1_after_pop2.is_array_occupied(1));
         assert!(!block1_after_pop2.is_array_occupied(2));
 
-        // Pop remaining 3 items (Array 0 entries cleared, array remains as head)
         for _ in 0..3 {
             assert!(engine.list_pop(b"recycle_key").unwrap().is_some());
         }
@@ -2524,7 +2479,6 @@ mod tests {
         assert_eq!(block1_empty_list.occupied_count(), 1);
         assert_eq!(block1_empty_list.array(0).len(), 0);
 
-        // Delete list completely (Array 0 is freed back to block bitmap)
         assert_eq!(engine.del(b"recycle_key").unwrap(), true);
         assert_eq!(engine.total_entries(), 0);
 

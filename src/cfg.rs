@@ -19,13 +19,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Engine module identifier for error context bitpacking
 pub(crate) const MODULE_ID: u8 = 0x46;
-
-/// Operating system physical page size constraint in bytes (4 KiB)
 pub(crate) const PAGE_SIZE: u32 = 0x1000;
-
-/// Default database file format version
 pub(crate) const DEFAULT_VERSION: u32 = 1;
 
 /// Configuration parameters for initializing or opening a [`crate::TurboFox`] instance

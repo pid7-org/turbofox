@@ -124,13 +124,11 @@ impl AdjArrayList {
     }
 }
 
-/// Computes global index for given block index and intra-block array index
 #[inline(always)]
 pub(crate) const fn global_index(block: u32, array: usize) -> u16 {
     (block as u16) * (AdjArrayBlock::ARRAY_COUNT as u16) + (array as u16)
 }
 
-/// Decomposes global index into block index and intra-block array index
 #[inline(always)]
 pub(crate) const fn decompose_global_index(global_idx: u16) -> (u32, usize) {
     let block = (global_idx / (AdjArrayBlock::ARRAY_COUNT as u16)) as u32;
@@ -309,20 +307,16 @@ mod tests {
         assert_eq!(list.len(), 3);
         assert!(list.is_full());
 
-        // Overflow push returns None
         assert_eq!(list.push(0x0400, 0x40), None);
 
-        // Verification of entries
         assert_eq!(list.entry(0).unwrap().buf_idx(), 0x0100);
         assert_eq!(list.entry(1).unwrap().buf_idx(), 0x0200);
         assert_eq!(list.entry(2).unwrap().buf_idx(), 0x0300);
         assert_eq!(list.entry(3), None);
 
-        // Next array pointer
         list.set_next_array(0x000F);
         assert_eq!(list.next_array(), 0x000F);
 
-        // LIFO pop
         let popped3 = list.pop().unwrap();
         assert_eq!(popped3.buf_idx(), 0x0300);
         assert_eq!(popped3.vlen(), 0x30);
@@ -339,15 +333,12 @@ mod tests {
 
     #[test]
     fn ok_adjarr_global_indexing() {
-        // Block 0, array 0 -> global 0
         assert_eq!(global_index(0, 0), 0);
         assert_eq!(decompose_global_index(0), (0, 0));
 
-        // Block 0, array 5 -> global 5
         assert_eq!(global_index(0, 5), 5);
         assert_eq!(decompose_global_index(5), (0, 5));
 
-        // Block 2, array 3 -> global 2 * 6 + 3 = 0x0F
         assert_eq!(global_index(2, 3), 0x0F);
         assert_eq!(decompose_global_index(0x0F), (2, 3));
     }
@@ -362,14 +353,12 @@ mod tests {
         block.set_next_block(0x0012_3456);
         assert_eq!(block.next_block(), 0x0012_3456);
 
-        // Allocate all 6 arrays
         for i in 0..AdjArrayBlock::ARRAY_COUNT {
             assert_eq!(block.alloc_array(), Some(i));
         }
         assert!(block.is_full());
         assert_eq!(block.alloc_array(), None);
 
-        // Free array 2 and reallocate
         block.array_mut(2).push(0x000A, 0x000B);
         assert_eq!(block.array(2).len(), 1);
         block.free_array(2);

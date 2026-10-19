@@ -14,13 +14,9 @@ pub(crate) enum DataBufError {
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DataBuf {
-    /// 0x3F payload buffers of 0x10 bytes each (0x3F * 0x10 = 0x03F0 bytes)
     pub buffers: [[u8; 0x10]; 0x3F],
-    /// Bits 0..0x3E: buffer occupancy (1 = occupied, 0 = free); bit 0x3F: full flag
     pub bitmap: u64,
-    /// 0x1F-bit index to next DataBuf in the global allocation chain
     pub next_dbuf: u32,
-    /// Alignment padding to exactly 0x0400 bytes
     pub padding: [u8; 4],
 }
 
@@ -375,15 +371,12 @@ mod tests {
         let idx = dbuf.alloc_contiguous(0x04).unwrap();
         assert_eq!(idx, 0);
 
-        // Shrink allocation from 0x04 buffers to 1 buffer
         dbuf.free_contiguous(idx + 1, 3);
         assert!(dbuf.is_range_free(1, 3));
 
-        // Next allocation should reuse freed contiguous space
         let idx2 = dbuf.alloc_contiguous(3).unwrap();
         assert_eq!(idx2, 1);
 
-        // Expand by freeing all and reallocating 0x08
         dbuf.free_contiguous(0, 0x04);
         let idx3 = dbuf.alloc_contiguous(0x08).unwrap();
         assert_eq!(idx3, 0);

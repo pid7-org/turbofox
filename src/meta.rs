@@ -7,27 +7,16 @@ use crate::slot::Slot;
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Metadata {
-    /// Magic byte signature: 0x54424658 ("TBFX")
     pub(crate) magic: [u8; 4],
-    /// Layout version (currently 1)
     pub(crate) version: u32,
-    /// Host OS physical page size in bytes (e.g., 0x1000)
     pub(crate) page_size: u32,
-    /// Root Node virtual page index (default: 3)
     pub(crate) root_node_vp: u32,
-    /// Total allocated physical OS pages
     pub(crate) total_pages: u32,
-    /// Total operational slots in the memory map
     pub(crate) total_slots: u32,
-    /// Total active key-value and key-list records
     pub(crate) total_entries: u64,
-    /// Head block index for Adjacent Array allocation chain
     pub(crate) adj_arr_head: u32,
-    /// Head block index for DataBuf allocation chain
     pub(crate) databuf_head: u32,
-    /// Last durable sync epoch ticket
     pub(crate) last_epoch: u64,
-    /// Reserved for subsequent specification extensions
     pub(crate) reserved: [u8; 0x50],
 }
 
@@ -56,7 +45,6 @@ impl Metadata {
         Self::init(Self::DEFAULT_PAGE_SIZE)
     }
 
-    /// Initializes metadata with a specified OS page size
     #[inline(always)]
     pub(crate) const fn init(page_size: u32) -> Self {
         let total_slots = (Self::DEFAULT_INITIAL_PAGES * page_size) / (Slot::SIZE as u32);
@@ -75,7 +63,6 @@ impl Metadata {
         }
     }
 
-    /// Validates database header magic, format version, and geometric invariants
     #[inline(always)]
     pub(crate) fn validate(&self) -> bool {
         self.magic == Self::MAGIC

@@ -116,11 +116,8 @@ fn main() {
     let (total_ops, thread_count, workload) = parse_cli_args();
     let ops_per_thread = total_ops / thread_count;
     let effective_total_ops = ops_per_thread * thread_count;
-    let dataset_size = if workload == Workload::Contention {
-        CONTENTION_POOL
-    } else {
-        effective_total_ops
-    };
+    let dataset_size =
+        if workload == Workload::Contention { CONTENTION_POOL } else { effective_total_ops };
 
     let dir = tempdir().expect("failed to create tempdir");
     let db_path = dir.path().join("bench_del.db");
@@ -139,12 +136,7 @@ fn main() {
     // Pre-allocate keys per worker in memory to isolate storage engine from PRNG
     let mut thread_keys = Vec::with_capacity(thread_count);
     for t in 0..thread_count {
-        thread_keys.push(pregenerate_del_keys(
-            workload,
-            t,
-            ops_per_thread,
-            dataset_size,
-        ));
+        thread_keys.push(pregenerate_del_keys(workload, t, ops_per_thread, dataset_size));
     }
 
     let barrier = Arc::new(Barrier::new(thread_count + 1));

@@ -151,7 +151,7 @@ fn main() {
     let barrier = Arc::new(Barrier::new(thread_count + 1));
     let mut handles = Vec::with_capacity(thread_count);
 
-    for (_t, keys) in thread_keys.into_iter().enumerate() {
+    for keys in thread_keys {
         let db_clone = db.clone();
         let barrier_clone = barrier.clone();
         let payload_clone = payload.clone();

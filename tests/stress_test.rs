@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Barrier};
 use std::thread;
 use tempfile::tempdir;
 use turbofox::{TurboCfg, TurboFox};
@@ -306,3 +306,260 @@ fn ok_stress_concurrent_mixed_set_del_get() {
 
     db.delete().unwrap();
 }
+
+#[test]
+fn ok_stress_dynamic_multithread_kv_lifecycle_validation() {
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(0x04)
+        .max(0x02);
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("dyn_kv_val.db"));
+    let db = TurboFox::create(cfg).unwrap();
+    let barrier = Arc::new(Barrier::new(threads));
+    let mut handles = Vec::with_capacity(threads);
+
+    let per_thread_keys: usize = 0x80;
+    let num_shared_keys: usize = 0x08;
+
+    for tid in 0..threads {
+        let db = db.clone();
+        let barrier = barrier.clone();
+
+        handles.push(thread::spawn(move || {
+            // Phase 1: concurrent writes for dedicated and shared keys
+            for seq in 0..per_thread_keys {
+                let key = format!("k_{:02x}_{:04x}", tid, seq);
+                let val: Vec<u8> =
+                    (0..0x20).map(|i| ((tid ^ seq).wrapping_add(i) & 0xFF) as u8).collect();
+                let ticket = db.set(key.as_bytes(), &val).unwrap();
+                if seq % 0x10 == 0 {
+                    let _ = ticket.force();
+                }
+            }
+
+            for s in 0..num_shared_keys {
+                let key = format!("shared_k_{:02x}", s);
+                let val: Vec<u8> =
+                    (0..0x18).map(|i| ((tid ^ s).wrapping_add(i) & 0xFF) as u8).collect();
+                let _ = db.set(key.as_bytes(), &val);
+            }
+
+            barrier.wait();
+
+            // Phase 2: read validation for self and neighbor threads
+            for seq in 0..per_thread_keys {
+                let key = format!("k_{:02x}_{:04x}", tid, seq);
+                let expected: Vec<u8> =
+                    (0..0x20).map(|i| ((tid ^ seq).wrapping_add(i) & 0xFF) as u8).collect();
+                assert_eq!(db.get(key.as_bytes()).unwrap(), Some(expected));
+            }
+
+            let neighbor = (tid + 0x01) % threads;
+            for seq in 0..per_thread_keys {
+                let key = format!("k_{:02x}_{:04x}", neighbor, seq);
+                let expected: Vec<u8> =
+                    (0..0x20).map(|i| ((neighbor ^ seq).wrapping_add(i) & 0xFF) as u8).collect();
+                assert_eq!(db.get(key.as_bytes()).unwrap(), Some(expected));
+            }
+
+            for s in 0..num_shared_keys {
+                let key = format!("shared_k_{:02x}", s);
+                let res = db.get(key.as_bytes()).unwrap();
+                assert!(res.is_some());
+            }
+
+            barrier.wait();
+
+            // Phase 3: delete even keys
+            for seq in (0..per_thread_keys).step_by(0x02) {
+                let key = format!("k_{:02x}_{:04x}", tid, seq);
+                assert!(db.del(key.as_bytes()).unwrap());
+            }
+
+            barrier.wait();
+
+            // Phase 4: post-deletion verification
+            for seq in 0..per_thread_keys {
+                let key = format!("k_{:02x}_{:04x}", tid, seq);
+                if seq % 0x02 == 0 {
+                    assert_eq!(db.get(key.as_bytes()).unwrap(), None);
+                } else {
+                    let expected: Vec<u8> =
+                        (0..0x20).map(|i| ((tid ^ seq).wrapping_add(i) & 0xFF) as u8).collect();
+                    assert_eq!(db.get(key.as_bytes()).unwrap(), Some(expected));
+                }
+            }
+        }));
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    // Verify aggregate total entries
+    let surviving_per_thread = per_thread_keys / 0x02;
+    let expected_total = ((threads * surviving_per_thread) + num_shared_keys) as u64;
+    assert_eq!(db.total_entries(), expected_total);
+
+    db.sync().unwrap();
+    db.delete().unwrap();
+}
+
+#[test]
+fn ok_stress_dynamic_multithread_list_lifecycle_validation() {
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(0x04)
+        .max(0x02);
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("dyn_list_val.db"));
+    let db = TurboFox::create(cfg).unwrap();
+    let barrier = Arc::new(Barrier::new(threads));
+    let mut handles = Vec::with_capacity(threads);
+
+    let per_thread_items: usize = 0x40;
+    let shared_items_per_thread: usize = 0x10;
+
+    for tid in 0..threads {
+        let db = db.clone();
+        let barrier = barrier.clone();
+
+        handles.push(thread::spawn(move || {
+            let list_key = format!("list_{:02x}", tid);
+            let list = db.list(list_key.as_bytes());
+            let shared_list = db.list(b"shared_stress_list");
+
+            // Phase 1: append items
+            for seq in 0..per_thread_items {
+                let item: Vec<u8> =
+                    (0..0x18).map(|i| ((tid ^ seq).wrapping_add(i) & 0xFF) as u8).collect();
+                list.append(&item).unwrap();
+            }
+
+            for seq in 0..shared_items_per_thread {
+                let item: Vec<u8> =
+                    (0..0x14).map(|i| ((tid + seq).wrapping_add(i) & 0xFF) as u8).collect();
+                shared_list.append(&item).unwrap();
+            }
+
+            barrier.wait();
+
+            // Phase 2: read validation
+            assert_eq!(list.len().unwrap(), per_thread_items);
+            assert!(!list.is_empty().unwrap());
+
+            let first_exp: Vec<u8> =
+                (0..0x18).map(|i| (tid.wrapping_add(i) & 0xFF) as u8).collect();
+            assert_eq!(list.first().unwrap(), Some(first_exp));
+
+            let last_idx = per_thread_items - 0x01;
+            let last_exp: Vec<u8> =
+                (0..0x18).map(|i| ((tid ^ last_idx).wrapping_add(i) & 0xFF) as u8).collect();
+            assert_eq!(list.last().unwrap(), Some(last_exp));
+
+            for seq in 0..per_thread_items {
+                let exp: Vec<u8> =
+                    (0..0x18).map(|i| ((tid ^ seq).wrapping_add(i) & 0xFF) as u8).collect();
+                assert_eq!(list.get_at(seq).unwrap(), Some(exp));
+            }
+
+            let collected: Vec<Vec<u8>> = list.iter().unwrap().collect();
+            assert_eq!(collected.len(), per_thread_items);
+
+            barrier.wait();
+
+            // Phase 3: pop validation in reverse order
+            let pop_count = per_thread_items / 0x02;
+            for p in 0..pop_count {
+                let seq = per_thread_items - 0x01 - p;
+                let exp: Vec<u8> =
+                    (0..0x18).map(|i| ((tid ^ seq).wrapping_add(i) & 0xFF) as u8).collect();
+                assert_eq!(list.pop().unwrap(), Some(exp));
+            }
+            assert_eq!(list.len().unwrap(), per_thread_items - pop_count);
+
+            barrier.wait();
+
+            // Phase 4: clear validation
+            assert!(list.clear().unwrap());
+            assert_eq!(list.len().unwrap(), 0x00);
+            assert!(list.is_empty().unwrap());
+            assert_eq!(list.pop().unwrap(), None);
+            assert_eq!(list.first().unwrap(), None);
+            assert_eq!(list.last().unwrap(), None);
+        }));
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    // Shared list assertions
+    let shared_list = db.list(b"shared_stress_list");
+    let total_shared = threads * shared_items_per_thread;
+    assert_eq!(shared_list.len().unwrap(), total_shared);
+    assert!(shared_list.clear().unwrap());
+    assert_eq!(shared_list.len().unwrap(), 0x00);
+    drop(shared_list);
+
+    db.sync().unwrap();
+    db.delete().unwrap();
+}
+
+#[test]
+fn ok_stress_dynamic_multithread_mixed_all_ops_hammer() {
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(0x04)
+        .max(0x02);
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path().join("dyn_hammer.db"));
+    let db = TurboFox::create(cfg).unwrap();
+    let running = Arc::new(AtomicBool::new(true));
+    let mut handles = Vec::with_capacity(threads);
+
+    for tid in 0..threads {
+        let db = db.clone();
+        let running = running.clone();
+
+        handles.push(thread::spawn(move || {
+            let mut step: usize = 0x00;
+            let list = db.list(format!("hammer_lst_{:02x}", tid).as_bytes());
+
+            while running.load(Ordering::Relaxed) {
+                let k = format!("k_{:02x}_{:02x}", tid, step & 0x1F);
+                let v = vec![((tid ^ step) & 0xFF) as u8; 0x28];
+
+                let ticket = db.set(k.as_bytes(), &v).unwrap();
+                let _ = db.get(k.as_bytes());
+
+                list.append(&v).unwrap();
+                if step & 0x03 == 0x00 {
+                    let _ = list.pop();
+                }
+
+                if step & 0x07 == 0x00 {
+                    let _ = ticket.force();
+                }
+
+                if step & 0x0F == 0x00 {
+                    let _ = db.del(k.as_bytes());
+                }
+
+                step = step.wrapping_add(0x01);
+            }
+        }));
+    }
+
+    thread::sleep(std::time::Duration::from_millis(0x96));
+    running.store(false, Ordering::Relaxed);
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    db.sync().unwrap();
+    db.delete().unwrap();
+}
+

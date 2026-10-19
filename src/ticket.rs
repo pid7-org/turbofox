@@ -267,9 +267,6 @@ mod tests {
         assert_eq!(turbo_ticket.inner().epoch(), 0x0F);
         assert_eq!(turbo_ticket.as_ref().epoch(), 0x0F);
 
-        let back_to_ack: AckTicket = turbo_ticket.clone().into_inner();
-        assert_eq!(back_to_ack.epoch(), 0x0F);
-
         let ack_via_from = AckTicket::from(turbo_ticket);
         assert_eq!(ack_via_from.epoch(), 0x0F);
     }

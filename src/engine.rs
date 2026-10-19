@@ -26,11 +26,13 @@ const LAST_BUCKET_VP: u32 = 0x43;
 const DATABUF_SLOTS: [usize; 0x0E] =
     [0x88, 0x90, 0x98, 0xA0, 0xA8, 0xB0, 0xB8, 0xC8, 0xD0, 0xD8, 0xE0, 0xE8, 0xF0, 0xF8];
 
+pub(crate) type DbufDiff = (usize, DataBuf, DataBuf);
+
 #[derive(Clone, Debug)]
 pub(crate) struct DbufAllocPlan {
     pub(crate) start_slot: usize,
     pub(crate) local_idx: usize,
-    pub(crate) touched: Vec<(usize, DataBuf, DataBuf)>,
+    pub(crate) touched: Vec<DbufDiff>,
 }
 
 #[derive(Debug)]
@@ -257,9 +259,7 @@ impl Engine {
     #[inline]
     fn ensure_page_capacity(&self, additional_pages: u32) -> TurboResult<()> {
         let current = self.read_metadata()?.total_pages;
-        let target = current
-            .checked_add(additional_pages)
-            .ok_or(TurboError::DatabaseFull)?;
+        let target = current.checked_add(additional_pages).ok_or(TurboError::DatabaseFull)?;
 
         if target > MAX_STORAGE_PAGES {
             return Err(TurboError::DatabaseFull);
@@ -434,7 +434,7 @@ impl Engine {
         curr: usize,
         num_dbufs: usize,
         needed: usize,
-    ) -> TurboResult<(usize, bool, Vec<(usize, DataBuf, DataBuf)>)> {
+    ) -> TurboResult<(usize, bool, Vec<DbufDiff>)> {
         let total_slots = self.total_slots.load(Ordering::Acquire) as usize;
         let mut touched = Vec::with_capacity(num_dbufs);
         let first_next =
@@ -523,7 +523,7 @@ impl Engine {
             return Ok(None);
         }
 
-        let num_dbufs = (needed + DataBuf::BUF_COUNT - 1) / DataBuf::BUF_COUNT;
+        let num_dbufs = needed.div_ceil(DataBuf::BUF_COUNT);
         let mut curr = head;
 
         while curr != 0 {
@@ -780,7 +780,7 @@ impl Engine {
             return Ok(());
         }
 
-        let pages = if needed <= 0xFC { 1 } else { (needed + 0xFB) / 0xFC };
+        let pages = if needed <= 0xFC { 1 } else { needed.div_ceil(0xFC) };
         self.ensure_page_capacity(pages as u32)?;
         let added_slots = pages * 0x20;
         let old_slots = self.total_slots.load(Ordering::Acquire) as usize;
@@ -913,9 +913,9 @@ impl Engine {
             }
         }
 
-        for i in 0..0x40 {
+        for (i, cb) in child_buckets.iter().enumerate() {
             let child_slot = ((base_child_vp + (i as u32)) * 2) as usize;
-            self.mmap.write_exact::<Bucket, _, _>(child_slot, |b| *b = child_buckets[i])?;
+            self.mmap.write_exact::<Bucket, _, _>(child_slot, |b| *b = *cb)?;
         }
 
         let mut node = Node::empty();
@@ -1301,7 +1301,7 @@ impl Engine {
         item: &[u8],
         req_k: usize,
         req_v: usize,
-    ) -> TurboResult<(u32, u32, Vec<(usize, DataBuf, DataBuf)>)> {
+    ) -> TurboResult<(u32, u32, Vec<DbufDiff>)> {
         if req_k + req_v <= DataBuf::BUF_COUNT {
             if let Some(mut plan) = self.find_free_databuf(req_k + req_v)? {
                 let k_buf_idx = DataBuf::global_buf_idx(plan.start_slot as u32, plan.local_idx);
@@ -2480,7 +2480,7 @@ mod tests {
         let cfg = TurboCfg::new(&temp.path);
         let engine = Engine::create(cfg).unwrap();
 
-        assert_eq!(engine.del(b"missing_key").unwrap(), false);
+        assert!(!engine.del(b"missing_key").unwrap());
         assert_eq!(engine.total_entries(), 0);
 
         let _ = std::fs::remove_file(&temp.versioned);
@@ -2496,15 +2496,15 @@ mod tests {
         engine.set(b"del_key_2", b"val_2").unwrap();
         assert_eq!(engine.total_entries(), 2);
 
-        assert_eq!(engine.del(b"del_key_1").unwrap(), true);
+        assert!(engine.del(b"del_key_1").unwrap());
         assert_eq!(engine.total_entries(), 1);
         assert_eq!(engine.get(b"del_key_1").unwrap(), None);
         assert_eq!(engine.get(b"del_key_2").unwrap(), Some(b"val_2".to_vec()));
 
-        assert_eq!(engine.del(b"del_key_1").unwrap(), false);
+        assert!(!engine.del(b"del_key_1").unwrap());
         assert_eq!(engine.total_entries(), 1);
 
-        assert_eq!(engine.del(b"del_key_2").unwrap(), true);
+        assert!(engine.del(b"del_key_2").unwrap());
         assert_eq!(engine.total_entries(), 0);
         assert_eq!(engine.get(b"del_key_2").unwrap(), None);
 
@@ -2522,7 +2522,7 @@ mod tests {
         assert_eq!(engine.total_entries(), 1);
         assert_eq!(engine.get(b"spanned_del_key").unwrap(), Some(large_val));
 
-        assert_eq!(engine.del(b"spanned_del_key").unwrap(), true);
+        assert!(engine.del(b"spanned_del_key").unwrap());
         assert_eq!(engine.total_entries(), 0);
         assert_eq!(engine.get(b"spanned_del_key").unwrap(), None);
 
@@ -2581,7 +2581,7 @@ mod tests {
         assert_eq!(block1_empty_list.occupied_count(), 1);
         assert_eq!(block1_empty_list.array(0).len(), 0);
 
-        assert_eq!(engine.del(b"recycle_key").unwrap(), true);
+        assert!(engine.del(b"recycle_key").unwrap());
         assert_eq!(engine.total_entries(), 0);
 
         let block1_deleted = engine.mmap.read_exact::<AdjArrayBlock, _, _>(1, |b| *b).unwrap();

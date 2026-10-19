@@ -20,9 +20,6 @@
 
 use crate::error::{TurboError, TurboResult};
 use frozen_core::ack::AckTicket;
-use std::sync::Arc;
-
-pub(crate) use frozen_core::ack::{Completion, TEpoch};
 
 /// Durability acknowledgement handle tracking write persistence
 ///
@@ -50,13 +47,6 @@ impl TurboTicket {
     #[inline(always)]
     pub(crate) const fn new(inner: AckTicket) -> Self {
         Self { inner }
-    }
-
-    /// Constructs a new [`TurboTicket`] from raw epoch and completion primitives while binding
-    /// durability tracking to the shared completion state
-    #[inline(always)]
-    pub(crate) const fn from_raw(epoch: u64, completion: Arc<Completion>) -> Self {
-        Self { inner: AckTicket::new(epoch, completion) }
     }
 
     /// Reads assigned durability epoch for the ticket
@@ -149,18 +139,6 @@ impl TurboTicket {
     pub fn force(&self) -> TurboResult<u64> {
         self.inner.force().map_err(TurboError::from)
     }
-
-    /// Reference to the underlying shared [`Completion`] state
-    #[inline(always)]
-    pub(crate) fn completion(&self) -> &Arc<Completion> {
-        self.inner.completion()
-    }
-
-    /// Immutable reference to the wrapped [`AckTicket`]
-    #[inline(always)]
-    pub(crate) const fn inner(&self) -> &AckTicket {
-        &self.inner
-    }
 }
 
 impl From<AckTicket> for TurboTicket {
@@ -187,9 +165,15 @@ impl AsRef<AckTicket> for TurboTicket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use frozen_core::ack::Completion;
     use frozen_core::error::{ErrCode, FrozenError};
+    use std::sync::Arc;
     use std::thread;
     use std::time::Duration;
+
+    fn from_raw(epoch: u64, completion: Arc<Completion>) -> TurboTicket {
+        TurboTicket::new(AckTicket::new(epoch, completion))
+    }
 
     #[test]
     fn ok_ticket_transparent_layout() {
@@ -200,7 +184,7 @@ mod tests {
     #[test]
     fn ok_ticket_epoch_and_is_durable() {
         let completion = Arc::new(Completion::default());
-        let ticket = TurboTicket::from_raw(0x2A, completion.clone());
+        let ticket = from_raw(0x2A, completion.clone());
 
         assert_eq!(ticket.epoch(), 0x2A);
         assert!(!ticket.is_durable());
@@ -219,7 +203,6 @@ mod tests {
 
         let turbo_ticket: TurboTicket = raw_ticket.clone().into();
         assert_eq!(turbo_ticket.epoch(), 0x0F);
-        assert_eq!(turbo_ticket.inner().epoch(), 0x0F);
         assert_eq!(turbo_ticket.as_ref().epoch(), 0x0F);
 
         let ack_via_from = AckTicket::from(turbo_ticket);
@@ -230,7 +213,7 @@ mod tests {
     fn ok_ticket_wait_blocks_until_durable() {
         let completion = Arc::new(Completion::default());
         let epoch = completion.increment_current_epoch();
-        let ticket = TurboTicket::from_raw(epoch, completion.clone());
+        let ticket = from_raw(epoch, completion.clone());
 
         let t = thread::spawn({
             let completion = completion.clone();
@@ -249,7 +232,7 @@ mod tests {
     fn err_ticket_wait_translates_to_turbo_error() {
         let completion = Arc::new(Completion::default());
         let epoch = completion.increment_current_epoch();
-        let ticket = TurboTicket::from_raw(epoch, completion.clone());
+        let ticket = from_raw(epoch, completion.clone());
 
         let err = FrozenError::new(1, 2, ErrCode::new(3, "test"), "sync write fault");
 
@@ -278,7 +261,7 @@ mod tests {
     fn err_ticket_force_without_trigger_returns_turbo_error() {
         let completion = Arc::new(Completion::default());
         let epoch = completion.increment_current_epoch();
-        let ticket = TurboTicket::from_raw(epoch, completion);
+        let ticket = from_raw(epoch, completion);
 
         let res = ticket.force();
         assert!(res.is_err());

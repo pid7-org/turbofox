@@ -112,7 +112,6 @@ impl From<crate::databuf::DataBufError> for TurboError {
             crate::databuf::DataBufError::CrcMismatch { .. } => {
                 Self::CorruptedPayload("databuf payload crc32 mismatch")
             }
-            crate::databuf::DataBufError::OutOfSpace => Self::ResourceBusy("databuf out of space"),
             crate::databuf::DataBufError::InvalidIndex => {
                 Self::CorruptedPayload("invalid databuf index")
             }

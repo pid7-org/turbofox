@@ -6,7 +6,6 @@ use crate::slot::Slot;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DataBufError {
-    OutOfSpace,
     InvalidIndex,
     PayloadTooLarge,
     CrcMismatch { expected: u32, found: u32 },
@@ -36,7 +35,6 @@ impl Default for DataBuf {
 }
 
 impl DataBuf {
-    pub const SIZE: usize = 0x0400;
     pub const SLOT_COUNT: usize = 8;
     pub const BUF_COUNT: usize = 0x3F;
     pub const BUF_SIZE: usize = 0x10;
@@ -55,42 +53,6 @@ impl DataBuf {
     pub fn is_full(&self) -> bool {
         (self.bitmap & Self::FULL_BIT) != 0
             || (self.bitmap & Self::OCCUPANCY_MASK) == Self::OCCUPANCY_MASK
-    }
-
-    #[inline(always)]
-    pub fn is_empty(&self) -> bool {
-        (self.bitmap & Self::OCCUPANCY_MASK) == 0
-    }
-
-    #[inline(always)]
-    pub fn occupied_count(&self) -> usize {
-        (self.bitmap & Self::OCCUPANCY_MASK).count_ones() as usize
-    }
-
-    #[inline(always)]
-    pub fn free_count(&self) -> usize {
-        Self::BUF_COUNT - self.occupied_count()
-    }
-
-    #[inline(always)]
-    pub fn is_buffer_occupied(&self, idx: usize) -> bool {
-        debug_assert!(idx < Self::BUF_COUNT);
-        (self.bitmap & (1u64 << idx)) != 0
-    }
-
-    #[inline(always)]
-    pub fn set_buffer_occupied(&mut self, idx: usize, occupied: bool) {
-        debug_assert!(idx < Self::BUF_COUNT);
-        if occupied {
-            self.bitmap |= 1u64 << idx;
-        } else {
-            self.bitmap &= !(1u64 << idx);
-        }
-        if (self.bitmap & Self::OCCUPANCY_MASK) == Self::OCCUPANCY_MASK {
-            self.bitmap |= Self::FULL_BIT;
-        } else {
-            self.bitmap &= !Self::FULL_BIT;
-        }
     }
 
     #[inline(always)]
@@ -170,16 +132,6 @@ impl DataBuf {
     }
 
     #[inline(always)]
-    pub const fn spanned_databuf_count(start_idx: usize, req_buffers: usize) -> usize {
-        if req_buffers <= Self::BUF_COUNT - start_idx {
-            1
-        } else {
-            1 + (req_buffers - (Self::BUF_COUNT - start_idx) + Self::BUF_COUNT - 1)
-                / Self::BUF_COUNT
-        }
-    }
-
-    #[inline(always)]
     pub(crate) fn payload_bytes(&self) -> &[u8; Self::PAYLOAD_BYTES] {
         unsafe { &*(self.buffers.as_ptr() as *const [u8; Self::PAYLOAD_BYTES]) }
     }
@@ -249,84 +201,6 @@ impl DataBuf {
         Ok((key, val))
     }
 
-    pub(crate) fn write_key_payload(
-        &mut self,
-        start_idx: usize,
-        key: &[u8],
-    ) -> Result<(), DataBufError> {
-        let req = Self::required_key_buffers(key.len());
-        if req > Self::BUF_COUNT || start_idx + req > Self::BUF_COUNT {
-            return Err(DataBufError::PayloadTooLarge);
-        }
-
-        let start_byte = start_idx * Self::BUF_SIZE;
-        let total_bytes = req * Self::BUF_SIZE;
-
-        let raw = self.payload_bytes_mut();
-        let frame = &mut raw[start_byte..start_byte + total_bytes];
-
-        frame[Self::CRC_SIZE..Self::CRC_SIZE + key.len()].copy_from_slice(key);
-        frame[Self::CRC_SIZE + key.len()..].fill(0);
-
-        let crc = turbo_crc::crc32c(key);
-        frame[..Self::CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
-
-        Ok(())
-    }
-
-    pub(crate) fn read_key_payload<'a>(
-        &'a self,
-        start_idx: usize,
-        klen: usize,
-    ) -> Result<&'a [u8], DataBufError> {
-        let req = Self::required_key_buffers(klen);
-        if req > Self::BUF_COUNT || start_idx + req > Self::BUF_COUNT {
-            return Err(DataBufError::InvalidIndex);
-        }
-
-        let start_byte = start_idx * Self::BUF_SIZE;
-        let raw = self.payload_bytes();
-        let frame = &raw[start_byte..start_byte + (req * Self::BUF_SIZE)];
-
-        let mut crc_bytes = [0u8; Self::CRC_SIZE];
-        crc_bytes.copy_from_slice(&frame[..Self::CRC_SIZE]);
-        let expected_crc = u32::from_le_bytes(crc_bytes);
-
-        let key = &frame[Self::CRC_SIZE..Self::CRC_SIZE + klen];
-        let actual_crc = turbo_crc::crc32c(key);
-
-        if actual_crc != expected_crc {
-            return Err(DataBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
-        }
-
-        Ok(key)
-    }
-
-    pub(crate) fn write_val_payload(
-        &mut self,
-        start_idx: usize,
-        val: &[u8],
-    ) -> Result<(), DataBufError> {
-        let req = Self::required_val_buffers(val.len());
-        if req > Self::BUF_COUNT || start_idx + req > Self::BUF_COUNT {
-            return Err(DataBufError::PayloadTooLarge);
-        }
-
-        let start_byte = start_idx * Self::BUF_SIZE;
-        let total_bytes = req * Self::BUF_SIZE;
-
-        let raw = self.payload_bytes_mut();
-        let frame = &mut raw[start_byte..start_byte + total_bytes];
-
-        frame[Self::CRC_SIZE..Self::CRC_SIZE + val.len()].copy_from_slice(val);
-        frame[Self::CRC_SIZE + val.len()..].fill(0);
-
-        let crc = turbo_crc::crc32c(val);
-        frame[..Self::CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
-
-        Ok(())
-    }
-
     pub(crate) fn read_val_payload<'a>(
         &'a self,
         start_idx: usize,
@@ -378,50 +252,8 @@ impl DataBuf {
     }
 
     #[inline(always)]
-    pub fn clear(&mut self) {
-        *self = Self::new();
-    }
-
-    #[inline(always)]
     pub(crate) fn as_slots(&self) -> &[Slot; Self::SLOT_COUNT] {
         unsafe { &*(self as *const Self as *const [Slot; Self::SLOT_COUNT]) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn as_slots_mut(&mut self) -> &mut [Slot; Self::SLOT_COUNT] {
-        unsafe { &mut *(self as *mut Self as *mut [Slot; Self::SLOT_COUNT]) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_slots(slots: &[Slot; Self::SLOT_COUNT]) -> &Self {
-        unsafe { &*(slots.as_ptr() as *const Self) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_slots_mut(slots: &mut [Slot; Self::SLOT_COUNT]) -> &mut Self {
-        unsafe { &mut *(slots.as_mut_ptr() as *mut Self) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn as_bytes(&self) -> &[u8; Self::SIZE] {
-        unsafe { &*(self as *const Self as *const [u8; Self::SIZE]) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn as_bytes_mut(&mut self) -> &mut [u8; Self::SIZE] {
-        unsafe { &mut *(self as *mut Self as *mut [u8; Self::SIZE]) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_bytes(bytes: &[u8; Self::SIZE]) -> &Self {
-        debug_assert_eq!(bytes.as_ptr().align_offset(8), 0);
-        unsafe { &*(bytes.as_ptr() as *const Self) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_bytes_mut(bytes: &mut [u8; Self::SIZE]) -> &mut Self {
-        debug_assert_eq!(bytes.as_mut_ptr().align_offset(8), 0);
-        unsafe { &mut *(bytes.as_mut_ptr() as *mut Self) }
     }
 }
 
@@ -444,56 +276,20 @@ mod tests {
     }
 
     #[test]
-    fn ok_databuf_occupancy_bitmap() {
-        let mut dbuf = DataBuf::new();
-        assert!(!dbuf.is_full());
-        assert!(dbuf.is_empty());
-        assert_eq!(dbuf.occupied_count(), 0);
-        assert_eq!(dbuf.free_count(), 0x3F);
-        assert!(!dbuf.is_buffer_occupied(0));
-
-        dbuf.set_buffer_occupied(0, true);
-        assert!(dbuf.is_buffer_occupied(0));
-        assert!(!dbuf.is_buffer_occupied(1));
-        assert!(!dbuf.is_full());
-        assert!(!dbuf.is_empty());
-        assert_eq!(dbuf.occupied_count(), 1);
-        assert_eq!(dbuf.free_count(), 0x3E);
-
-        dbuf.set_buffer_occupied(0, false);
-        assert!(!dbuf.is_buffer_occupied(0));
-        assert!(dbuf.is_empty());
-
-        for i in 0..DataBuf::BUF_COUNT {
-            dbuf.set_buffer_occupied(i, true);
-        }
-        assert!(dbuf.is_full());
-        assert_eq!(dbuf.occupied_count(), 0x3F);
-        assert_eq!(dbuf.free_count(), 0);
-
-        dbuf.clear();
-        assert!(dbuf.is_empty());
-        assert_eq!(dbuf.free_count(), 0x3F);
-    }
-
-    #[test]
     fn ok_databuf_contiguous_alloc_and_free() {
         let mut dbuf = DataBuf::new();
         assert_eq!(dbuf.find_contiguous_free(0x10), Some(0));
 
         let alloc1 = dbuf.alloc_contiguous(4);
         assert_eq!(alloc1, Some(0));
-        assert_eq!(dbuf.occupied_count(), 4);
 
         let alloc2 = dbuf.alloc_contiguous(8);
         assert_eq!(alloc2, Some(4));
-        assert_eq!(dbuf.occupied_count(), 0x0C);
 
         assert!(dbuf.is_range_free(0x0C, 4));
         assert!(!dbuf.is_range_free(2, 4));
 
         dbuf.free_contiguous(0, 4);
-        assert_eq!(dbuf.occupied_count(), 8);
         assert!(dbuf.is_range_free(0, 4));
         assert!(!dbuf.is_range_free(4, 4));
 
@@ -501,7 +297,7 @@ mod tests {
         assert_eq!(dbuf.find_contiguous_free(0x10), Some(0x0C));
 
         dbuf.free_contiguous(4, 8);
-        assert!(dbuf.is_empty());
+        assert!(dbuf.is_range_free(0, 0x3F));
     }
 
     #[test]
@@ -554,46 +350,12 @@ mod tests {
     }
 
     #[test]
-    fn ok_databuf_key_and_val_payloads() {
-        let mut dbuf = DataBuf::new();
-        let key = b"list_root_key";
-        let val = b"list_item_entry";
-
-        let start_k = dbuf.alloc_contiguous(DataBuf::required_key_buffers(key.len())).unwrap();
-        dbuf.write_key_payload(start_k, key).unwrap();
-        assert_eq!(dbuf.read_key_payload(start_k, key.len()).unwrap(), key);
-
-        let start_v = dbuf.alloc_contiguous(DataBuf::required_val_buffers(val.len())).unwrap();
-        dbuf.write_val_payload(start_v, val).unwrap();
-        assert_eq!(dbuf.read_val_payload(start_v, val.len()).unwrap(), val);
-    }
-
-    #[test]
-    fn ok_databuf_slot_and_byte_views() {
+    fn ok_databuf_as_slots() {
         let mut dbuf = DataBuf::new();
         dbuf.set_next_dbuf_index(0x42);
 
         let slots = dbuf.as_slots();
         assert_eq!(slots.len(), 8);
-
-        let restored = DataBuf::from_slots(slots);
-        assert_eq!(restored.next_dbuf_index(), 0x42);
-
-        let slots_mut = dbuf.as_slots_mut();
-        let restored_mut = DataBuf::from_slots_mut(slots_mut);
-        restored_mut.set_next_dbuf_index(0x43);
-        assert_eq!(dbuf.next_dbuf_index(), 0x43);
-
-        let bytes = dbuf.as_bytes();
-        assert_eq!(bytes.len(), 0x0400);
-
-        let restored_b = DataBuf::from_bytes(bytes);
-        assert_eq!(restored_b.next_dbuf_index(), 0x43);
-
-        let bytes_mut = dbuf.as_bytes_mut();
-        let restored_b_mut = DataBuf::from_bytes_mut(bytes_mut);
-        restored_b_mut.set_next_dbuf_index(0x44);
-        assert_eq!(dbuf.next_dbuf_index(), 0x44);
     }
 
     #[test]
@@ -605,8 +367,6 @@ mod tests {
 
         let err_read = dbuf.read_kv_payload(0x3F, 4, 8);
         assert_eq!(err_read, Err(DataBufError::InvalidIndex));
-
-        assert_ne!(DataBufError::OutOfSpace, DataBufError::InvalidIndex);
     }
 
     #[test]
@@ -614,22 +374,18 @@ mod tests {
         let mut dbuf = DataBuf::new();
         let idx = dbuf.alloc_contiguous(0x04).unwrap();
         assert_eq!(idx, 0);
-        assert_eq!(dbuf.occupied_count(), 0x04);
 
         // Shrink allocation from 0x04 buffers to 1 buffer
         dbuf.free_contiguous(idx + 1, 3);
-        assert_eq!(dbuf.occupied_count(), 1);
+        assert!(dbuf.is_range_free(1, 3));
 
         // Next allocation should reuse freed contiguous space
         let idx2 = dbuf.alloc_contiguous(3).unwrap();
         assert_eq!(idx2, 1);
-        assert_eq!(dbuf.occupied_count(), 0x04);
 
         // Expand by freeing all and reallocating 0x08
         dbuf.free_contiguous(0, 0x04);
-        assert!(dbuf.is_empty());
         let idx3 = dbuf.alloc_contiguous(0x08).unwrap();
         assert_eq!(idx3, 0);
-        assert_eq!(dbuf.occupied_count(), 0x08);
     }
 }

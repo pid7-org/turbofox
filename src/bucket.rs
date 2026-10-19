@@ -2,7 +2,7 @@
 //!
 //! Ref: `DESIGN.md` §3.2, §3.4, §4.3, §5.2
 
-use crate::node::Node;
+use crate::hash::{HASH_EMPTY, HASH_TOMBSTONE, MIN_VALID_HASH};
 use crate::slot::Slot;
 
 #[repr(C)]
@@ -20,18 +20,14 @@ impl BucketEntry {
     pub(crate) const LIST_FLAG: u32 = 0x8000_0000;
     pub(crate) const BUF_IDX_MASK: u32 = 0x7FFF_FFFF;
 
-    pub(crate) const HASH_EMPTY: u32 = 0;
-    pub(crate) const HASH_TOMBSTONE: u32 = 1;
-    pub(crate) const MIN_VALID_HASH: u32 = 2;
-
     #[inline(always)]
     pub(crate) const fn empty() -> Self {
-        Self { klen: 0, vlen: 0, buf_idx: 0, hash: Self::HASH_EMPTY }
+        Self { klen: 0, vlen: 0, buf_idx: 0, hash: HASH_EMPTY }
     }
 
     #[inline(always)]
     pub(crate) const fn tombstone() -> Self {
-        Self { klen: 0, vlen: 0, buf_idx: 0, hash: Self::HASH_TOMBSTONE }
+        Self { klen: 0, vlen: 0, buf_idx: 0, hash: HASH_TOMBSTONE }
     }
 
     #[inline(always)]
@@ -50,23 +46,18 @@ impl BucketEntry {
     }
 
     #[inline(always)]
-    pub(crate) const fn raw_buf_idx(&self) -> u32 {
-        self.buf_idx
-    }
-
-    #[inline(always)]
     pub(crate) fn is_empty(&self) -> bool {
-        self.hash == Self::HASH_EMPTY
+        self.hash == HASH_EMPTY
     }
 
     #[inline(always)]
     pub(crate) fn is_tombstone(&self) -> bool {
-        self.hash == Self::HASH_TOMBSTONE
+        self.hash == HASH_TOMBSTONE
     }
 
     #[inline(always)]
     pub(crate) fn is_occupied(&self) -> bool {
-        self.hash >= Self::MIN_VALID_HASH
+        self.hash >= MIN_VALID_HASH
     }
 
     #[inline(always)]
@@ -103,12 +94,7 @@ impl BucketEntry {
 
     #[inline(always)]
     pub(crate) fn mark_tombstone(&mut self) {
-        self.hash = Self::HASH_TOMBSTONE;
-    }
-
-    #[inline(always)]
-    pub(crate) fn clear(&mut self) {
-        *self = Self::empty();
+        self.hash = HASH_TOMBSTONE;
     }
 }
 
@@ -137,10 +123,8 @@ impl Default for Bucket {
 }
 
 impl Bucket {
-    pub(crate) const SIZE: usize = 0x0100;
     pub(crate) const ENTRY_COUNT: usize = 0x15;
     pub(crate) const BUCKET_BIT: u32 = 0x8000_0000;
-    pub(crate) const FLAGS_MASK: u32 = 0x7FFF_FFFF;
 
     #[inline(always)]
     pub(crate) const fn new() -> Self {
@@ -150,16 +134,6 @@ impl Bucket {
     #[inline(always)]
     pub(crate) fn is_bucket(&self) -> bool {
         (self.header & Self::BUCKET_BIT) != 0
-    }
-
-    #[inline(always)]
-    pub(crate) const fn header(&self) -> u32 {
-        self.header
-    }
-
-    #[inline(always)]
-    pub(crate) fn set_header(&mut self, header: u32) {
-        self.header = header;
     }
 
     #[inline(always)]
@@ -212,21 +186,6 @@ impl Bucket {
     }
 
     #[inline(always)]
-    pub(crate) fn occupied_count(&self) -> usize {
-        self.entries.iter().filter(|e| e.is_occupied()).count()
-    }
-
-    #[inline(always)]
-    pub(crate) fn tombstone_count(&self) -> usize {
-        self.entries.iter().filter(|e| e.is_tombstone()).count()
-    }
-
-    #[inline(always)]
-    pub(crate) fn empty_count(&self) -> usize {
-        self.entries.iter().filter(|e| e.is_empty()).count()
-    }
-
-    #[inline(always)]
     pub(crate) fn entry(&self, idx: usize) -> &BucketEntry {
         &self.entries[idx]
     }
@@ -234,23 +193,6 @@ impl Bucket {
     #[inline(always)]
     pub(crate) fn entry_mut(&mut self, idx: usize) -> &mut BucketEntry {
         &mut self.entries[idx]
-    }
-
-    #[inline(always)]
-    pub(crate) const fn entries(&self) -> &[BucketEntry; Self::ENTRY_COUNT] {
-        &self.entries
-    }
-
-    #[inline(always)]
-    pub(crate) fn entries_mut(&mut self) -> &mut [BucketEntry; Self::ENTRY_COUNT] {
-        &mut self.entries
-    }
-
-    #[inline(always)]
-    pub(crate) fn convert_to_node(self) -> Node {
-        let mut node = Node::empty();
-        node.children[0] = self.header & Self::FLAGS_MASK;
-        node
     }
 
     #[inline(always)]
@@ -268,21 +210,6 @@ impl Bucket {
     #[inline(always)]
     pub(crate) fn as_slots(&self) -> &[Slot; 2] {
         unsafe { &*(self as *const Self as *const [Slot; 2]) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn as_slots_mut(&mut self) -> &mut [Slot; 2] {
-        unsafe { &mut *(self as *mut Self as *mut [Slot; 2]) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_slots(slots: &[Slot; 2]) -> &Self {
-        unsafe { &*(slots.as_ptr() as *const Self) }
-    }
-
-    #[inline(always)]
-    pub(crate) fn from_slots_mut(slots: &mut [Slot; 2]) -> &mut Self {
-        unsafe { &mut *(slots.as_mut_ptr() as *mut Self) }
     }
 }
 
@@ -355,9 +282,6 @@ mod tests {
         assert!(entry.is_tombstone());
         assert!(!entry.is_empty());
         assert!(!entry.is_occupied());
-
-        entry.clear();
-        assert!(entry.is_empty());
     }
 
     #[test]
@@ -402,22 +326,13 @@ mod tests {
             b.entry_mut(i).set_kv(4, 4, i as u32, (0x100 + i) as u32);
         }
         assert!(b.is_full());
-        assert_eq!(b.occupied_count(), 0x15);
-        assert_eq!(b.empty_count(), 0);
-        assert_eq!(b.tombstone_count(), 0);
 
         let res = b.probe(0x9999, 0, |_| false);
         assert_eq!(res, ProbeResult::Full);
     }
 
     #[test]
-    fn ok_bucket_node_conversion_and_split_routing() {
-        let mut b = Bucket::new();
-        b.set_header(Bucket::BUCKET_BIT | 7);
-        let node = b.convert_to_node();
-        assert!(node.is_node());
-        assert_eq!(node.get_child(0), 7);
-
+    fn ok_bucket_split_routing() {
         let mut b2 = Bucket::new();
         b2.entry_mut(0).set_kv(4, 4, 1, 0b000101_000000);
         b2.entry_mut(1).set_kv(4, 4, 2, 0b001010_000000);

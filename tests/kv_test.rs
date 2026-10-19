@@ -252,7 +252,7 @@ fn ok_turbofox_del_lifecycle() {
     let cfg = TurboCfg::new(dir.path().join("del_lifecycle.db"));
     let db = TurboFox::create(cfg).unwrap();
 
-    assert_eq!(db.del(b"missing").unwrap(), false);
+    assert!(!db.del(b"missing").unwrap());
     assert_eq!(db.total_entries(), 0);
 
     db.set(b"k1", b"val1").unwrap();
@@ -260,18 +260,18 @@ fn ok_turbofox_del_lifecycle() {
     db.set(b"k3", b"val3").unwrap();
     assert_eq!(db.total_entries(), 3);
 
-    assert_eq!(db.del(b"k2").unwrap(), true);
+    assert!(db.del(b"k2").unwrap());
     assert_eq!(db.total_entries(), 2);
     assert_eq!(db.get(b"k2").unwrap(), None);
     assert_eq!(db.get(b"k1").unwrap(), Some(b"val1".to_vec()));
     assert_eq!(db.get(b"k3").unwrap(), Some(b"val3".to_vec()));
 
     // Repeated del on already deleted key
-    assert_eq!(db.del(b"k2").unwrap(), false);
+    assert!(!db.del(b"k2").unwrap());
     assert_eq!(db.total_entries(), 2);
 
-    assert_eq!(db.del(b"k1").unwrap(), true);
-    assert_eq!(db.del(b"k3").unwrap(), true);
+    assert!(db.del(b"k1").unwrap());
+    assert!(db.del(b"k3").unwrap());
     assert_eq!(db.total_entries(), 0);
     assert_eq!(db.get(b"k1").unwrap(), None);
     assert_eq!(db.get(b"k3").unwrap(), None);
@@ -289,7 +289,7 @@ fn ok_turbofox_del_tombstone_reuse_and_reinsert() {
     assert_eq!(db.get(b"reuse_key").unwrap(), Some(b"initial".to_vec()));
     assert_eq!(db.total_entries(), 1);
 
-    assert_eq!(db.del(b"reuse_key").unwrap(), true);
+    assert!(db.del(b"reuse_key").unwrap());
     assert_eq!(db.get(b"reuse_key").unwrap(), None);
     assert_eq!(db.total_entries(), 0);
 
@@ -312,7 +312,7 @@ fn ok_turbofox_del_persistence() {
         db.set(b"doomed", b"temporary_val").unwrap();
         assert_eq!(db.total_entries(), 2);
 
-        assert_eq!(db.del(b"doomed").unwrap(), true);
+        assert!(db.del(b"doomed").unwrap());
         assert_eq!(db.total_entries(), 1);
         db.sync().unwrap();
     }
@@ -342,7 +342,7 @@ fn ok_turbofox_del_reclaims_databuf_without_growth() {
     // Delete half of them (0x10 keys)
     for i in 0..0x10 {
         let key = format!("pre_reclaim_key_{:04x}", i);
-        assert_eq!(db.del(key.as_bytes()).unwrap(), true);
+        assert!(db.del(key.as_bytes()).unwrap());
     }
     assert_eq!(db.total_entries(), 0x10);
 
@@ -383,7 +383,7 @@ fn ok_turbofox_del_probe_across_consecutive_tombstones() {
     // Delete first 0x05 keys creating consecutive tombstones in probe paths
     for i in 0..0x05 {
         let key = format!("probe_chain_k_{:02x}", i);
-        assert_eq!(db.del(key.as_bytes()).unwrap(), true);
+        assert!(db.del(key.as_bytes()).unwrap());
     }
 
     // Verify trailing keys are still reachable across tombstones
@@ -396,7 +396,7 @@ fn ok_turbofox_del_probe_across_consecutive_tombstones() {
     // Delete remaining keys across tombstones
     for i in 0x05..0x0A {
         let key = format!("probe_chain_k_{:02x}", i);
-        assert_eq!(db.del(key.as_bytes()).unwrap(), true);
+        assert!(db.del(key.as_bytes()).unwrap());
     }
     assert_eq!(db.total_entries(), 0);
 
@@ -417,7 +417,7 @@ fn ok_turbofox_max_payload_roundtrip_and_del() {
     assert_eq!(db.total_entries(), 1);
     assert_eq!(db.get(&key).unwrap(), Some(val.clone()));
 
-    assert_eq!(db.del(&key).unwrap(), true);
+    assert!(db.del(&key).unwrap());
     assert_eq!(db.total_entries(), 0);
     assert_eq!(db.get(&key).unwrap(), None);
 
@@ -434,7 +434,7 @@ fn err_turbofox_oversized_key_del_and_get() {
     let huge_key = vec![0x58; 0x0001_0000];
 
     assert_eq!(db.get(&huge_key).unwrap(), None);
-    assert_eq!(db.del(&huge_key).unwrap(), false);
+    assert!(!db.del(&huge_key).unwrap());
 
     db.delete().unwrap();
 }

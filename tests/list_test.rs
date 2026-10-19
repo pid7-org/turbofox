@@ -111,50 +111,23 @@ fn ok_turbofox_list_type_isolation_and_invariants() {
     // 1. Setting KV key then attempting list operations must error
     db.set(b"kv_key", b"some_val").unwrap();
     let kv_as_list = db.list(b"kv_key");
-    assert!(matches!(
-        kv_as_list.append(b"item"),
-        Err(TurboError::InvalidType(_))
-    ));
-    assert!(matches!(
-        kv_as_list.pop(),
-        Err(TurboError::InvalidType(_))
-    ));
-    assert!(matches!(
-        kv_as_list.len(),
-        Err(TurboError::InvalidType(_))
-    ));
-    assert!(matches!(
-        kv_as_list.first(),
-        Err(TurboError::InvalidType(_))
-    ));
-    assert!(matches!(
-        kv_as_list.last(),
-        Err(TurboError::InvalidType(_))
-    ));
-    assert!(matches!(
-        kv_as_list.get_at(0),
-        Err(TurboError::InvalidType(_))
-    ));
-    assert!(matches!(
-        kv_as_list.iter(),
-        Err(TurboError::InvalidType(_))
-    ));
+    assert!(matches!(kv_as_list.append(b"item"), Err(TurboError::InvalidType(_))));
+    assert!(matches!(kv_as_list.pop(), Err(TurboError::InvalidType(_))));
+    assert!(matches!(kv_as_list.len(), Err(TurboError::InvalidType(_))));
+    assert!(matches!(kv_as_list.first(), Err(TurboError::InvalidType(_))));
+    assert!(matches!(kv_as_list.last(), Err(TurboError::InvalidType(_))));
+    assert!(matches!(kv_as_list.get_at(0), Err(TurboError::InvalidType(_))));
+    assert!(matches!(kv_as_list.iter(), Err(TurboError::InvalidType(_))));
 
     // 2. Creating a list then attempting KV get and set must error
     let list_key = db.list(b"actual_list");
     list_key.append(b"first_item").unwrap();
-    assert!(matches!(
-        db.get(b"actual_list"),
-        Err(TurboError::InvalidType(_))
-    ));
-    assert!(matches!(
-        db.set(b"actual_list", b"new_val"),
-        Err(TurboError::InvalidType(_))
-    ));
+    assert!(matches!(db.get(b"actual_list"), Err(TurboError::InvalidType(_))));
+    assert!(matches!(db.set(b"actual_list", b"new_val"), Err(TurboError::InvalidType(_))));
 
     // 3. Unified delete succeeds on both KV and list entries
-    assert_eq!(db.del(b"kv_key").unwrap(), true);
-    assert_eq!(db.del(b"actual_list").unwrap(), true);
+    assert!(db.del(b"kv_key").unwrap());
+    assert!(db.del(b"actual_list").unwrap());
     assert_eq!(db.total_entries(), 0);
     assert_eq!(list_key.len().unwrap(), 0);
 }
@@ -172,13 +145,13 @@ fn ok_turbofox_list_delete_and_recreation() {
     assert_eq!(db.total_entries(), 1);
 
     // Unified delete works identically through db.del
-    assert_eq!(db.del(b"to_delete").unwrap(), true);
+    assert!(db.del(b"to_delete").unwrap());
     assert_eq!(db.total_entries(), 0);
     assert_eq!(list.len().unwrap(), 0);
     assert_eq!(list.pop().unwrap(), None);
 
     // Deleting again returns false
-    assert_eq!(db.del(b"to_delete").unwrap(), false);
+    assert!(!db.del(b"to_delete").unwrap());
 
     // Recreate with new items
     list.append(b"resurrected_item").unwrap();
@@ -319,7 +292,7 @@ fn ok_turbofox_list_grow_and_reduction_recycles_without_page_growth() {
     }
 
     // Delete list completely and verify final zero-growth state
-    assert_eq!(db.del(b"recycle_list").unwrap(), true);
+    assert!(db.del(b"recycle_list").unwrap());
     assert_eq!(db.total_entries(), 0);
 
     db.sync().unwrap();

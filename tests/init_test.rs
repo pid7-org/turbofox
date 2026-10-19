@@ -16,7 +16,7 @@ fn ok_turbofox_public_init_and_sync() {
     let file_path =
         std::fs::read_dir(dir.path()).unwrap().filter_map(|e| e.ok()).next().unwrap().path();
     let meta = std::fs::metadata(file_path).unwrap();
-    assert_eq!(meta.len() as usize, (8 * PAGE_SIZE) as usize);
+    assert_eq!(meta.len() as usize, 8 * PAGE_SIZE);
 
     let reopened = TurboFox::open(cfg).unwrap();
     reopened.delete().unwrap();
@@ -95,7 +95,7 @@ fn err_turbofox_corrupted_file_length() {
     let err = TurboFox::open(cfg).unwrap_err();
     match err {
         TurboError::InvalidSize { expected, found } => {
-            assert_eq!(expected, (8 * PAGE_SIZE) as usize);
+            assert_eq!(expected, 8 * PAGE_SIZE);
             assert_eq!(found, 0x2000);
         }
         TurboError::Storage { .. } => {}

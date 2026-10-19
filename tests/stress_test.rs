@@ -309,10 +309,7 @@ fn ok_stress_concurrent_mixed_set_del_get() {
 
 #[test]
 fn ok_stress_dynamic_multithread_kv_lifecycle_validation() {
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(0x04)
-        .max(0x02);
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0x04).max(0x02);
     let dir = tempdir().unwrap();
     let cfg = TurboCfg::new(dir.path().join("dyn_kv_val.db"));
     let db = TurboFox::create(cfg).unwrap();
@@ -408,10 +405,7 @@ fn ok_stress_dynamic_multithread_kv_lifecycle_validation() {
 
 #[test]
 fn ok_stress_dynamic_multithread_list_lifecycle_validation() {
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(0x04)
-        .max(0x02);
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0x04).max(0x02);
     let dir = tempdir().unwrap();
     let cfg = TurboCfg::new(dir.path().join("dyn_list_val.db"));
     let db = TurboFox::create(cfg).unwrap();
@@ -509,10 +503,7 @@ fn ok_stress_dynamic_multithread_list_lifecycle_validation() {
 
 #[test]
 fn ok_stress_dynamic_multithread_mixed_all_ops_hammer() {
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(0x04)
-        .max(0x02);
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0x04).max(0x02);
     let dir = tempdir().unwrap();
     let cfg = TurboCfg::new(dir.path().join("dyn_hammer.db"));
     let db = TurboFox::create(cfg).unwrap();
@@ -562,4 +553,3 @@ fn ok_stress_dynamic_multithread_mixed_all_ops_hammer() {
     db.sync().unwrap();
     db.delete().unwrap();
 }
-

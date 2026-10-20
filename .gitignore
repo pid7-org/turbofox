@@ -1,1 +1,11 @@
 /target
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+bencher/id_ed25519*
+
+# Benchmark outputs
+results/

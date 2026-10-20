@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 560" width="1024" height="560" style="background:#eff1f5; font-family:'JetBrains Mono','Fira Code','Roboto Mono',Menlo,Monaco,Consolas,monospace;">
+<rect width="1024" height="560" rx="12" fill="#eff1f5" stroke="#ccd0da" stroke-width="1"/>
+<text x="80" y="36" fill="#4c4f69" font-size="16" font-weight="bold">TurboFox NVMe Persistence &amp; Journal Latency</text>
+<text x="80" y="58" fill="#6c6f85" font-size="10">Logarithmic latency profile (µs) for disk-bound ingest and churn</text>
+<line x1="80" y1="440.0" x2="720" y2="440.0" stroke="#dce0e8" stroke-width="1"/>
+<text x="72" y="444.0" fill="#8c8fa1" font-size="9" text-anchor="end">1 µs</text>
+<line x1="80" y1="369.6" x2="720" y2="369.6" stroke="#dce0e8" stroke-width="1"/>
+<text x="72" y="373.6" fill="#8c8fa1" font-size="9" text-anchor="end">10^1 µs</text>
+<line x1="80" y1="299.2" x2="720" y2="299.2" stroke="#dce0e8" stroke-width="1"/>
+<text x="72" y="303.2" fill="#8c8fa1" font-size="9" text-anchor="end">10^2 µs</text>
+<line x1="80" y1="228.8" x2="720" y2="228.8" stroke="#dce0e8" stroke-width="1"/>
+<text x="72" y="232.8" fill="#8c8fa1" font-size="9" text-anchor="end">10^3 µs</text>
+<line x1="80" y1="158.4" x2="720" y2="158.4" stroke="#dce0e8" stroke-width="1"/>
+<text x="72" y="162.4" fill="#8c8fa1" font-size="9" text-anchor="end">10^4 µs</text>
+<line x1="80" y1="88.0" x2="720" y2="88.0" stroke="#dce0e8" stroke-width="1"/>
+<text x="72" y="92.0" fill="#8c8fa1" font-size="9" text-anchor="end">10^5 µs</text>
+<line x1="80.0" y1="88" x2="80.0" y2="440" stroke="#e6e9ef" stroke-width="1"/>
+<text x="80.0" y="458" fill="#6c6f85" font-size="9" text-anchor="middle">min</text>
+<line x1="171.4" y1="88" x2="171.4" y2="440" stroke="#e6e9ef" stroke-width="1"/>
+<text x="171.4" y="458" fill="#6c6f85" font-size="9" text-anchor="middle">p50</text>
+<line x1="262.9" y1="88" x2="262.9" y2="440" stroke="#e6e9ef" stroke-width="1"/>
+<text x="262.9" y="458" fill="#6c6f85" font-size="9" text-anchor="middle">p75</text>
+<line x1="354.3" y1="88" x2="354.3" y2="440" stroke="#e6e9ef" stroke-width="1"/>
+<text x="354.3" y="458" fill="#6c6f85" font-size="9" text-anchor="middle">p90</text>
+<line x1="445.7" y1="88" x2="445.7" y2="440" stroke="#e6e9ef" stroke-width="1"/>
+<text x="445.7" y="458" fill="#6c6f85" font-size="9" text-anchor="middle">p95</text>
+<line x1="537.1" y1="88" x2="537.1" y2="440" stroke="#e6e9ef" stroke-width="1"/>
+<text x="537.1" y="458" fill="#6c6f85" font-size="9" text-anchor="middle">p99</text>
+<line x1="628.6" y1="88" x2="628.6" y2="440" stroke="#e6e9ef" stroke-width="1"/>
+<text x="628.6" y="458" fill="#6c6f85" font-size="9" text-anchor="middle">p99.9</text>
+<line x1="720.0" y1="88" x2="720.0" y2="440" stroke="#e6e9ef" stroke-width="1"/>
+<text x="720.0" y="458" fill="#6c6f85" font-size="9" text-anchor="middle">max</text>
+<polyline points="80.0,433.9 171.4,399.4 262.9,387.2 354.3,385.0 445.7,383.3 537.1,183.6 628.6,176.1 720.0,166.9" fill="none" stroke="#1e66f5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="80.0" cy="433.9" r="3.2" fill="#1e66f5" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="171.4" cy="399.4" r="3.2" fill="#1e66f5" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="262.9" cy="387.2" r="3.2" fill="#1e66f5" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="354.3" cy="385.0" r="3.2" fill="#1e66f5" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="445.7" cy="383.3" r="3.2" fill="#1e66f5" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="537.1" cy="183.6" r="3.2" fill="#1e66f5" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="628.6" cy="176.1" r="3.2" fill="#1e66f5" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="720.0" cy="166.9" r="3.2" fill="#1e66f5" stroke="#eff1f5" stroke-width="1.2"/>
+<rect x="740" y="96" width="10" height="10" rx="2" fill="#1e66f5"/>
+<text x="756" y="104" fill="#4c4f69" font-size="9" font-weight="600">Seq Ingest (1T)</text>
+<polyline points="80.0,432.5 171.4,398.3 262.9,384.3 354.3,367.6 445.7,294.0 537.1,177.1 628.6,174.2 720.0,99.2" fill="none" stroke="#40a02b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="80.0" cy="432.5" r="3.2" fill="#40a02b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="171.4" cy="398.3" r="3.2" fill="#40a02b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="262.9" cy="384.3" r="3.2" fill="#40a02b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="354.3" cy="367.6" r="3.2" fill="#40a02b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="445.7" cy="294.0" r="3.2" fill="#40a02b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="537.1" cy="177.1" r="3.2" fill="#40a02b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="628.6" cy="174.2" r="3.2" fill="#40a02b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="720.0" cy="99.2" r="3.2" fill="#40a02b" stroke="#eff1f5" stroke-width="1.2"/>
+<rect x="740" y="120" width="10" height="10" rx="2" fill="#40a02b"/>
+<text x="756" y="128" fill="#4c4f69" font-size="9" font-weight="600">Seq Ingest (2T)</text>
+<polyline points="80.0,432.0 171.4,389.8 262.9,382.4 354.3,370.6 445.7,291.9 537.1,161.3 628.6,127.6 720.0,98.9" fill="none" stroke="#fe640b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="80.0" cy="432.0" r="3.2" fill="#fe640b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="171.4" cy="389.8" r="3.2" fill="#fe640b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="262.9" cy="382.4" r="3.2" fill="#fe640b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="354.3" cy="370.6" r="3.2" fill="#fe640b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="445.7" cy="291.9" r="3.2" fill="#fe640b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="537.1" cy="161.3" r="3.2" fill="#fe640b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="628.6" cy="127.6" r="3.2" fill="#fe640b" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="720.0" cy="98.9" r="3.2" fill="#fe640b" stroke="#eff1f5" stroke-width="1.2"/>
+<rect x="740" y="144" width="10" height="10" rx="2" fill="#fe640b"/>
+<text x="756" y="152" fill="#4c4f69" font-size="9" font-weight="600">Seq Ingest (4T)</text>
+<polyline points="80.0,431.3 171.4,402.5 262.9,386.7 354.3,379.2 445.7,376.3 537.1,367.2 628.6,351.8 720.0,311.9" fill="none" stroke="#8839ef" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="80.0" cy="431.3" r="3.2" fill="#8839ef" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="171.4" cy="402.5" r="3.2" fill="#8839ef" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="262.9" cy="386.7" r="3.2" fill="#8839ef" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="354.3" cy="379.2" r="3.2" fill="#8839ef" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="445.7" cy="376.3" r="3.2" fill="#8839ef" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="537.1" cy="367.2" r="3.2" fill="#8839ef" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="628.6" cy="351.8" r="3.2" fill="#8839ef" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="720.0" cy="311.9" r="3.2" fill="#8839ef" stroke="#eff1f5" stroke-width="1.2"/>
+<rect x="740" y="168" width="10" height="10" rx="2" fill="#8839ef"/>
+<text x="756" y="176" fill="#4c4f69" font-size="9" font-weight="600">Churn 50/50 (1T)</text>
+<polyline points="80.0,429.7 171.4,390.2 262.9,376.3 354.3,367.9 445.7,363.9 537.1,353.2 628.6,338.0 720.0,211.5" fill="none" stroke="#ea76cb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="80.0" cy="429.7" r="3.2" fill="#ea76cb" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="171.4" cy="390.2" r="3.2" fill="#ea76cb" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="262.9" cy="376.3" r="3.2" fill="#ea76cb" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="354.3" cy="367.9" r="3.2" fill="#ea76cb" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="445.7" cy="363.9" r="3.2" fill="#ea76cb" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="537.1" cy="353.2" r="3.2" fill="#ea76cb" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="628.6" cy="338.0" r="3.2" fill="#ea76cb" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="720.0" cy="211.5" r="3.2" fill="#ea76cb" stroke="#eff1f5" stroke-width="1.2"/>
+<rect x="740" y="192" width="10" height="10" rx="2" fill="#ea76cb"/>
+<text x="756" y="200" fill="#4c4f69" font-size="9" font-weight="600">Churn 50/50 (2T)</text>
+<polyline points="80.0,428.9 171.4,389.7 262.9,375.6 354.3,367.3 445.7,362.0 537.1,349.3 628.6,207.3 720.0,171.3" fill="none" stroke="#d20f39" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="80.0" cy="428.9" r="3.2" fill="#d20f39" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="171.4" cy="389.7" r="3.2" fill="#d20f39" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="262.9" cy="375.6" r="3.2" fill="#d20f39" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="354.3" cy="367.3" r="3.2" fill="#d20f39" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="445.7" cy="362.0" r="3.2" fill="#d20f39" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="537.1" cy="349.3" r="3.2" fill="#d20f39" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="628.6" cy="207.3" r="3.2" fill="#d20f39" stroke="#eff1f5" stroke-width="1.2"/>
+<circle cx="720.0" cy="171.3" r="3.2" fill="#d20f39" stroke="#eff1f5" stroke-width="1.2"/>
+<rect x="740" y="216" width="10" height="10" rx="2" fill="#d20f39"/>
+<text x="756" y="224" fill="#4c4f69" font-size="9" font-weight="600">Churn 50/50 (4T)</text>
+</svg>

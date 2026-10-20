@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056 480" width="1056" height="480" style="background:#eff1f5; font-family:'JetBrains Mono','Fira Code','Roboto Mono',Menlo,Monaco,Consolas,monospace;">
+<rect width="1056" height="480" rx="12" fill="#eff1f5" stroke="#ccd0da" stroke-width="1"/>
+<text x="48" y="34" fill="#4c4f69" font-size="16" font-weight="bold">TurboFox On-Disk Storage Footprint &amp; Tombstone Overhead</text>
+<text x="48" y="56" fill="#6c6f85" font-size="10">Final database size (MB) after 0x10000 operations per workload</text>
+<line x1="280.0" y1="85" x2="280.0" y2="389" stroke="#dce0e8" stroke-width="1"/>
+<text x="280.0" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">0 MB</text>
+<line x1="397.3" y1="85" x2="397.3" y2="389" stroke="#dce0e8" stroke-width="1"/>
+<text x="397.3" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">5 MB</text>
+<line x1="514.7" y1="85" x2="514.7" y2="389" stroke="#dce0e8" stroke-width="1"/>
+<text x="514.7" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">10 MB</text>
+<line x1="632.0" y1="85" x2="632.0" y2="389" stroke="#dce0e8" stroke-width="1"/>
+<text x="632.0" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">15 MB</text>
+<line x1="749.3" y1="85" x2="749.3" y2="389" stroke="#dce0e8" stroke-width="1"/>
+<text x="749.3" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">20 MB</text>
+<line x1="866.7" y1="85" x2="866.7" y2="389" stroke="#dce0e8" stroke-width="1"/>
+<text x="866.7" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">25 MB</text>
+<line x1="984.0" y1="85" x2="984.0" y2="389" stroke="#dce0e8" stroke-width="1"/>
+<text x="984.0" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">30 MB</text>
+<text x="270" y="114.3" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Churn 50/50 (Tombstones)</text>
+<rect x="280" y="101.3" width="616.8" height="18" rx="3" fill="#d20f39"/>
+<text x="902.8" y="114.3" fill="#d20f39" font-size="9" font-weight="bold">26.29 MB (27,561,984 B)</text>
+<text x="270" y="165.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Sequential Append (WAL)</text>
+<rect x="280" y="152.0" width="256.0" height="18" rx="3" fill="#1e66f5"/>
+<text x="542.0" y="165.0" fill="#1e66f5" font-size="9" font-weight="bold">10.91 MB (11,440,128 B)</text>
+<text x="270" y="215.7" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Point Hit Baseline</text>
+<rect x="280" y="202.7" width="254.6" height="18" rx="3" fill="#40a02b"/>
+<text x="540.6" y="215.7" fill="#40a02b" font-size="9" font-weight="bold">10.85 MB (11,374,592 B)</text>
+<text x="270" y="266.3" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Delete Hit Baseline</text>
+<rect x="280" y="253.3" width="254.6" height="18" rx="3" fill="#fe640b"/>
+<text x="540.6" y="266.3" fill="#fe640b" font-size="9" font-weight="bold">10.85 MB (11,374,592 B)</text>
+<text x="270" y="317.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Mixed 95/5 Baseline</text>
+<rect x="280" y="304.0" width="254.6" height="18" rx="3" fill="#179299"/>
+<text x="540.6" y="317.0" fill="#179299" font-size="9" font-weight="bold">10.85 MB (11,374,592 B)</text>
+<text x="270" y="367.7" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">High Contention (Key Overwrite)</text>
+<rect x="280" y="354.7" width="2.0" height="18" rx="3" fill="#8839ef"/>
+<text x="288.0" y="367.7" fill="#8839ef" font-size="9" font-weight="bold">0.03 MB (32,768 B)</text>
+</svg>

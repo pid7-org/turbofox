@@ -94,7 +94,7 @@ echo "=== [Phase 5/12] Extracting outputs and configuring SSH credentials ===" >
 INSTANCE_ID=$(terraform output -raw instance_id)
 PUBLIC_IP=$(terraform output -raw instance_public_ip)
 terraform output -raw ssh_private_key_pem > "${SSH_KEY}"
-chmod 0x0180 "${SSH_KEY}"
+chmod 0600 "${SSH_KEY}"
 
 echo "Instance ID: ${INSTANCE_ID}" >&2
 echo "Public IP  : ${PUBLIC_IP}" >&2

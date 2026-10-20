@@ -21,11 +21,16 @@ OUTPUT_JSON="${RESULTS_DIR}/turbofox_benchmark_results.json"
 SSH_KEY="${BENCHER_DIR}/id_ed25519"
 
 OPS_ARG="0x186A0"
+BRANCH_ARG="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ops)
       OPS_ARG="$2"
+      shift 2
+      ;;
+    --branch)
+      BRANCH_ARG="$2"
       shift 2
       ;;
     *)
@@ -119,7 +124,7 @@ echo "Validation passed: EC2 instance is running" >&2
 
 echo "=== [Phase 7/12] Validating SSH connectivity and cloud-init readiness ===" >&2
 SSH_OPTS=(-i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-  -o ConnectTimeout=5 -o BatchMode=yes)
+  -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=120)
 
 SSH_READY=0
 for attempt in $(seq 1 0x3C); do
@@ -137,20 +142,19 @@ if [[ ${SSH_READY} -ne 1 ]]; then
 fi
 echo "Validation passed: SSH connection established" >&2
 
-echo "=== [Phase 8/12] Synchronizing benchmark suites to remote host ===" >&2
-ssh "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" "mkdir -p turbofox/scripts"
+echo "=== [Phase 8/12] Synchronizing benchmark bootstrapper to remote host ===" >&2
 scp "${SSH_OPTS[@]}" "${ROOT_DIR}/scripts/init_ec2_bench.sh" \
-  "${ROOT_DIR}/scripts/run_ec2_benches.sh" "ubuntu@${PUBLIC_IP}:turbofox/scripts/"
-ssh "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" "chmod +x turbofox/scripts/*.sh"
-echo "Validation passed: scripts synchronized and marked executable" >&2
+  "ubuntu@${PUBLIC_IP}:/tmp/init_ec2_bench.sh"
+ssh "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" "chmod +x /tmp/init_ec2_bench.sh"
+echo "Validation passed: bootstrapper synchronized and marked executable" >&2
 
 echo "=== [Phase 9/12] Executing remote benchmark suite ===" >&2
 ssh "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" \
-  "cd turbofox && ./scripts/init_ec2_bench.sh --run --ops '${OPS_ARG}' --out results.json"
+  "/tmp/init_ec2_bench.sh --run --branch '${BRANCH_ARG}' --ops '${OPS_ARG}' --out /tmp/results.json"
 echo "Validation passed: remote benchmark suite finished successfully" >&2
 
 echo "=== [Phase 10/12] Downloading and validating benchmark telemetry ===" >&2
-scp "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}:turbofox/results.json" "${OUTPUT_JSON}"
+scp "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}:/tmp/results.json" "${OUTPUT_JSON}"
 
 if [[ ! -s "${OUTPUT_JSON}" ]]; then
   echo "Error: Downloaded telemetry file is empty or missing" >&2

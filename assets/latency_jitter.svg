@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 580" width="1120" height="580" style="background:#eff1f5; font-family:'JetBrains Mono','Fira Code','Roboto Mono',Menlo,Monaco,Consolas,monospace;">
+<rect width="1120" height="580" rx="12" fill="#eff1f5" stroke="#ccd0da" stroke-width="1"/>
+<text x="48" y="34" fill="#4c4f69" font-size="16" font-weight="bold">TurboFox Latency Predictability &amp; Jitter Profile (CV = σ / μ)</text>
+<text x="48" y="56" fill="#6c6f85" font-size="10">Coefficient of variation (1T baseline): lower indicates higher SLA predictability</text>
+<line x1="256.0" y1="85" x2="256.0" y2="517" stroke="#dce0e8" stroke-width="1"/>
+<text x="256.0" y="535" fill="#8c8fa1" font-size="9" text-anchor="middle">0.0</text>
+<line x1="356.0" y1="85" x2="356.0" y2="517" stroke="#dce0e8" stroke-width="1"/>
+<text x="356.0" y="535" fill="#8c8fa1" font-size="9" text-anchor="middle">1.0</text>
+<line x1="456.0" y1="85" x2="456.0" y2="517" stroke="#dce0e8" stroke-width="1"/>
+<text x="456.0" y="535" fill="#8c8fa1" font-size="9" text-anchor="middle">2.0</text>
+<line x1="556.0" y1="85" x2="556.0" y2="517" stroke="#dce0e8" stroke-width="1"/>
+<text x="556.0" y="535" fill="#8c8fa1" font-size="9" text-anchor="middle">3.0</text>
+<line x1="656.0" y1="85" x2="656.0" y2="517" stroke="#dce0e8" stroke-width="1"/>
+<text x="656.0" y="535" fill="#8c8fa1" font-size="9" text-anchor="middle">4.0</text>
+<line x1="756.0" y1="85" x2="756.0" y2="517" stroke="#dce0e8" stroke-width="1"/>
+<text x="756.0" y="535" fill="#8c8fa1" font-size="9" text-anchor="middle">5.0</text>
+<line x1="856.0" y1="85" x2="856.0" y2="517" stroke="#dce0e8" stroke-width="1"/>
+<text x="856.0" y="535" fill="#8c8fa1" font-size="9" text-anchor="middle">6.0</text>
+<line x1="956.0" y1="85" x2="956.0" y2="517" stroke="#dce0e8" stroke-width="1"/>
+<text x="956.0" y="535" fill="#8c8fa1" font-size="9" text-anchor="middle">7.0</text>
+<line x1="1056.0" y1="85" x2="1056.0" y2="517" stroke="#dce0e8" stroke-width="1"/>
+<text x="1056.0" y="535" fill="#8c8fa1" font-size="9" text-anchor="middle">8.0</text>
+<text x="246" y="113.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Seq Ingest (WAL)</text>
+<rect x="256" y="102.0" width="736.9" height="14" rx="2" fill="#d20f39"/>
+<text x="998.9" y="113.0" fill="#d20f39" font-size="8" font-weight="600">CV=7.37 (μ=77.24µs, σ=569.15µs)</text>
+<text x="246" y="161.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">High Contention</text>
+<rect x="256" y="150.0" width="76.7" height="14" rx="2" fill="#8839ef"/>
+<text x="338.7" y="161.0" fill="#8839ef" font-size="8" font-weight="600">CV=0.77 (μ=0.30µs, σ=0.23µs)</text>
+<text x="246" y="209.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Point Miss</text>
+<rect x="256" y="198.0" width="62.5" height="14" rx="2" fill="#04a5e5"/>
+<text x="324.5" y="209.0" fill="#04a5e5" font-size="8" font-weight="600">CV=0.62 (μ=0.48µs, σ=0.30µs)</text>
+<text x="246" y="257.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Mixed 95/5</text>
+<rect x="256" y="246.0" width="60.5" height="14" rx="2" fill="#fe640b"/>
+<text x="322.5" y="257.0" fill="#fe640b" font-size="8" font-weight="600">CV=0.60 (μ=0.86µs, σ=0.52µs)</text>
+<text x="246" y="305.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Churn 50/50</text>
+<rect x="256" y="294.0" width="54.3" height="14" rx="2" fill="#ea76cb"/>
+<text x="316.3" y="305.0" fill="#ea76cb" font-size="8" font-weight="600">CV=0.54 (μ=4.18µs, σ=2.27µs)</text>
+<text x="246" y="353.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Point Hit</text>
+<rect x="256" y="342.0" width="53.1" height="14" rx="2" fill="#1e66f5"/>
+<text x="315.1" y="353.0" fill="#1e66f5" font-size="8" font-weight="600">CV=0.53 (μ=0.81µs, σ=0.43µs)</text>
+<text x="246" y="401.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Delete Miss</text>
+<rect x="256" y="390.0" width="46.8" height="14" rx="2" fill="#179299"/>
+<text x="308.8" y="401.0" fill="#179299" font-size="8" font-weight="600">CV=0.47 (μ=0.47µs, σ=0.22µs)</text>
+<text x="246" y="449.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Zipfian 80/20</text>
+<rect x="256" y="438.0" width="40.2" height="14" rx="2" fill="#7287fd"/>
+<text x="302.2" y="449.0" fill="#7287fd" font-size="8" font-weight="600">CV=0.40 (μ=0.82µs, σ=0.33µs)</text>
+<text x="246" y="497.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Delete Hit</text>
+<rect x="256" y="486.0" width="39.2" height="14" rx="2" fill="#40a02b"/>
+<text x="301.2" y="497.0" fill="#40a02b" font-size="8" font-weight="600">CV=0.39 (μ=1.48µs, σ=0.58µs)</text>
+</svg>

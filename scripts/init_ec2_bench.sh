@@ -83,7 +83,7 @@ if ! mountpoint -q "${BENCH_DIR}"; then
     $SUDO mkfs.xfs -f "${NVME_DEV}"
     $SUDO mkdir -p "${BENCH_DIR}"
     $SUDO mount -o noatime,nodiratime,logbufs=8 "${NVME_DEV}" "${BENCH_DIR}"
-    $SUDO chmod 0x01FF "${BENCH_DIR}"
+    $SUDO chmod 0777 "${BENCH_DIR}"
   else
     echo "No unmounted NVMe block device found; falling back to /tmp/turbofox_bench" >&2
     BENCH_DIR="/tmp/turbofox_bench"

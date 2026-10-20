@@ -13,6 +13,7 @@ set -euo pipefail
 
 AUTO_RUN=0
 REPO_URL="https://github.com/pid7-org/turbofox.git"
+BRANCH="master"
 BENCH_DIR="/mnt/nvme0n1"
 PASSTHROUGH_ARGS=()
 
@@ -24,6 +25,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --repo)
       REPO_URL="$2"
+      shift 2
+      ;;
+    --branch)
+      BRANCH="$2"
       shift 2
       ;;
     --bench-dir)
@@ -111,8 +116,9 @@ fi
 
 if [[ ${HAS_CARGO} -eq 0 ]]; then
   TARGET_CLONE="${HOME}/turbofox"
-  if [[ ! -d "${TARGET_CLONE}" ]]; then
-    git clone "${REPO_URL}" "${TARGET_CLONE}"
+  if [[ ! -f "${TARGET_CLONE}/Cargo.toml" ]]; then
+    rm -rf "${TARGET_CLONE}"
+    git clone --depth 1 -b "${BRANCH}" "${REPO_URL}" "${TARGET_CLONE}"
   fi
   WORK_DIR="${TARGET_CLONE}"
 fi

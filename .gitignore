@@ -9,3 +9,4 @@ bencher/id_ed25519*
 
 # Benchmark outputs
 results/
+/tmp/

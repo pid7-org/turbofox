@@ -16,7 +16,7 @@ set -euo pipefail
 
 BENCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${BENCHER_DIR}/.." && pwd)"
-RESULTS_DIR="${ROOT_DIR}/results"
+RESULTS_DIR="${ROOT_DIR}/tmp"
 OUTPUT_JSON="${RESULTS_DIR}/turbofox_benchmark_results.json"
 SSH_KEY="${BENCHER_DIR}/id_ed25519"
 

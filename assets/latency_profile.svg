@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960" height="540" style="background:#eff1f5; font-family:'JetBrains Mono','Fira Code','Roboto Mono',Menlo,Monaco,Consolas,monospace;">
+<rect width="960" height="540" rx="12" fill="#eff1f5" stroke="#ccd0da" stroke-width="1"/>
+<text x="90" y="34" fill="#4c4f69" font-size="16" font-weight="bold">TurboFox In-Memory Latency Percentile Profile</text>
+<text x="90" y="56" fill="#6c6f85" font-size="10">Platform: AWS c5d.large (1 Thread baseline) | Logarithmic latency scale (0.1 µs to 100 µs)</text>
+<rect x="90" y="325.0" width="600" height="120.0" fill="#40a02b" fill-opacity="0.1"/>
+<text x="684" y="339.0" fill="#40a02b" font-size="8" font-weight="bold" text-anchor="end">SUB-MICROSECOND REGION (&lt; 1.0 µs)</text>
+<line x1="90" y1="445.0" x2="690" y2="445.0" stroke="#dce0e8" stroke-width="1"/>
+<text x="82" y="449.0" fill="#6c6f85" font-size="10" text-anchor="end">0.1 µs</text>
+<line x1="90" y1="325.0" x2="690" y2="325.0" stroke="#dce0e8" stroke-width="1"/>
+<text x="82" y="329.0" fill="#6c6f85" font-size="10" text-anchor="end">1.0 µs</text>
+<line x1="90" y1="205.0" x2="690" y2="205.0" stroke="#dce0e8" stroke-width="1"/>
+<text x="82" y="209.0" fill="#6c6f85" font-size="10" text-anchor="end">10 µs</text>
+<line x1="90" y1="85.0" x2="690" y2="85.0" stroke="#dce0e8" stroke-width="1"/>
+<text x="82" y="89.0" fill="#6c6f85" font-size="10" text-anchor="end">100 µs</text>
+<line x1="90" y1="408.9" x2="690" y2="408.9" stroke="#e6e9ef" stroke-width="1" stroke-dasharray="2,2"/>
+<line x1="90" y1="361.1" x2="690" y2="361.1" stroke="#e6e9ef" stroke-width="1" stroke-dasharray="2,2"/>
+<line x1="90" y1="288.9" x2="690" y2="288.9" stroke="#e6e9ef" stroke-width="1" stroke-dasharray="2,2"/>
+<line x1="90" y1="241.1" x2="690" y2="241.1" stroke="#e6e9ef" stroke-width="1" stroke-dasharray="2,2"/>
+<line x1="90" y1="168.9" x2="690" y2="168.9" stroke="#e6e9ef" stroke-width="1" stroke-dasharray="2,2"/>
+<line x1="90" y1="121.1" x2="690" y2="121.1" stroke="#e6e9ef" stroke-width="1" stroke-dasharray="2,2"/>
+<line x1="90.0" y1="85" x2="90.0" y2="445" stroke="#dce0e8" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="90.0" y="465" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">p50</text>
+<line x1="210.0" y1="85" x2="210.0" y2="445" stroke="#dce0e8" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="210.0" y="465" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">p75</text>
+<line x1="330.0" y1="85" x2="330.0" y2="445" stroke="#dce0e8" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="330.0" y="465" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">p90</text>
+<line x1="450.0" y1="85" x2="450.0" y2="445" stroke="#dce0e8" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="450.0" y="465" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">p95</text>
+<line x1="570.0" y1="85" x2="570.0" y2="445" stroke="#dce0e8" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="570.0" y="465" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">p99</text>
+<line x1="690.0" y1="85" x2="690.0" y2="445" stroke="#dce0e8" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="690.0" y="465" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">p99.9</text>
+<line x1="90" y1="85" x2="90" y2="445" stroke="#9ca0b0" stroke-width="1"/>
+<line x1="90" y1="445" x2="690" y2="445" stroke="#9ca0b0" stroke-width="1"/>
+<polyline points="90.0,387.7 210.0,387.7 330.0,387.7 450.0,386.0 570.0,384.4 690.0,316.4" fill="none" stroke="#8839ef" stroke-width="2"/>
+<circle cx="90.0" cy="387.7" r="3" fill="#8839ef"><title>DELETE: Contended (p50): 0.30 µs</title></circle>
+<circle cx="210.0" cy="387.7" r="3" fill="#8839ef"><title>DELETE: Contended (p75): 0.30 µs</title></circle>
+<circle cx="330.0" cy="387.7" r="3" fill="#8839ef"><title>DELETE: Contended (p90): 0.30 µs</title></circle>
+<circle cx="450.0" cy="386.0" r="3" fill="#8839ef"><title>DELETE: Contended (p95): 0.31 µs</title></circle>
+<circle cx="570.0" cy="384.4" r="3" fill="#8839ef"><title>DELETE: Contended (p99): 0.32 µs</title></circle>
+<circle cx="690.0" cy="316.4" r="3" fill="#8839ef"><title>DELETE: Contended (p99.9): 1.18 µs</title></circle>
+<polyline points="90.0,367.8 210.0,364.3 330.0,353.4 450.0,343.6 570.0,332.9 690.0,262.0" fill="none" stroke="#04a5e5" stroke-width="2"/>
+<circle cx="90.0" cy="367.8" r="3" fill="#04a5e5"><title>READ: Missing Key (p50): 0.44 µs</title></circle>
+<circle cx="210.0" cy="364.3" r="3" fill="#04a5e5"><title>READ: Missing Key (p75): 0.47 µs</title></circle>
+<circle cx="330.0" cy="353.4" r="3" fill="#04a5e5"><title>READ: Missing Key (p90): 0.58 µs</title></circle>
+<circle cx="450.0" cy="343.6" r="3" fill="#04a5e5"><title>READ: Missing Key (p95): 0.70 µs</title></circle>
+<circle cx="570.0" cy="332.9" r="3" fill="#04a5e5"><title>READ: Missing Key (p99): 0.86 µs</title></circle>
+<circle cx="690.0" cy="262.0" r="3" fill="#04a5e5"><title>READ: Missing Key (p99.9): 3.35 µs</title></circle>
+<polyline points="90.0,369.0 210.0,366.6 330.0,355.2 450.0,345.9 570.0,336.0 690.0,263.9" fill="none" stroke="#179299" stroke-width="2"/>
+<circle cx="90.0" cy="369.0" r="3" fill="#179299"><title>DELETE: Missing Key (p50): 0.43 µs</title></circle>
+<circle cx="210.0" cy="366.6" r="3" fill="#179299"><title>DELETE: Missing Key (p75): 0.45 µs</title></circle>
+<circle cx="330.0" cy="355.2" r="3" fill="#179299"><title>DELETE: Missing Key (p90): 0.56 µs</title></circle>
+<circle cx="450.0" cy="345.9" r="3" fill="#179299"><title>DELETE: Missing Key (p95): 0.67 µs</title></circle>
+<circle cx="570.0" cy="336.0" r="3" fill="#179299"><title>DELETE: Missing Key (p99): 0.81 µs</title></circle>
+<circle cx="690.0" cy="263.9" r="3" fill="#179299"><title>DELETE: Missing Key (p99.9): 3.23 µs</title></circle>
+<polyline points="90.0,339.3 210.0,335.3 330.0,325.5 450.0,322.5 570.0,313.0 690.0,242.4" fill="none" stroke="#1e66f5" stroke-width="2"/>
+<circle cx="90.0" cy="339.3" r="3" fill="#1e66f5"><title>READ: Existing Key (p50): 0.76 µs</title></circle>
+<circle cx="210.0" cy="335.3" r="3" fill="#1e66f5"><title>READ: Existing Key (p75): 0.82 µs</title></circle>
+<circle cx="330.0" cy="325.5" r="3" fill="#1e66f5"><title>READ: Existing Key (p90): 0.99 µs</title></circle>
+<circle cx="450.0" cy="322.5" r="3" fill="#1e66f5"><title>READ: Existing Key (p95): 1.05 µs</title></circle>
+<circle cx="570.0" cy="313.0" r="3" fill="#1e66f5"><title>READ: Existing Key (p99): 1.26 µs</title></circle>
+<circle cx="690.0" cy="242.4" r="3" fill="#1e66f5"><title>READ: Existing Key (p99.9): 4.88 µs</title></circle>
+<polyline points="90.0,339.3 210.0,334.1 330.0,326.6 450.0,322.0 570.0,312.5 690.0,230.3" fill="none" stroke="#7287fd" stroke-width="2"/>
+<circle cx="90.0" cy="339.3" r="3" fill="#7287fd"><title>READ: Zipfian 80/20 (p50): 0.76 µs</title></circle>
+<circle cx="210.0" cy="334.1" r="3" fill="#7287fd"><title>READ: Zipfian 80/20 (p75): 0.84 µs</title></circle>
+<circle cx="330.0" cy="326.6" r="3" fill="#7287fd"><title>READ: Zipfian 80/20 (p90): 0.97 µs</title></circle>
+<circle cx="450.0" cy="322.0" r="3" fill="#7287fd"><title>READ: Zipfian 80/20 (p95): 1.06 µs</title></circle>
+<circle cx="570.0" cy="312.5" r="3" fill="#7287fd"><title>READ: Zipfian 80/20 (p99): 1.27 µs</title></circle>
+<circle cx="690.0" cy="230.3" r="3" fill="#7287fd"><title>READ: Zipfian 80/20 (p99.9): 6.15 µs</title></circle>
+<polyline points="90.0,339.3 210.0,334.7 330.0,322.5 450.0,310.9 570.0,267.2 690.0,227.1" fill="none" stroke="#fe640b" stroke-width="2"/>
+<circle cx="90.0" cy="339.3" r="3" fill="#fe640b"><title>READ+WRITE: Mixed 95/5 (p50): 0.76 µs</title></circle>
+<circle cx="210.0" cy="334.7" r="3" fill="#fe640b"><title>READ+WRITE: Mixed 95/5 (p75): 0.83 µs</title></circle>
+<circle cx="330.0" cy="322.5" r="3" fill="#fe640b"><title>READ+WRITE: Mixed 95/5 (p90): 1.05 µs</title></circle>
+<circle cx="450.0" cy="310.9" r="3" fill="#fe640b"><title>READ+WRITE: Mixed 95/5 (p95): 1.31 µs</title></circle>
+<circle cx="570.0" cy="267.2" r="3" fill="#fe640b"><title>READ+WRITE: Mixed 95/5 (p99): 3.03 µs</title></circle>
+<circle cx="690.0" cy="227.1" r="3" fill="#fe640b"><title>READ+WRITE: Mixed 95/5 (p99.9): 6.55 µs</title></circle>
+<polyline points="90.0,309.4 210.0,306.7 330.0,299.5 450.0,292.9 570.0,259.9 690.0,215.5" fill="none" stroke="#d20f39" stroke-width="2"/>
+<circle cx="90.0" cy="309.4" r="3" fill="#d20f39"><title>DELETE: Existing Key (p50): 1.35 µs</title></circle>
+<circle cx="210.0" cy="306.7" r="3" fill="#d20f39"><title>DELETE: Existing Key (p75): 1.42 µs</title></circle>
+<circle cx="330.0" cy="299.5" r="3" fill="#d20f39"><title>DELETE: Existing Key (p90): 1.63 µs</title></circle>
+<circle cx="450.0" cy="292.9" r="3" fill="#d20f39"><title>DELETE: Existing Key (p95): 1.85 µs</title></circle>
+<circle cx="570.0" cy="259.9" r="3" fill="#d20f39"><title>DELETE: Existing Key (p99): 3.49 µs</title></circle>
+<circle cx="690.0" cy="215.5" r="3" fill="#d20f39"><title>DELETE: Existing Key (p99.9): 8.17 µs</title></circle>
+<text x="720" y="89" fill="#4c4f69" font-size="10" font-weight="bold">WORKLOAD (1 THREAD)</text>
+<line x1="720" y1="107" x2="736" y2="107" stroke="#8839ef" stroke-width="2"/>
+<circle cx="728" cy="107" r="3" fill="#8839ef"/>
+<text x="744" y="110" fill="#4c4f69" font-size="9">DELETE: Contended</text>
+<line x1="720" y1="129" x2="736" y2="129" stroke="#04a5e5" stroke-width="2"/>
+<circle cx="728" cy="129" r="3" fill="#04a5e5"/>
+<text x="744" y="132" fill="#4c4f69" font-size="9">READ: Missing Key</text>
+<line x1="720" y1="151" x2="736" y2="151" stroke="#179299" stroke-width="2"/>
+<circle cx="728" cy="151" r="3" fill="#179299"/>
+<text x="744" y="154" fill="#4c4f69" font-size="9">DELETE: Missing Key</text>
+<line x1="720" y1="173" x2="736" y2="173" stroke="#1e66f5" stroke-width="2"/>
+<circle cx="728" cy="173" r="3" fill="#1e66f5"/>
+<text x="744" y="176" fill="#4c4f69" font-size="9">READ: Existing Key</text>
+<line x1="720" y1="195" x2="736" y2="195" stroke="#7287fd" stroke-width="2"/>
+<circle cx="728" cy="195" r="3" fill="#7287fd"/>
+<text x="744" y="198" fill="#4c4f69" font-size="9">READ: Zipfian 80/20</text>
+<line x1="720" y1="217" x2="736" y2="217" stroke="#fe640b" stroke-width="2"/>
+<circle cx="728" cy="217" r="3" fill="#fe640b"/>
+<text x="744" y="220" fill="#4c4f69" font-size="9">READ+WRITE: Mixed 95/5</text>
+<line x1="720" y1="239" x2="736" y2="239" stroke="#d20f39" stroke-width="2"/>
+<circle cx="728" cy="239" r="3" fill="#d20f39"/>
+<text x="744" y="242" fill="#4c4f69" font-size="9">DELETE: Existing Key</text>
+</svg>

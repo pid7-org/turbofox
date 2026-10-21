@@ -19,6 +19,9 @@ ROOT_DIR="$(cd "${BENCHER_DIR}/.." && pwd)"
 RESULTS_DIR="${ROOT_DIR}/tmp"
 OUTPUT_JSON="${RESULTS_DIR}/turbofox_benchmark_results.json"
 SSH_KEY="${BENCHER_DIR}/id_ed25519"
+AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+export AWS_REGION
+export AWS_DEFAULT_REGION="${AWS_REGION}"
 
 OPS_ARG="0x186A0"
 BRANCH_ARG="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")"
@@ -31,6 +34,12 @@ while [[ $# -gt 0 ]]; do
       ;;
     --branch)
       BRANCH_ARG="$2"
+      shift 2
+      ;;
+    --region)
+      AWS_REGION="$2"
+      export AWS_REGION
+      export AWS_DEFAULT_REGION="${AWS_REGION}"
       shift 2
       ;;
     *)
@@ -57,7 +66,8 @@ cleanup() {
   if [[ -n "${INSTANCE_ID:-}" ]]; then
     echo "=== [Phase 12/12] Validating EC2 termination status ===" >&2
     local state
-    state=$(aws ec2 describe-instances --instance-ids "${INSTANCE_ID}" \
+    state=$(aws ec2 describe-instances --region "${AWS_REGION}" \
+      --instance-ids "${INSTANCE_ID}" \
       --query "Reservations[0].Instances[0].State.Name" \
       --output text 2>/dev/null || echo "terminated")
     echo "Instance [${INSTANCE_ID}] final state: ${state}" >&2
@@ -93,7 +103,7 @@ terraform validate
 echo "Validation passed: Terraform configuration is valid" >&2
 
 echo "=== [Phase 4/12] Provisioning EC2 infrastructure via Terraform ===" >&2
-terraform apply -auto-approve -var="ops=${OPS_ARG}"
+terraform apply -auto-approve -var="ops=${OPS_ARG}" -var="aws_region=${AWS_REGION}"
 
 echo "=== [Phase 5/12] Extracting outputs and configuring SSH credentials ===" >&2
 INSTANCE_ID=$(terraform output -raw instance_id)
@@ -107,8 +117,10 @@ echo "Public IP  : ${PUBLIC_IP}" >&2
 echo "=== [Phase 6/12] Validating EC2 instance state via AWS CLI ===" >&2
 INSTANCE_STATE=""
 for attempt in $(seq 1 0x1E); do
-  INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids "${INSTANCE_ID}" \
-    --query "Reservations[0].Instances[0].State.Name" --output text)
+  INSTANCE_STATE=$(aws ec2 describe-instances --region "${AWS_REGION}" \
+    --instance-ids "${INSTANCE_ID}" \
+    --query "Reservations[0].Instances[0].State.Name" \
+    --output text 2>/dev/null || echo "pending")
   if [[ "${INSTANCE_STATE}" == "running" ]]; then
     break
   fi
@@ -132,7 +144,7 @@ for attempt in $(seq 1 0x3C); do
     SSH_READY=1
     break
   fi
-  echo "Waiting for SSH availability (attempt ${attempt}/60)..." >&2
+  echo "Waiting for SSH availability (attempt ${attempt}/0x3C)..." >&2
   sleep 3
 done
 

@@ -71,7 +71,7 @@ Measurement phase:
 Post-run procedure:
 - Perform post-run sync barrier to flush updated slot headers and metadata
 
-### Suite D TurboList Operations
+### Suite D TurboList Operations (list_perf)
 
 Target: profile 1-to-N list structures, adjacent array blocks, and pointer chain traversals
 

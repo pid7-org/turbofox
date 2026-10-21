@@ -86,8 +86,9 @@ WRITE_BIN=$(find "${DEPS_DIR}" -maxdepth 1 \( -name "write_perf-*" -o \
   -name "write_ingest-*" \) -executable -type f | head -n 1)
 READ_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "read_perf-*" -executable -type f | head -n 1)
 DEL_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "del_perf-*" -executable -type f | head -n 1)
+LIST_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "list_perf-*" -executable -type f | head -n 1)
 
-if [[ -z "${WRITE_BIN}" || -z "${READ_BIN}" || -z "${DEL_BIN}" ]]; then
+if [[ -z "${WRITE_BIN}" || -z "${READ_BIN}" || -z "${DEL_BIN}" || -z "${LIST_BIN}" ]]; then
   echo "Error: Failed to locate benchmark binaries in ${DEPS_DIR}" >&2
   exit 1
 fi
@@ -155,6 +156,11 @@ for T in "${THREAD_ARRAY[@]}"; do
   for WL in hit miss mixed churn contention; do
     echo "Running del_perf [${WL}] (threads=${T})..." >&2
     run_benchmark "${DEL_BIN}" "del_perf" "${WL}" "${T}"
+  done
+
+  for WL in append read pop; do
+    echo "Running list_perf [${WL}] (threads=${T})..." >&2
+    run_benchmark "${LIST_BIN}" "list_perf" "${WL}" "${T}"
   done
 done
 

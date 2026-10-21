@@ -46,6 +46,18 @@ def load_results(path):
             lookup[("del_perf", "churn", threads)] = entry
         elif bench == "del_perf" and workload == "churn":
             lookup[("del_perf", "churn_insert_delete", threads)] = entry
+        elif bench == "list_perf" and workload == "list_append":
+            lookup[("list_perf", "append", threads)] = entry
+        elif bench == "list_perf" and workload == "append":
+            lookup[("list_perf", "list_append", threads)] = entry
+        elif bench == "list_perf" and workload == "list_read":
+            lookup[("list_perf", "read", threads)] = entry
+        elif bench == "list_perf" and workload == "read":
+            lookup[("list_perf", "list_read", threads)] = entry
+        elif bench == "list_perf" and workload == "list_pop":
+            lookup[("list_perf", "pop", threads)] = entry
+        elif bench == "list_perf" and workload == "pop":
+            lookup[("list_perf", "list_pop", threads)] = entry
     return lookup
 
 

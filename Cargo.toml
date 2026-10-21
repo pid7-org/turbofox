@@ -67,3 +67,7 @@ harness = false
 [[bench]]
 name = "list_perf"
 harness = false
+
+[[bench]]
+name = "sync_perf"
+harness = false

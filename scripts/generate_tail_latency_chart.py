@@ -4,10 +4,11 @@
 import json
 import os
 import sys
+import xml.etree.ElementTree as ET
 
 # Workloads profiled: (bench, workload, display_label)
 MEM_WORKLOADS = [
-    ("read_perf", "point_hit", "READ: Point Hit (Uniform)"),
+    ("read_perf", "point_hit", "READ: Point Hit (Existing)"),
     ("read_perf", "point_miss", "READ: Point Miss (Absent)"),
     ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)"),
     ("read_perf", "mixed_95_5", f"READ/WRITE: Mixed {0x5F}/5 OLTP"),
@@ -18,7 +19,7 @@ MEM_WORKLOADS = [
 ]
 
 DISK_WORKLOADS = [
-    ("write_ingest", "sequential_append", "WAL: Ingest (fsync)"),
+    ("write_ingest", "sequential_append", "WAL: Ingest (NVMe fsync)"),
 ]
 
 THREADS = [1, 2, 4]
@@ -188,7 +189,7 @@ def generate_svg(lookup):
     y_top2 = p2_y + 0x28
     svg.append(
         f'<text x="{p2_x}" y="{y_top2 - 8}" fill="{COLOR_SUBTLE}" '
-        f'font-size="{0x08}" font-weight="bold">WAL: Ingest (fsync)</text>'
+        f'font-size="{0x08}" font-weight="bold">WAL: Ingest (NVMe fsync)</text>'
     )
     for t_idx, thr in enumerate(THREADS):
         entry = lookup.get(("write_ingest", "sequential_append", thr))
@@ -235,8 +236,13 @@ def main():
     out_path = os.path.join(root, "assets", "concurrency_tail_latency.svg")
     lookup = load_results(json_path)
     svg = generate_svg(lookup)
+
+    # Validate XML before writing
+    ET.fromstring(svg)
+
     with open(out_path, "w", encoding="utf-8") as handle:
         handle.write(svg)
+        handle.write("\n")
     print(f"Generated {out_path}")
 
 

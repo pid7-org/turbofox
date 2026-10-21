@@ -31,7 +31,7 @@ SERIES_SPECS = [
     ("del_perf", "high_contention", "DELETE: Hot-Key Contention", ACCENT_IRIS),
     ("read_perf", "point_miss", "READ: Point Miss (Absent)", ACCENT_FOAM),
     ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)", ACCENT_ROSE),
-    ("read_perf", "point_hit", "READ: Point Hit (Uniform)", ACCENT_PINE),
+    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_PINE),
     ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)", ACCENT_GOLD),
     ("read_perf", "mixed", f"READ/WRITE: Mixed {0x5F}/5 OLTP", ACCENT_PINE_ALT),
     ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_LOVE),
@@ -96,12 +96,12 @@ def load_results(path):
 
 
 def generate_svg(lookup):
-    svg_w = 0x0400
-    svg_h = 0x021C
-    plot_x = 0x50
+    svg_w = 0x04C4
+    svg_h = 0x0218
+    plot_x = 0x54
     plot_y = 0x54
-    plot_w = 0x0244
-    plot_h = 0x0168
+    plot_w = 0x02E0
+    plot_h = 0x0150
 
     min_log = -1.0
     max_log = 2.0

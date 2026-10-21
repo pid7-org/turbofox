@@ -32,7 +32,7 @@ WORKLOADS = [
     ("read_perf", "point_miss", "READ: Point Miss (Absent)", ACCENT_FOAM),
     ("read_perf", "mixed_95_5", f"READ/WRITE: Mixed {0x5F}/5 OLTP", ACCENT_GOLD),
     ("del_perf", "churn_insert_delete", f"CHURN: {0x32}/{0x32} Put/Del", ACCENT_ROSE),
-    ("read_perf", "point_hit", "READ: Point Hit (Uniform)", ACCENT_PINE),
+    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_PINE),
     ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)", ACCENT_PINE_ALT),
     ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)", ACCENT_IRIS),
     ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_LOVE),

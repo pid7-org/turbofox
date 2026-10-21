@@ -25,7 +25,7 @@ WORKLOADS = [
     ("del_perf", "churn_insert_delete", f"CHURN: {0x32}/{0x32} Put/Del"),
     ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)"),
     ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)"),
-    ("read_perf", "point_hit", "READ: Point Hit (Uniform)"),
+    ("read_perf", "point_hit", "READ: Point Hit (Existing)"),
     ("del_perf", "high_contention", "DELETE: Hot-Key Contention"),
     ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)"),
     ("read_perf", "point_miss", "READ: Point Miss (Absent)"),

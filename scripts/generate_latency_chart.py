@@ -44,6 +44,14 @@ def load_results(path):
             lookup[("read_perf", "mixed", threads)] = entry
         elif bench == "read_perf" and workload == "mixed":
             lookup[("read_perf", "mixed_hit_miss", threads)] = entry
+        elif bench == "del_perf" and workload == "mixed_delete":
+            lookup[("del_perf", "mixed", threads)] = entry
+        elif bench == "del_perf" and workload == "mixed":
+            lookup[("del_perf", "mixed_delete", threads)] = entry
+        elif bench == "del_perf" and workload == "churn_insert_delete":
+            lookup[("del_perf", "churn", threads)] = entry
+        elif bench == "del_perf" and workload == "churn":
+            lookup[("del_perf", "churn_insert_delete", threads)] = entry
         elif bench == "write_perf" and workload == "pure_append":
             lookup[("write_ingest", "sequential_append", threads)] = entry
     return lookup

@@ -152,7 +152,7 @@ for T in "${THREAD_ARRAY[@]}"; do
     run_benchmark "${READ_BIN}" "read_perf" "${WL}" "${T}"
   done
 
-  for WL in hit miss churn contention; do
+  for WL in hit miss mixed churn contention; do
     echo "Running del_perf [${WL}] (threads=${T})..." >&2
     run_benchmark "${DEL_BIN}" "del_perf" "${WL}" "${T}"
   done

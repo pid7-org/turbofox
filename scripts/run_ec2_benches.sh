@@ -82,7 +82,8 @@ echo "Compiling benchmark targets in release mode..." >&2
 CARGO_TARGET_DIR="${TARGET_DIR}" cargo bench --no-run
 
 DEPS_DIR="${TARGET_DIR}/release/deps"
-WRITE_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "write_ingest-*" -executable -type f | head -n 1)
+WRITE_BIN=$(find "${DEPS_DIR}" -maxdepth 1 \( -name "write_perf-*" -o \
+  -name "write_ingest-*" \) -executable -type f | head -n 1)
 READ_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "read_perf-*" -executable -type f | head -n 1)
 DEL_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "del_perf-*" -executable -type f | head -n 1)
 
@@ -141,8 +142,10 @@ run_benchmark() {
 IFS=',' read -ra THREAD_ARRAY <<< "${THREADS_LIST}"
 
 for T in "${THREAD_ARRAY[@]}"; do
-  echo "Running write_ingest (threads=${T})..." >&2
-  run_benchmark "${WRITE_BIN}" "write_ingest" "" "${T}"
+  for WL in pure_append mixed_mutation; do
+    echo "Running write_perf [${WL}] (threads=${T})..." >&2
+    run_benchmark "${WRITE_BIN}" "write_perf" "${WL}" "${T}"
+  done
 
   for WL in hit miss zipf mixed; do
     echo "Running read_perf [${WL}] (threads=${T})..." >&2

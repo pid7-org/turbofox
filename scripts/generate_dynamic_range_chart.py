@@ -32,6 +32,8 @@ def load_results(path):
         workload = entry["workload"]
         threads = entry["threads"]
         lookup[(bench, workload, threads)] = entry
+        if bench == "write_perf" and workload == "pure_append":
+            lookup[("write_ingest", "sequential_append", threads)] = entry
     return lookup
 
 

@@ -113,7 +113,7 @@ Workload (Sync Barrier Scaling):
 - Measure explicit sync barrier latency to flush dirty OS pages to NVMe storage
 - Evaluates kernel writeback and storage controller commit overhead independently of user index
 
-### Suite F Sustained Churn & Slot Reclaim
+### Suite F Sustained Churn & Slot Reclaim (churn_perf)
 
 Target: measure slot reuse, tombstone reclamation efficiency, and storage bloat stability
 

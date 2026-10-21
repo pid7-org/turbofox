@@ -32,55 +32,55 @@
 <text x="820.0" y="438" fill="#575279" font-size="8" font-weight="bold" text-anchor="middle">p99.9</text>
 <line x1="84" y1="84" x2="84" y2="420" stroke="#cecacd" stroke-width="1"/>
 <line x1="84" y1="420" x2="820" y2="420" stroke="#cecacd" stroke-width="1"/>
-<polyline points="84.0,366.6 231.2,366.6 378.4,366.6 525.6,365.0 672.8,363.4 820.0,299.9" fill="none" stroke="#907aa9" stroke-width="2"/>
-<circle cx="84.0" cy="366.6" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p50): 0.30 µs</title></circle>
-<circle cx="231.2" cy="366.6" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p75): 0.30 µs</title></circle>
-<circle cx="378.4" cy="366.6" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p90): 0.30 µs</title></circle>
-<circle cx="525.6" cy="365.0" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p95): 0.31 µs</title></circle>
-<circle cx="672.8" cy="363.4" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p99): 0.32 µs</title></circle>
-<circle cx="820.0" cy="299.9" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p99.9): 1.18 µs</title></circle>
-<polyline points="84.0,347.9 231.2,344.7 378.4,334.5 525.6,325.3 672.8,315.3 820.0,249.2" fill="none" stroke="#56949f" stroke-width="2"/>
-<circle cx="84.0" cy="347.9" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p50): 0.44 µs</title></circle>
-<circle cx="231.2" cy="344.7" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p75): 0.47 µs</title></circle>
-<circle cx="378.4" cy="334.5" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p90): 0.58 µs</title></circle>
-<circle cx="525.6" cy="325.3" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p95): 0.70 µs</title></circle>
-<circle cx="672.8" cy="315.3" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p99): 0.86 µs</title></circle>
-<circle cx="820.0" cy="249.2" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p99.9): 3.35 µs</title></circle>
-<polyline points="84.0,349.1 231.2,346.8 378.4,336.2 525.6,327.5 672.8,318.2 820.0,251.0" fill="none" stroke="#d7827e" stroke-width="2"/>
-<circle cx="84.0" cy="349.1" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p50): 0.43 µs</title></circle>
-<circle cx="231.2" cy="346.8" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p75): 0.45 µs</title></circle>
-<circle cx="378.4" cy="336.2" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p90): 0.56 µs</title></circle>
-<circle cx="525.6" cy="327.5" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p95): 0.67 µs</title></circle>
-<circle cx="672.8" cy="318.2" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p99): 0.81 µs</title></circle>
-<circle cx="820.0" cy="251.0" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p99.9): 3.23 µs</title></circle>
-<polyline points="84.0,321.3 231.2,317.7 378.4,308.5 525.6,305.6 672.8,296.8 820.0,230.9" fill="none" stroke="#286983" stroke-width="2"/>
-<circle cx="84.0" cy="321.3" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p50): 0.76 µs</title></circle>
-<circle cx="231.2" cy="317.7" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p75): 0.82 µs</title></circle>
-<circle cx="378.4" cy="308.5" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p90): 0.99 µs</title></circle>
-<circle cx="525.6" cy="305.6" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p95): 1.05 µs</title></circle>
-<circle cx="672.8" cy="296.8" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p99): 1.26 µs</title></circle>
-<circle cx="820.0" cy="230.9" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p99.9): 4.88 µs</title></circle>
-<polyline points="84.0,321.3 231.2,316.5 378.4,309.5 525.6,305.2 672.8,296.4 820.0,219.6" fill="none" stroke="#ea9d34" stroke-width="2"/>
-<circle cx="84.0" cy="321.3" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p50): 0.76 µs</title></circle>
-<circle cx="231.2" cy="316.5" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p75): 0.84 µs</title></circle>
-<circle cx="378.4" cy="309.5" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p90): 0.97 µs</title></circle>
-<circle cx="525.6" cy="305.2" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p95): 1.06 µs</title></circle>
-<circle cx="672.8" cy="296.4" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p99): 1.27 µs</title></circle>
-<circle cx="820.0" cy="219.6" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p99.9): 6.15 µs</title></circle>
-<polyline points="84.0,321.3 231.2,317.1 378.4,305.6 525.6,294.9 672.8,254.1 820.0,216.6" fill="none" stroke="#31748f" stroke-width="2"/>
-<circle cx="84.0" cy="321.3" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p50): 0.76 µs</title></circle>
-<circle cx="231.2" cy="317.1" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p75): 0.83 µs</title></circle>
+<polyline points="84.0,369.9 231.2,369.9 378.4,369.9 525.6,369.9 672.8,368.2 820.0,355.1" fill="none" stroke="#907aa9" stroke-width="2"/>
+<circle cx="84.0" cy="369.9" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p50): 0.28 µs</title></circle>
+<circle cx="231.2" cy="369.9" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p75): 0.28 µs</title></circle>
+<circle cx="378.4" cy="369.9" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p90): 0.28 µs</title></circle>
+<circle cx="525.6" cy="369.9" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p95): 0.28 µs</title></circle>
+<circle cx="672.8" cy="368.2" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p99): 0.29 µs</title></circle>
+<circle cx="820.0" cy="355.1" r="3" fill="#907aa9"><title>DELETE: Hot-Key Contention (p99.9): 0.38 µs</title></circle>
+<polyline points="84.0,329.7 231.2,326.8 378.4,323.3 525.6,317.7 672.8,306.6 820.0,244.0" fill="none" stroke="#56949f" stroke-width="2"/>
+<circle cx="84.0" cy="329.7" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p50): 0.64 µs</title></circle>
+<circle cx="231.2" cy="326.8" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p75): 0.68 µs</title></circle>
+<circle cx="378.4" cy="323.3" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p90): 0.73 µs</title></circle>
+<circle cx="525.6" cy="317.7" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p95): 0.82 µs</title></circle>
+<circle cx="672.8" cy="306.6" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p99): 1.03 µs</title></circle>
+<circle cx="820.0" cy="244.0" r="3" fill="#56949f"><title>READ: Point Miss (Absent) (p99.9): 3.73 µs</title></circle>
+<polyline points="84.0,329.7 231.2,327.5 378.4,324.0 525.6,318.2 672.8,306.6 820.0,241.8" fill="none" stroke="#d7827e" stroke-width="2"/>
+<circle cx="84.0" cy="329.7" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p50): 0.64 µs</title></circle>
+<circle cx="231.2" cy="327.5" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p75): 0.67 µs</title></circle>
+<circle cx="378.4" cy="324.0" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p90): 0.72 µs</title></circle>
+<circle cx="525.6" cy="318.2" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p95): 0.81 µs</title></circle>
+<circle cx="672.8" cy="306.6" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p99): 1.03 µs</title></circle>
+<circle cx="820.0" cy="241.8" r="3" fill="#d7827e"><title>DELETE: Point Miss (Absent) (p99.9): 3.90 µs</title></circle>
+<polyline points="84.0,310.5 231.2,309.0 378.4,306.1 525.6,299.5 672.8,293.4 820.0,210.5" fill="none" stroke="#286983" stroke-width="2"/>
+<circle cx="84.0" cy="310.5" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p50): 0.95 µs</title></circle>
+<circle cx="231.2" cy="309.0" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p75): 0.98 µs</title></circle>
+<circle cx="378.4" cy="306.1" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p90): 1.04 µs</title></circle>
+<circle cx="525.6" cy="299.5" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p95): 1.19 µs</title></circle>
+<circle cx="672.8" cy="293.4" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p99): 1.35 µs</title></circle>
+<circle cx="820.0" cy="210.5" r="3" fill="#286983"><title>READ: Point Hit (Existing) (p99.9): 7.42 µs</title></circle>
+<polyline points="84.0,308.0 231.2,305.2 378.4,300.4 525.6,295.6 672.8,288.0 820.0,202.8" fill="none" stroke="#ea9d34" stroke-width="2"/>
+<circle cx="84.0" cy="308.0" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p50): 1.00 µs</title></circle>
+<circle cx="231.2" cy="305.2" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p75): 1.06 µs</title></circle>
+<circle cx="378.4" cy="300.4" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p90): 1.17 µs</title></circle>
+<circle cx="525.6" cy="295.6" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p95): 1.29 µs</title></circle>
+<circle cx="672.8" cy="288.0" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p99): 1.51 µs</title></circle>
+<circle cx="820.0" cy="202.8" r="3" fill="#ea9d34"><title>READ: Zipfian (80/20 Skew) (p99.9): 8.70 µs</title></circle>
+<polyline points="84.0,311.0 231.2,308.0 378.4,305.6 525.6,300.8 672.8,292.7 820.0,219.8" fill="none" stroke="#31748f" stroke-width="2"/>
+<circle cx="84.0" cy="311.0" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p50): 0.94 µs</title></circle>
+<circle cx="231.2" cy="308.0" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p75): 1.00 µs</title></circle>
 <circle cx="378.4" cy="305.6" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p90): 1.05 µs</title></circle>
-<circle cx="525.6" cy="294.9" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p95): 1.31 µs</title></circle>
-<circle cx="672.8" cy="254.1" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p99): 3.03 µs</title></circle>
-<circle cx="820.0" cy="216.6" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p99.9): 6.55 µs</title></circle>
-<polyline points="84.0,293.4 231.2,290.9 378.4,284.2 525.6,278.1 672.8,247.2 820.0,205.8" fill="none" stroke="#b4637a" stroke-width="2"/>
-<circle cx="84.0" cy="293.4" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p50): 1.35 µs</title></circle>
-<circle cx="231.2" cy="290.9" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p75): 1.42 µs</title></circle>
-<circle cx="378.4" cy="284.2" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p90): 1.63 µs</title></circle>
-<circle cx="525.6" cy="278.1" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p95): 1.85 µs</title></circle>
-<circle cx="672.8" cy="247.2" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p99): 3.49 µs</title></circle>
-<circle cx="820.0" cy="205.8" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p99.9): 8.17 µs</title></circle>
+<circle cx="525.6" cy="300.8" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p95): 1.16 µs</title></circle>
+<circle cx="672.8" cy="292.7" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p99): 1.37 µs</title></circle>
+<circle cx="820.0" cy="219.8" r="3" fill="#31748f"><title>READ/WRITE: Mixed 95/5 OLTP (p99.9): 6.13 µs</title></circle>
+<polyline points="84.0,288.0 231.2,285.4 378.4,279.4 525.6,253.3 672.8,246.9 820.0,204.5" fill="none" stroke="#b4637a" stroke-width="2"/>
+<circle cx="84.0" cy="288.0" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p50): 1.51 µs</title></circle>
+<circle cx="231.2" cy="285.4" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p75): 1.59 µs</title></circle>
+<circle cx="378.4" cy="279.4" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p90): 1.80 µs</title></circle>
+<circle cx="525.6" cy="253.3" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p95): 3.08 µs</title></circle>
+<circle cx="672.8" cy="246.9" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p99): 3.51 µs</title></circle>
+<circle cx="820.0" cy="204.5" r="3" fill="#b4637a"><title>DELETE: Point Hit (Existing) (p99.9): 8.40 µs</title></circle>
 <text x="844" y="88" fill="#575279" font-size="8" font-weight="bold">WORKLOAD (1 THREAD)</text>
 <line x1="844" y1="106" x2="858" y2="106" stroke="#907aa9" stroke-width="2"/>
 <circle cx="851" cy="106" r="3" fill="#907aa9"/>

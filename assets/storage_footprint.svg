@@ -19,20 +19,20 @@
 <line x1="344" y1="84" x2="344" y2="404" stroke="#cecacd" stroke-width="1"/>
 <line x1="344" y1="404" x2="1112" y2="404" stroke="#cecacd" stroke-width="1"/>
 <text x="334" y="113.7" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">CHURN: 50/50 Tombstones</text>
-<rect x="344" y="102.7" width="672.9" height="16" rx="2" fill="#b4637a"/>
-<text x="1022.9" y="113.7" fill="#b4637a" font-size="8" font-weight="bold">26.29 MB (27,561,984 B)</text>
+<rect x="344" y="102.7" width="2045.5" height="16" rx="2" fill="#b4637a"/>
+<text x="2395.5" y="113.7" fill="#b4637a" font-size="8" font-weight="bold">79.90 MB (83,783,680 B)</text>
 <text x="334" y="167.0" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">WAL: Ingest (Sequential Append)</text>
-<rect x="344" y="156.0" width="279.3" height="16" rx="2" fill="#286983"/>
-<text x="629.3" y="167.0" fill="#286983" font-size="8" font-weight="bold">10.91 MB (11,440,128 B)</text>
+<rect x="344" y="156.0" width="2045.5" height="16" rx="2" fill="#286983"/>
+<text x="2395.5" y="167.0" fill="#286983" font-size="8" font-weight="bold">79.90 MB (83,783,680 B)</text>
 <text x="334" y="220.3" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
-<rect x="344" y="209.3" width="277.7" height="16" rx="2" fill="#56949f"/>
-<text x="627.7" y="220.3" fill="#56949f" font-size="8" font-weight="bold">10.85 MB (11,374,592 B)</text>
+<rect x="344" y="209.3" width="2045.5" height="16" rx="2" fill="#56949f"/>
+<text x="2395.5" y="220.3" fill="#56949f" font-size="8" font-weight="bold">79.90 MB (83,783,680 B)</text>
 <text x="334" y="273.7" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Hit (Existing)</text>
-<rect x="344" y="262.7" width="277.7" height="16" rx="2" fill="#ea9d34"/>
-<text x="627.7" y="273.7" fill="#ea9d34" font-size="8" font-weight="bold">10.85 MB (11,374,592 B)</text>
+<rect x="344" y="262.7" width="2045.5" height="16" rx="2" fill="#ea9d34"/>
+<text x="2395.5" y="273.7" fill="#ea9d34" font-size="8" font-weight="bold">79.90 MB (83,783,680 B)</text>
 <text x="334" y="327.0" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ/WRITE: Mixed 95/5 OLTP</text>
-<rect x="344" y="316.0" width="277.7" height="16" rx="2" fill="#d7827e"/>
-<text x="627.7" y="327.0" fill="#d7827e" font-size="8" font-weight="bold">10.85 MB (11,374,592 B)</text>
+<rect x="344" y="316.0" width="2.0" height="16" rx="2" fill="#d7827e"/>
+<text x="352.0" y="327.0" fill="#d7827e" font-size="8" font-weight="bold">0.00 MB (0 B)</text>
 <text x="334" y="380.3" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Hot-Key Contention</text>
 <rect x="344" y="369.3" width="2.0" height="16" rx="2" fill="#907aa9"/>
 <text x="352.0" y="380.3" fill="#907aa9" font-size="8" font-weight="bold">0.03 MB (32,768 B)</text>

@@ -15,32 +15,32 @@
 <line x1="304" y1="84" x2="304" y2="404" stroke="#cecacd" stroke-width="1"/>
 <line x1="304" y1="404" x2="1120" y2="404" stroke="#cecacd" stroke-width="1"/>
 <text x="294" y="104.8" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Hot-Key Contention</text>
-<rect x="304" y="95.8" width="707.3" height="12" rx="2" fill="#907aa9"/>
-<text x="1017.3" y="104.8" fill="#907aa9" font-size="8" font-weight="bold">2.93 Mops/s</text>
+<rect x="304" y="95.8" width="714.6" height="12" rx="2" fill="#907aa9"/>
+<text x="1024.6" y="104.8" fill="#907aa9" font-size="8" font-weight="bold">3.18 Mops/s</text>
 <text x="294" y="140.3" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Miss (Absent)</text>
-<rect x="304" y="131.3" width="671.9" height="12" rx="2" fill="#56949f"/>
-<text x="981.9" y="140.3" fill="#56949f" font-size="8" font-weight="bold">1.97 Mops/s</text>
+<rect x="304" y="131.3" width="642.8" height="12" rx="2" fill="#56949f"/>
+<text x="952.8" y="140.3" fill="#56949f" font-size="8" font-weight="bold">1.42 Mops/s</text>
 <text x="294" y="175.9" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Miss (Absent)</text>
-<rect x="304" y="166.9" width="669.9" height="12" rx="2" fill="#286983"/>
-<text x="979.9" y="175.9" fill="#286983" font-size="8" font-weight="bold">1.92 Mops/s</text>
+<rect x="304" y="166.9" width="642.1" height="12" rx="2" fill="#286983"/>
+<text x="952.1" y="175.9" fill="#286983" font-size="8" font-weight="bold">1.40 Mops/s</text>
 <text x="294" y="211.4" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
-<rect x="304" y="202.4" width="625.3" height="12" rx="2" fill="#31748f"/>
-<text x="935.3" y="211.4" fill="#31748f" font-size="8" font-weight="bold">1.16 Mops/s</text>
+<rect x="304" y="202.4" width="609.4" height="12" rx="2" fill="#31748f"/>
+<text x="919.4" y="211.4" fill="#31748f" font-size="8" font-weight="bold">971.4 kops/s</text>
 <text x="294" y="247.0" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Zipfian (80/20 Skew)</text>
-<rect x="304" y="238.0" width="625.0" height="12" rx="2" fill="#ea9d34"/>
-<text x="935.0" y="247.0" fill="#ea9d34" font-size="8" font-weight="bold">1.16 Mops/s</text>
+<rect x="304" y="238.0" width="604.4" height="12" rx="2" fill="#ea9d34"/>
+<text x="914.4" y="247.0" fill="#ea9d34" font-size="8" font-weight="bold">917.8 kops/s</text>
 <text x="294" y="282.6" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ/WRITE: Mixed 95/5 OLTP</text>
-<rect x="304" y="273.6" width="620.3" height="12" rx="2" fill="#d7827e"/>
-<text x="930.3" y="282.6" fill="#d7827e" font-size="8" font-weight="bold">1.10 Mops/s</text>
+<rect x="304" y="273.6" width="2.0" height="12" rx="2" fill="#d7827e"/>
+<text x="312.0" y="282.6" fill="#d7827e" font-size="8" font-weight="bold">1.0 kops/s</text>
 <text x="294" y="318.1" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Hit (Existing)</text>
-<rect x="304" y="309.1" width="574.7" height="12" rx="2" fill="#b4637a"/>
-<text x="884.7" y="318.1" fill="#b4637a" font-size="8" font-weight="bold">656.7 kops/s</text>
+<rect x="304" y="309.1" width="564.7" height="12" rx="2" fill="#b4637a"/>
+<text x="874.7" y="318.1" fill="#b4637a" font-size="8" font-weight="bold">586.1 kops/s</text>
 <text x="294" y="353.7" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">WAL: Ingest (NVMe fsync)</text>
-<rect x="304" y="344.7" width="226.8" height="12" rx="2" fill="#b4637a"/>
-<text x="536.8" y="353.7" fill="#b4637a" font-size="8" font-weight="bold">12.9 kops/s</text>
+<rect x="304" y="344.7" width="194.8" height="12" rx="2" fill="#b4637a"/>
+<text x="504.8" y="353.7" fill="#b4637a" font-size="8" font-weight="bold">9.0 kops/s</text>
 <text x="294" y="389.2" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">CHURN: 50/50 Put/Del</text>
-<rect x="304" y="380.2" width="59.4" height="12" rx="2" fill="#907aa9"/>
-<text x="369.4" y="389.2" fill="#907aa9" font-size="8" font-weight="bold">2.0 kops/s</text>
+<rect x="304" y="380.2" width="2.0" height="12" rx="2" fill="#907aa9"/>
+<text x="312.0" y="389.2" fill="#907aa9" font-size="8" font-weight="bold">0.8 kops/s</text>
 <text x="36" y="448" fill="#797593" font-size="8">* Note: Logarithmic scale spans 1 kops/sec to 0x0A Mops/sec at 1-thread core baseline</text>
 <text x="36" y="464" fill="#797593" font-size="8">  Separates userspace memory-mapped slot lookup fast-paths from NVMe writeback latency</text>
 </svg>

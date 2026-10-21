@@ -32,70 +32,48 @@
 <text x="872.0" y="422" fill="#9893a5" font-size="8" text-anchor="middle">max</text>
 <line x1="88" y1="84" x2="88" y2="404" stroke="#cecacd" stroke-width="1"/>
 <line x1="88" y1="404" x2="872" y2="404" stroke="#cecacd" stroke-width="1"/>
-<polyline points="88.0,398.5 200.0,367.1 312.0,356.0 424.0,354.0 536.0,352.4 648.0,170.9 760.0,164.1 872.0,155.7" fill="none" stroke="#286983" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="88.0" cy="398.5" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="200.0" cy="367.1" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="312.0" cy="356.0" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="424.0" cy="354.0" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="536.0" cy="352.4" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="648.0" cy="170.9" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="760.0" cy="164.1" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="872.0" cy="155.7" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
+<polyline points="88.0,400.9 200.0,353.5 312.0,349.0 424.0,343.4 536.0,341.0 648.0,168.9 760.0,148.7 872.0,137.4" fill="none" stroke="#286983" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="88.0" cy="400.9" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="200.0" cy="353.5" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="312.0" cy="349.0" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="424.0" cy="343.4" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="536.0" cy="341.0" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="648.0" cy="168.9" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="760.0" cy="148.7" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="872.0" cy="137.4" r="3.2" fill="#286983" stroke="#faf4ed" stroke-width="1.2"/>
 <rect x="896" y="92" width="10" height="10" rx="2" fill="#286983"/>
 <text x="912" y="100" fill="#575279" font-size="8" font-weight="bold">WAL: Ingest (1T)</text>
-<polyline points="88.0,397.1 200.0,366.1 312.0,353.3 424.0,338.2 536.0,271.3 648.0,165.0 760.0,162.3 872.0,94.2" fill="none" stroke="#907aa9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="88.0" cy="397.1" r="3.2" fill="#907aa9" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="200.0" cy="366.1" r="3.2" fill="#907aa9" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="312.0" cy="353.3" r="3.2" fill="#907aa9" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="424.0" cy="338.2" r="3.2" fill="#907aa9" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="536.0" cy="271.3" r="3.2" fill="#907aa9" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="648.0" cy="165.0" r="3.2" fill="#907aa9" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="760.0" cy="162.3" r="3.2" fill="#907aa9" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="872.0" cy="94.2" r="3.2" fill="#907aa9" stroke="#faf4ed" stroke-width="1.2"/>
-<rect x="896" y="116" width="10" height="10" rx="2" fill="#907aa9"/>
-<text x="912" y="124" fill="#575279" font-size="8" font-weight="bold">WAL: Ingest (2T)</text>
-<polyline points="88.0,396.7 200.0,358.4 312.0,351.6 424.0,340.9 536.0,269.4 648.0,150.7 760.0,120.0 872.0,93.9" fill="none" stroke="#b4637a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="88.0" cy="396.7" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="200.0" cy="358.4" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="312.0" cy="351.6" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="424.0" cy="340.9" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="536.0" cy="269.4" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="648.0" cy="150.7" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="760.0" cy="120.0" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="872.0" cy="93.9" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
+<polyline points="88.0,398.9 200.0,343.0 312.0,338.3 424.0,329.0 536.0,223.1 648.0,135.7 760.0,109.6 872.0,84.0" fill="none" stroke="#b4637a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="88.0" cy="398.9" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="200.0" cy="343.0" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="312.0" cy="338.3" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="424.0" cy="329.0" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="536.0" cy="223.1" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="648.0" cy="135.7" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="760.0" cy="109.6" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="872.0" cy="84.0" r="3.2" fill="#b4637a" stroke="#faf4ed" stroke-width="1.2"/>
 <rect x="896" y="140" width="10" height="10" rx="2" fill="#b4637a"/>
 <text x="912" y="148" fill="#575279" font-size="8" font-weight="bold">WAL: Ingest (4T)</text>
-<polyline points="88.0,396.1 200.0,369.9 312.0,355.6 424.0,348.7 536.0,346.1 648.0,337.8 760.0,323.8 872.0,287.6" fill="none" stroke="#ea9d34" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="88.0" cy="396.1" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="200.0" cy="369.9" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="312.0" cy="355.6" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="424.0" cy="348.7" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="536.0" cy="346.1" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="648.0" cy="337.8" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="760.0" cy="323.8" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="872.0" cy="287.6" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
+<polyline points="88.0,395.5 200.0,382.5 312.0,366.0 424.0,353.6 536.0,347.6 648.0,340.6 760.0,328.1 872.0,204.1" fill="none" stroke="#ea9d34" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="88.0" cy="395.5" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="200.0" cy="382.5" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="312.0" cy="366.0" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="424.0" cy="353.6" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="536.0" cy="347.6" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="648.0" cy="340.6" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="760.0" cy="328.1" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="872.0" cy="204.1" r="3.2" fill="#ea9d34" stroke="#faf4ed" stroke-width="1.2"/>
 <rect x="896" y="164" width="10" height="10" rx="2" fill="#ea9d34"/>
 <text x="912" y="172" fill="#575279" font-size="8" font-weight="bold">CHURN: 50/50 (1T)</text>
-<polyline points="88.0,394.6 200.0,358.8 312.0,346.1 424.0,338.5 536.0,334.8 648.0,325.1 760.0,311.2 872.0,196.3" fill="none" stroke="#56949f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="88.0" cy="394.6" r="3.2" fill="#56949f" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="200.0" cy="358.8" r="3.2" fill="#56949f" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="312.0" cy="346.1" r="3.2" fill="#56949f" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="424.0" cy="338.5" r="3.2" fill="#56949f" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="536.0" cy="334.8" r="3.2" fill="#56949f" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="648.0" cy="325.1" r="3.2" fill="#56949f" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="760.0" cy="311.2" r="3.2" fill="#56949f" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="872.0" cy="196.3" r="3.2" fill="#56949f" stroke="#faf4ed" stroke-width="1.2"/>
-<rect x="896" y="188" width="10" height="10" rx="2" fill="#56949f"/>
-<text x="912" y="196" fill="#575279" font-size="8" font-weight="bold">CHURN: 50/50 (2T)</text>
-<polyline points="88.0,393.9 200.0,358.2 312.0,345.4 424.0,337.9 536.0,333.1 648.0,321.6 760.0,192.4 872.0,159.7" fill="none" stroke="#d7827e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="88.0" cy="393.9" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="200.0" cy="358.2" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="312.0" cy="345.4" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="424.0" cy="337.9" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="536.0" cy="333.1" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="648.0" cy="321.6" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="760.0" cy="192.4" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
-<circle cx="872.0" cy="159.7" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
+<polyline points="88.0,391.1 200.0,370.6 312.0,355.8 424.0,343.1 536.0,338.5 648.0,329.8 760.0,192.5 872.0,173.3" fill="none" stroke="#d7827e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="88.0" cy="391.1" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="200.0" cy="370.6" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="312.0" cy="355.8" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="424.0" cy="343.1" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="536.0" cy="338.5" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="648.0" cy="329.8" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="760.0" cy="192.5" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
+<circle cx="872.0" cy="173.3" r="3.2" fill="#d7827e" stroke="#faf4ed" stroke-width="1.2"/>
 <rect x="896" y="212" width="10" height="10" rx="2" fill="#d7827e"/>
 <text x="912" y="220" fill="#575279" font-size="8" font-weight="bold">CHURN: 50/50 (4T)</text>
 <text x="36" y="448" fill="#797593" font-size="8">* Note: Logarithmic scale spans 1 µs to 0x000186A0 µs; WAL sequential append logging evaluated with explicit sync barriers</text>

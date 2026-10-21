@@ -22,32 +22,32 @@
 <text x="1128.0" y="418" fill="#9893a5" font-size="8" text-anchor="middle">8.0</text>
 <line x1="280" y1="80" x2="280" y2="400" stroke="#cecacd" stroke-width="1"/>
 <text x="270" y="100.8" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">WAL: Ingest (NVMe fsync)</text>
-<rect x="280" y="90.8" width="781.1" height="14" rx="2" fill="#b4637a"/>
-<text x="1067.1" y="100.8" fill="#b4637a" font-size="8" font-weight="bold">CV=7.37 (μ=77.24µs, σ=569.15µs)</text>
+<rect x="280" y="90.8" width="817.0" height="14" rx="2" fill="#b4637a"/>
+<text x="1103.0" y="100.8" fill="#b4637a" font-size="8" font-weight="bold">CV=7.71 (μ=110.88µs, σ=854.65µs)</text>
 <text x="270" y="136.3" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Hot-Key Contention</text>
-<rect x="280" y="126.3" width="81.3" height="14" rx="2" fill="#907aa9"/>
-<text x="367.3" y="136.3" fill="#907aa9" font-size="8" font-weight="bold">CV=0.77 (μ=0.30µs, σ=0.23µs)</text>
+<rect x="280" y="126.3" width="53.0" height="14" rx="2" fill="#907aa9"/>
+<text x="339.0" y="136.3" fill="#907aa9" font-size="8" font-weight="bold">CV=0.50 (μ=0.28µs, σ=0.14µs)</text>
 <text x="270" y="171.9" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Miss (Absent)</text>
-<rect x="280" y="161.9" width="66.2" height="14" rx="2" fill="#56949f"/>
-<text x="352.2" y="171.9" fill="#56949f" font-size="8" font-weight="bold">CV=0.62 (μ=0.48µs, σ=0.30µs)</text>
+<rect x="280" y="161.9" width="51.4" height="14" rx="2" fill="#56949f"/>
+<text x="337.4" y="171.9" fill="#56949f" font-size="8" font-weight="bold">CV=0.49 (μ=0.68µs, σ=0.33µs)</text>
 <text x="270" y="207.4" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ/WRITE: Mixed 95/5 OLTP</text>
-<rect x="280" y="197.4" width="64.1" height="14" rx="2" fill="#ea9d34"/>
-<text x="350.1" y="207.4" fill="#ea9d34" font-size="8" font-weight="bold">CV=0.60 (μ=0.86µs, σ=0.52µs)</text>
+<rect x="280" y="197.4" width="2.0" height="14" rx="2" fill="#ea9d34"/>
+<text x="288.0" y="207.4" fill="#ea9d34" font-size="8" font-weight="bold">CV=0.00 (μ=1.00µs, σ=0.00µs)</text>
 <text x="270" y="243.0" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">CHURN: 50/50 Put/Del</text>
-<rect x="280" y="233.0" width="57.6" height="14" rx="2" fill="#d7827e"/>
-<text x="343.6" y="243.0" fill="#d7827e" font-size="8" font-weight="bold">CV=0.54 (μ=4.18µs, σ=2.27µs)</text>
+<rect x="280" y="233.0" width="102.3" height="14" rx="2" fill="#d7827e"/>
+<text x="388.3" y="243.0" fill="#d7827e" font-size="8" font-weight="bold">CV=0.97 (μ=3.19µs, σ=3.08µs)</text>
 <text x="270" y="278.6" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
-<rect x="280" y="268.6" width="56.3" height="14" rx="2" fill="#286983"/>
-<text x="342.3" y="278.6" fill="#286983" font-size="8" font-weight="bold">CV=0.53 (μ=0.81µs, σ=0.43µs)</text>
+<rect x="280" y="268.6" width="38.5" height="14" rx="2" fill="#286983"/>
+<text x="324.5" y="278.6" fill="#286983" font-size="8" font-weight="bold">CV=0.36 (μ=0.99µs, σ=0.36µs)</text>
 <text x="270" y="314.1" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Miss (Absent)</text>
-<rect x="280" y="304.1" width="49.6" height="14" rx="2" fill="#31748f"/>
-<text x="335.6" y="314.1" fill="#31748f" font-size="8" font-weight="bold">CV=0.47 (μ=0.47µs, σ=0.22µs)</text>
+<rect x="280" y="304.1" width="50.6" height="14" rx="2" fill="#31748f"/>
+<text x="336.6" y="314.1" fill="#31748f" font-size="8" font-weight="bold">CV=0.48 (μ=0.67µs, σ=0.32µs)</text>
 <text x="270" y="349.7" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Zipfian (80/20 Skew)</text>
-<rect x="280" y="339.7" width="42.7" height="14" rx="2" fill="#907aa9"/>
-<text x="328.7" y="349.7" fill="#907aa9" font-size="8" font-weight="bold">CV=0.40 (μ=0.82µs, σ=0.33µs)</text>
+<rect x="280" y="339.7" width="42.4" height="14" rx="2" fill="#907aa9"/>
+<text x="328.4" y="349.7" fill="#907aa9" font-size="8" font-weight="bold">CV=0.40 (μ=1.05µs, σ=0.42µs)</text>
 <text x="270" y="385.2" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Hit (Existing)</text>
-<rect x="280" y="375.2" width="41.5" height="14" rx="2" fill="#b4637a"/>
-<text x="327.5" y="385.2" fill="#b4637a" font-size="8" font-weight="bold">CV=0.39 (μ=1.48µs, σ=0.58µs)</text>
+<rect x="280" y="375.2" width="41.3" height="14" rx="2" fill="#b4637a"/>
+<text x="327.3" y="385.2" fill="#b4637a" font-size="8" font-weight="bold">CV=0.39 (μ=1.67µs, σ=0.65µs)</text>
 <text x="36" y="442" fill="#797593" font-size="8">* Note: CV (Coefficient of Variation = σ / μ) quantifies relative latency jitter independent of scale; lower CV denotes superior SLA determinism</text>
 <text x="36" y="458" fill="#797593" font-size="8">  In-memory hash index probes and deletions show tight variance (CV &lt; 0.8), proving low jitter across branch targets and cache lines</text>
 <text x="36" y="474" fill="#797593" font-size="8">  WAL NVMe persistence displays elevated CV (~7.4) driven by hardware controller queueing and OS page writeback spikes during fsync barriers</text>

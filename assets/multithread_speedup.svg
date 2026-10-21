@@ -22,66 +22,66 @@
 <text x="270" y="100.8" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">CHURN: 50/50 Put/Del</text>
 <rect x="280" y="82.0" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="88.0" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="91.0" width="560.9" height="7" rx="2" fill="#907aa9"/>
-<text x="844.9" y="97.0" fill="#907aa9" font-size="7" font-weight="bold">1.32x</text>
-<rect x="280" y="100.0" width="561.0" height="7" rx="2" fill="#b4637a"/>
-<text x="845.0" y="106.0" fill="#b4637a" font-size="7" font-weight="bold">1.32x</text>
+<rect x="280" y="91.0" width="424.0" height="7" rx="2" fill="#907aa9"/>
+<text x="708.0" y="97.0" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="100.0" width="499.0" height="7" rx="2" fill="#b4637a"/>
+<text x="783.0" y="106.0" fill="#b4637a" font-size="7" font-weight="bold">1.18x</text>
 <text x="270" y="136.3" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Hit (Existing)</text>
 <rect x="280" y="117.6" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="123.6" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="126.6" width="531.2" height="7" rx="2" fill="#907aa9"/>
-<text x="815.2" y="132.6" fill="#907aa9" font-size="7" font-weight="bold">1.25x</text>
-<rect x="280" y="135.6" width="527.1" height="7" rx="2" fill="#b4637a"/>
-<text x="811.1" y="141.6" fill="#b4637a" font-size="7" font-weight="bold">1.24x</text>
+<rect x="280" y="126.6" width="424.0" height="7" rx="2" fill="#907aa9"/>
+<text x="708.0" y="132.6" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="135.6" width="558.9" height="7" rx="2" fill="#b4637a"/>
+<text x="842.9" y="141.6" fill="#b4637a" font-size="7" font-weight="bold">1.32x</text>
 <text x="270" y="171.9" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Zipfian (80/20 Skew)</text>
 <rect x="280" y="153.1" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="159.1" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="162.1" width="517.4" height="7" rx="2" fill="#907aa9"/>
-<text x="801.4" y="168.1" fill="#907aa9" font-size="7" font-weight="bold">1.22x</text>
-<rect x="280" y="171.1" width="512.0" height="7" rx="2" fill="#b4637a"/>
-<text x="796.0" y="177.1" fill="#b4637a" font-size="7" font-weight="bold">1.21x</text>
+<rect x="280" y="162.1" width="424.0" height="7" rx="2" fill="#907aa9"/>
+<text x="708.0" y="168.1" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="171.1" width="561.5" height="7" rx="2" fill="#b4637a"/>
+<text x="845.5" y="177.1" fill="#b4637a" font-size="7" font-weight="bold">1.32x</text>
 <text x="270" y="207.4" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
 <rect x="280" y="188.7" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="194.7" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="197.7" width="515.4" height="7" rx="2" fill="#907aa9"/>
-<text x="799.4" y="203.7" fill="#907aa9" font-size="7" font-weight="bold">1.22x</text>
-<rect x="280" y="206.7" width="502.2" height="7" rx="2" fill="#b4637a"/>
-<text x="786.2" y="212.7" fill="#b4637a" font-size="7" font-weight="bold">1.18x</text>
+<rect x="280" y="197.7" width="424.0" height="7" rx="2" fill="#907aa9"/>
+<text x="708.0" y="203.7" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="206.7" width="537.5" height="7" rx="2" fill="#b4637a"/>
+<text x="821.5" y="212.7" fill="#b4637a" font-size="7" font-weight="bold">1.27x</text>
 <text x="270" y="243.0" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Hot-Key Contention</text>
 <rect x="280" y="224.2" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="230.2" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="233.2" width="501.9" height="7" rx="2" fill="#907aa9"/>
-<text x="785.9" y="239.2" fill="#907aa9" font-size="7" font-weight="bold">1.18x</text>
-<rect x="280" y="242.2" width="503.0" height="7" rx="2" fill="#b4637a"/>
-<text x="787.0" y="248.2" fill="#b4637a" font-size="7" font-weight="bold">1.19x</text>
+<rect x="280" y="233.2" width="424.0" height="7" rx="2" fill="#907aa9"/>
+<text x="708.0" y="239.2" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="242.2" width="531.2" height="7" rx="2" fill="#b4637a"/>
+<text x="815.2" y="248.2" fill="#b4637a" font-size="7" font-weight="bold">1.25x</text>
 <text x="270" y="278.6" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Miss (Absent)</text>
 <rect x="280" y="259.8" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="265.8" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="268.8" width="498.0" height="7" rx="2" fill="#907aa9"/>
-<text x="782.0" y="274.8" fill="#907aa9" font-size="7" font-weight="bold">1.17x</text>
-<rect x="280" y="277.8" width="499.9" height="7" rx="2" fill="#b4637a"/>
-<text x="783.9" y="283.8" fill="#b4637a" font-size="7" font-weight="bold">1.18x</text>
+<rect x="280" y="268.8" width="424.0" height="7" rx="2" fill="#907aa9"/>
+<text x="708.0" y="274.8" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="277.8" width="544.7" height="7" rx="2" fill="#b4637a"/>
+<text x="828.7" y="283.8" fill="#b4637a" font-size="7" font-weight="bold">1.28x</text>
 <text x="270" y="314.1" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Miss (Absent)</text>
 <rect x="280" y="295.3" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="301.3" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="304.3" width="488.9" height="7" rx="2" fill="#907aa9"/>
-<text x="772.9" y="310.3" fill="#907aa9" font-size="7" font-weight="bold">1.15x</text>
-<rect x="280" y="313.3" width="499.1" height="7" rx="2" fill="#b4637a"/>
-<text x="783.1" y="319.3" fill="#b4637a" font-size="7" font-weight="bold">1.18x</text>
+<rect x="280" y="304.3" width="424.0" height="7" rx="2" fill="#907aa9"/>
+<text x="708.0" y="310.3" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="313.3" width="545.9" height="7" rx="2" fill="#b4637a"/>
+<text x="829.9" y="319.3" fill="#b4637a" font-size="7" font-weight="bold">1.29x</text>
 <text x="270" y="349.7" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ/WRITE: Mixed 95/5 OLTP</text>
 <rect x="280" y="330.9" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="336.9" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="339.9" width="522.6" height="7" rx="2" fill="#907aa9"/>
-<text x="806.6" y="345.9" fill="#907aa9" font-size="7" font-weight="bold">1.23x</text>
-<rect x="280" y="348.9" width="517.6" height="7" rx="2" fill="#b4637a"/>
-<text x="801.6" y="354.9" fill="#b4637a" font-size="7" font-weight="bold">1.22x</text>
+<rect x="280" y="339.9" width="424.0" height="7" rx="2" fill="#907aa9"/>
+<text x="708.0" y="345.9" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="348.9" width="424.0" height="7" rx="2" fill="#b4637a"/>
+<text x="708.0" y="354.9" fill="#b4637a" font-size="7" font-weight="bold">1.00x</text>
 <text x="270" y="385.2" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">WAL: Ingest (NVMe fsync)</text>
 <rect x="280" y="366.4" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="372.4" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="375.4" width="359.9" height="7" rx="2" fill="#907aa9"/>
-<text x="643.9" y="381.4" fill="#907aa9" font-size="7" font-weight="bold">0.85x</text>
-<rect x="280" y="384.4" width="438.6" height="7" rx="2" fill="#b4637a"/>
-<text x="722.6" y="390.4" fill="#b4637a" font-size="7" font-weight="bold">1.03x</text>
+<rect x="280" y="375.4" width="424.0" height="7" rx="2" fill="#907aa9"/>
+<text x="708.0" y="381.4" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="384.4" width="355.8" height="7" rx="2" fill="#b4637a"/>
+<text x="639.8" y="390.4" fill="#b4637a" font-size="7" font-weight="bold">0.84x</text>
 <text x="36" y="442" fill="#797593" font-size="8">* Note: Speedup ratio (Ops_N / Ops_1T) benchmarked on AWS c5d.large (2 physical vCPUs); 2.0x represents ideal linear scaling limit</text>
 <text x="36" y="458" fill="#797593" font-size="8">  In-memory read and churn workloads scale to ~1.22x - 1.32x at 2T saturation before hyperthread cache contention plateaus scaling at 4T</text>
 <text x="36" y="474" fill="#797593" font-size="8">  WAL Ingest exhibits flat-to-regressive scaling (~0.85x - 1.03x) constrained by serialize-on-fsync queueing and storage controller barriers</text>

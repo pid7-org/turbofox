@@ -58,6 +58,18 @@ def load_results(path):
             lookup[("list_perf", "pop", threads)] = entry
         elif bench == "list_perf" and workload == "pop":
             lookup[("list_perf", "list_pop", threads)] = entry
+        elif bench == "sync_perf" and workload == "pages_0x20":
+            lookup[("sync_perf", "0x20", threads)] = entry
+        elif bench == "sync_perf" and workload == "0x20":
+            lookup[("sync_perf", "pages_0x20", threads)] = entry
+        elif bench == "sync_perf" and workload == "pages_0x0100":
+            lookup[("sync_perf", "0x0100", threads)] = entry
+        elif bench == "sync_perf" and workload == "0x0100":
+            lookup[("sync_perf", "pages_0x0100", threads)] = entry
+        elif bench == "sync_perf" and workload == "pages_0x0400":
+            lookup[("sync_perf", "0x0400", threads)] = entry
+        elif bench == "sync_perf" and workload == "0x0400":
+            lookup[("sync_perf", "pages_0x0400", threads)] = entry
     return lookup
 
 

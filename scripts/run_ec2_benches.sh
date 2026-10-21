@@ -87,8 +87,10 @@ WRITE_BIN=$(find "${DEPS_DIR}" -maxdepth 1 \( -name "write_perf-*" -o \
 READ_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "read_perf-*" -executable -type f | head -n 1)
 DEL_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "del_perf-*" -executable -type f | head -n 1)
 LIST_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "list_perf-*" -executable -type f | head -n 1)
+SYNC_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "sync_perf-*" -executable -type f | head -n 1)
 
-if [[ -z "${WRITE_BIN}" || -z "${READ_BIN}" || -z "${DEL_BIN}" || -z "${LIST_BIN}" ]]; then
+if [[ -z "${WRITE_BIN}" || -z "${READ_BIN}" || -z "${DEL_BIN}" || \
+      -z "${LIST_BIN}" || -z "${SYNC_BIN}" ]]; then
   echo "Error: Failed to locate benchmark binaries in ${DEPS_DIR}" >&2
   exit 1
 fi
@@ -161,6 +163,11 @@ for T in "${THREAD_ARRAY[@]}"; do
   for WL in append read pop; do
     echo "Running list_perf [${WL}] (threads=${T})..." >&2
     run_benchmark "${LIST_BIN}" "list_perf" "${WL}" "${T}"
+  done
+
+  for WL in pages_0x20 pages_0x0100 pages_0x0400; do
+    echo "Running sync_perf [${WL}] (threads=${T})..." >&2
+    run_benchmark "${SYNC_BIN}" "sync_perf" "${WL}" "${T}"
   done
 done
 

@@ -1,57 +1,60 @@
-//! TurboFox delete performance benchmark
+//! TurboFox Suite C: Deletion & Tombstone benchmark
 //!
-//! Recommended execution commands:
-//!
-//! Pin to single physical core (100% disjoint delete hit):
-//!   taskset -c 0 cargo bench --bench del_perf -- --ops 0x186A0 --threads 0x01 --workload hit
-//!
-//! Multi-threaded execution under high key contention (shared pool):
-//!   taskset -c 0-3 cargo bench --bench del_perf -- --ops 0x7A120 --threads 0x04 \
-//!     --workload contention
-//!
-//! Steady-state churn (50% insert / 50% delete) with dedicated NVMe storage path:
-//!   cargo bench --bench del_perf -- --ops 0xF4240 --threads 0x08 --workload churn \
-//!     --db-path /mnt/nvme0n1
+//! Evaluates OCC slot spinlocks, deletion tombstone markers, and bucket reorganization;
+//! adheres strictly to Suite C geometry (6-byte keys, 0x24-byte values) and phase isolation
 
 mod common;
 
-use common::{
-    make_key, new_histogram, print_json_summary, BenchConfig, BenchDir, BenchSummary, KEY_SIZE,
-    VAL_SIZE,
-};
+use common::{new_histogram, print_json_summary, BenchConfig, BenchDir, BenchSummary};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
 use turbofox::{TurboCfg, TurboFox};
 
+pub const KEY_SIZE: usize = 0x06;
+pub const VAL_SIZE: usize = 0x24;
+
+const HIT_PREFIX: u16 = 0x0001;
+const MISS_PREFIX: u16 = 0xFFFF;
 const CONTENTION_POOL: usize = 0x40;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Workload {
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Workload {
     Hit,
     Miss,
-    Churn,
+    Mixed,
     Contention,
+    Churn,
 }
 
 impl Workload {
-    fn from_str(s: &str) -> Self {
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Self {
         match s {
-            "miss" => Self::Miss,
-            "churn" => Self::Churn,
-            "contention" => Self::Contention,
+            "miss" | "delete_miss" => Self::Miss,
+            "mixed" | "mixed_delete" | "mixed_hit_miss" => Self::Mixed,
+            "contention" | "high_contention" => Self::Contention,
+            "churn" | "churn_insert_delete" => Self::Churn,
             _ => Self::Hit,
         }
     }
 
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Hit => "delete_hit",
             Self::Miss => "delete_miss",
-            Self::Churn => "churn_insert_delete",
+            Self::Mixed => "mixed_delete",
             Self::Contention => "high_contention",
+            Self::Churn => "churn_insert_delete",
         }
     }
+}
+
+pub fn make_suite_c_key(prefix: u16, id: u32) -> [u8; KEY_SIZE] {
+    let mut key = [0u8; KEY_SIZE];
+    key[0x00..0x02].copy_from_slice(&prefix.to_be_bytes());
+    key[0x02..0x06].copy_from_slice(&id.to_be_bytes());
+    key
 }
 
 fn pregenerate_del_keys(
@@ -65,19 +68,29 @@ fn pregenerate_del_keys(
         match workload {
             Workload::Hit => {
                 let id = thread_id * count + i;
-                keys.push(make_key(0x01, id as u32));
+                keys.push(make_suite_c_key(HIT_PREFIX, id as u32));
             }
             Workload::Miss => {
                 let id = thread_id * count + i;
-                keys.push(make_key(0xFF, id as u32));
+                keys.push(make_suite_c_key(MISS_PREFIX, id as u32));
             }
-            Workload::Churn => {
-                let id = thread_id * count + i;
-                keys.push(make_key(0x01, id as u32));
+            Workload::Mixed => {
+                // 0x50% (80%) hits interleaved with 0x14% (20%) misses
+                if i % 0x05 < 0x04 {
+                    let id = thread_id * count + i;
+                    keys.push(make_suite_c_key(HIT_PREFIX, id as u32));
+                } else {
+                    let id = thread_id * count + i;
+                    keys.push(make_suite_c_key(MISS_PREFIX, id as u32));
+                }
             }
             Workload::Contention => {
                 let id = (i * threads + thread_id) % CONTENTION_POOL;
-                keys.push(make_key(0x01, id as u32));
+                keys.push(make_suite_c_key(HIT_PREFIX, id as u32));
+            }
+            Workload::Churn => {
+                let id = thread_id * count + i;
+                keys.push(make_suite_c_key(HIT_PREFIX, id as u32));
             }
         }
     }
@@ -106,21 +119,27 @@ fn main() {
 
     let payload = vec![0x5Au8; VAL_SIZE];
 
-    // Pre-populate database with seed keys
+    // Pre-population phase: Ingest 0x64% dataset and issue explicit sync barrier
     for i in 0x00..dataset_size {
-        let key = make_key(0x01, i as u32);
-        let _ = db.set(&key, &payload).expect("seeding set failed");
+        let key = make_suite_c_key(HIT_PREFIX, i as u32);
+        let _ = db.set(&key, &payload).expect("pre-population write failed");
     }
-    db.sync().expect("pre-population sync failed");
+    db.sync().expect("pre-population sync barrier failed");
 
     let mut thread_keys = Vec::with_capacity(thread_count);
     for t in 0x00..thread_count {
-        thread_keys.push(pregenerate_del_keys(workload, t, ops_per_thread, thread_count));
+        thread_keys.push(pregenerate_del_keys(
+            workload,
+            t,
+            ops_per_thread,
+            thread_count,
+        ));
     }
 
     let barrier = Arc::new(Barrier::new(thread_count + 0x01));
     let mut handles = Vec::with_capacity(thread_count);
 
+    // Measurement phase: exclusive deletion timing isolated by barrier
     for (t, keys) in thread_keys.into_iter().enumerate() {
         let db_clone = db.clone();
         let barrier_clone = barrier.clone();
@@ -134,17 +153,17 @@ fn main() {
             for (idx, key) in keys.iter().enumerate() {
                 if workload == Workload::Churn {
                     let new_id = (t * ops_per_thread + idx) as u32;
-                    let churn_key = make_key(0x02, new_id);
+                    let churn_key = make_suite_c_key(0x0002, new_id);
                     let _ = db_clone.set(&churn_key, &payload_clone).expect("churn set failed");
                     let t0 = Instant::now();
                     let _ = db_clone.del(key).expect("churn del failed");
-                    let elapsed = t0.elapsed().as_nanos() as u64;
-                    let _ = hist.record(elapsed);
+                    let elapsed_nanos = t0.elapsed().as_nanos() as u64;
+                    let _ = hist.record(elapsed_nanos);
                 } else {
                     let t0 = Instant::now();
-                    let _ = db_clone.del(key).expect("del failed");
-                    let elapsed = t0.elapsed().as_nanos() as u64;
-                    let _ = hist.record(elapsed);
+                    let _ = db_clone.del(key).expect("point del failed");
+                    let elapsed_nanos = t0.elapsed().as_nanos() as u64;
+                    let _ = hist.record(elapsed_nanos);
                 }
             }
 
@@ -162,6 +181,9 @@ fn main() {
     }
 
     let total_elapsed = bench_start.elapsed();
+
+    // Post-run procedure: flush updated slot headers and metadata
+    db.sync().expect("post-run sync barrier failed");
     let final_db_size = dir_guard.compute_disk_bytes();
 
     let summary = BenchSummary {

@@ -1,54 +1,55 @@
-//! TurboFox point read performance benchmark
+//! TurboFox Suite B: Point Retrieval benchmark
 //!
-//! Recommended execution commands:
-//!
-//! Pin to single physical core (100% point hit lookup):
-//!   taskset -c 0 cargo bench --bench read_perf -- --ops 0x186A0 --threads 0x01 --workload hit
-//!
-//! Multi-threaded execution (Zipfian 80/20 distribution):
-//!   taskset -c 0-3 cargo bench --bench read_perf -- --ops 0x7A120 --threads 0x04 --workload zipf
-//!
-//! Mixed read/write (95% read / 5% write) with dedicated NVMe storage path:
-//!   cargo bench --bench read_perf -- --ops 0xF4240 --threads 0x08 --workload mixed \
-//!     --db-path /mnt/nvme0n1
+//! Evaluates index lookup overhead, SIMD bucket probe efficiency, and CPU cache residency;
+//! adheres strictly to Suite B geometry (6-byte keys, 0x24-byte values) and read-only isolation
 
 mod common;
 
-use common::{
-    make_key, new_histogram, print_json_summary, BenchConfig, BenchDir, BenchSummary, KEY_SIZE,
-    VAL_SIZE,
-};
+use common::{new_histogram, print_json_summary, BenchConfig, BenchDir, BenchSummary};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
 use turbofox::{TurboCfg, TurboFox};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Workload {
+pub const KEY_SIZE: usize = 0x06;
+pub const VAL_SIZE: usize = 0x24;
+
+const HIT_PREFIX: u16 = 0x0001;
+const MISS_PREFIX: u16 = 0xFFFF;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Workload {
     Hit,
     Miss,
-    Zipf,
     Mixed,
+    Zipf,
 }
 
 impl Workload {
-    fn from_str(s: &str) -> Self {
+    pub fn from_str(s: &str) -> Self {
         match s {
-            "miss" => Self::Miss,
-            "zipf" => Self::Zipf,
-            "mixed" => Self::Mixed,
+            "miss" | "point_miss" => Self::Miss,
+            "mixed" | "mixed_hit_miss" => Self::Mixed,
+            "zipf" | "zipf_skewed" => Self::Zipf,
             _ => Self::Hit,
         }
     }
 
-    fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Hit => "point_hit",
             Self::Miss => "point_miss",
+            Self::Mixed => "mixed_hit_miss",
             Self::Zipf => "zipf_skewed",
-            Self::Mixed => "mixed_95_5",
         }
     }
+}
+
+pub fn make_suite_b_key(prefix: u16, id: u32) -> [u8; KEY_SIZE] {
+    let mut key = [0u8; KEY_SIZE];
+    key[0x00..0x02].copy_from_slice(&prefix.to_be_bytes());
+    key[0x02..0x06].copy_from_slice(&id.to_be_bytes());
+    key
 }
 
 fn pregenerate_probe_keys(
@@ -66,11 +67,21 @@ fn pregenerate_probe_keys(
         match workload {
             Workload::Hit => {
                 let id = (i * threads + thread_id) % dataset_size;
-                keys.push(make_key(0x01, id as u32));
+                keys.push(make_suite_b_key(HIT_PREFIX, id as u32));
             }
             Workload::Miss => {
                 let id = (i * threads + thread_id) as u32;
-                keys.push(make_key(0xFF, id));
+                keys.push(make_suite_b_key(MISS_PREFIX, id));
+            }
+            Workload::Mixed => {
+                // 0x50% (80%) hits interleaved with 0x14% (20%) misses
+                if i % 0x05 < 0x04 {
+                    let id = (i * threads + thread_id) % dataset_size;
+                    keys.push(make_suite_b_key(HIT_PREFIX, id as u32));
+                } else {
+                    let id = (i * threads + thread_id) as u32;
+                    keys.push(make_suite_b_key(MISS_PREFIX, id));
+                }
             }
             Workload::Zipf => {
                 seed ^= seed << 0x0D;
@@ -83,11 +94,7 @@ fn pregenerate_probe_keys(
                 } else {
                     (seed as usize) % dataset_size
                 };
-                keys.push(make_key(0x01, id as u32));
-            }
-            Workload::Mixed => {
-                let id = (i * threads + thread_id) % dataset_size;
-                keys.push(make_key(0x01, id as u32));
+                keys.push(make_suite_b_key(HIT_PREFIX, id as u32));
             }
         }
     }
@@ -112,12 +119,12 @@ fn main() {
 
     let payload = vec![0x5Au8; VAL_SIZE];
 
-    // Pre-populate database with seed keys
+    // Pre-population phase: Ingest 0x64% dataset and issue explicit sync barrier
     for i in 0x00..dataset_size {
-        let key = make_key(0x01, i as u32);
-        let _ = db.set(&key, &payload).expect("seeding set failed");
+        let key = make_suite_b_key(HIT_PREFIX, i as u32);
+        let _ = db.set(&key, &payload).expect("pre-population write failed");
     }
-    db.sync().expect("pre-population sync failed");
+    db.sync().expect("pre-population sync barrier failed");
 
     let mut thread_keys = Vec::with_capacity(thread_count);
     for t in 0x00..thread_count {
@@ -133,28 +140,20 @@ fn main() {
     let barrier = Arc::new(Barrier::new(thread_count + 0x01));
     let mut handles = Vec::with_capacity(thread_count);
 
+    // Measurement phase: Strictly read-only execution; zero writes or flushes during timer window
     for keys in thread_keys {
         let db_clone = db.clone();
         let barrier_clone = barrier.clone();
-        let payload_clone = payload.clone();
 
         handles.push(thread::spawn(move || {
             let mut hist = new_histogram();
-
             barrier_clone.wait();
 
-            for (idx, key) in keys.iter().enumerate() {
-                if workload == Workload::Mixed && (idx % 0x14 == 0x00) {
-                    let t0 = Instant::now();
-                    let _ = db_clone.set(key, &payload_clone).expect("mixed set failed");
-                    let elapsed = t0.elapsed().as_nanos() as u64;
-                    let _ = hist.record(elapsed);
-                } else {
-                    let t0 = Instant::now();
-                    let _val = db_clone.get(key).expect("read failed");
-                    let elapsed = t0.elapsed().as_nanos() as u64;
-                    let _ = hist.record(elapsed);
-                }
+            for key in &keys {
+                let t0 = Instant::now();
+                let _val = db_clone.get(key).expect("point read failed");
+                let elapsed_nanos = t0.elapsed().as_nanos() as u64;
+                let _ = hist.record(elapsed_nanos);
             }
 
             hist

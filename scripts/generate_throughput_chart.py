@@ -70,6 +70,10 @@ def load_results(path):
             lookup[("sync_perf", "0x0400", threads)] = entry
         elif bench == "sync_perf" and workload == "0x0400":
             lookup[("sync_perf", "pages_0x0400", threads)] = entry
+        elif bench == "churn_perf" and workload == "steady_state_churn":
+            lookup[("churn_perf", "steady_state", threads)] = entry
+        elif bench == "churn_perf" and workload == "steady_state":
+            lookup[("churn_perf", "steady_state_churn", threads)] = entry
     return lookup
 
 

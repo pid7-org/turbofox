@@ -99,7 +99,7 @@ Workload C (List Pop & Truncation):
 Post-run procedure:
 - Post-run storage sync barrier excluded from timing records
 
-### Suite E Durability & Sync Barrier
+### Suite E Durability & Sync Barrier (sync_perf)
 
 Target: isolate physical storage fsync cost from memory-mapped write latency
 

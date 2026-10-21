@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tempfile::TempDir;
 
+#[allow(dead_code)]
 pub const KEY_SIZE: usize = 0x0C;
+#[allow(dead_code)]
 pub const VAL_SIZE: usize = 0x30;
 pub const SIGFIG: u8 = 0x03;
 pub const HISTOGRAM_MAX_NANOS: u64 = 0x0DF8_4758_0000;
@@ -129,6 +131,7 @@ impl BenchDir {
     }
 }
 
+#[allow(dead_code)]
 pub fn make_key(prefix: u32, id: u32) -> [u8; KEY_SIZE] {
     let mut key = [0u8; KEY_SIZE];
     key[0x00..0x04].copy_from_slice(&prefix.to_be_bytes());

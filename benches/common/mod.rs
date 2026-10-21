@@ -73,15 +73,7 @@ impl BenchConfig {
             idx += 0x01;
         }
 
-        (
-            BenchConfig {
-                ops,
-                threads,
-                warmup_ops,
-                db_path,
-            },
-            workload_str,
-        )
+        (BenchConfig { ops, threads, warmup_ops, db_path }, workload_str)
     }
 }
 
@@ -156,11 +148,7 @@ pub struct BenchSummary<'a> {
 
 pub fn print_json_summary(s: &BenchSummary) {
     let total_secs = s.total_elapsed.as_secs_f64();
-    let ops_per_sec = if total_secs > 0.0 {
-        (s.total_ops as f64) / total_secs
-    } else {
-        0.0
-    };
+    let ops_per_sec = if total_secs > 0.0 { (s.total_ops as f64) / total_secs } else { 0.0 };
 
     let p50 = (s.hist.value_at_quantile(0.50) as f64) / NANOS_PER_MICRO;
     let p75 = (s.hist.value_at_quantile(0.75) as f64) / NANOS_PER_MICRO;

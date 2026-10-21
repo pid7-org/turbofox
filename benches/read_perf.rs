@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{new_histogram, print_json_summary, BenchConfig, BenchDir, BenchSummary};
+use common::{BenchConfig, BenchDir, BenchSummary, new_histogram, print_json_summary};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
@@ -103,10 +103,7 @@ fn pregenerate_probe_keys(
 
 fn main() {
     let (cfg, workload_arg) = BenchConfig::parse();
-    let workload = workload_arg
-        .as_deref()
-        .map(Workload::from_str)
-        .unwrap_or(Workload::Hit);
+    let workload = workload_arg.as_deref().map(Workload::from_str).unwrap_or(Workload::Hit);
 
     let thread_count = cfg.threads.max(0x01);
     let ops_per_thread = cfg.ops / thread_count;

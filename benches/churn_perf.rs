@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{new_histogram, print_json_summary, BenchConfig, BenchDir, BenchSummary};
+use common::{BenchConfig, BenchDir, BenchSummary, new_histogram, print_json_summary};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
@@ -100,9 +100,7 @@ fn main() {
 
                 // Insert operation: evaluates slot vacancy reuse and tombstone replacement
                 let t_insert = Instant::now();
-                let _ = db_clone
-                    .set(&insert_key, &payload_clone[..])
-                    .expect("churn set failed");
+                let _ = db_clone.set(&insert_key, &payload_clone[..]).expect("churn set failed");
                 let elapsed_insert = t_insert.elapsed().as_nanos() as u64;
                 let _ = hist.record(elapsed_insert);
 

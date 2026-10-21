@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{new_histogram, print_json_summary, BenchConfig, BenchDir, BenchSummary};
+use common::{BenchConfig, BenchDir, BenchSummary, new_histogram, print_json_summary};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
@@ -56,11 +56,7 @@ fn generate_pure_append_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZ
     keys
 }
 
-fn generate_mixed_ops(
-    thread_id: usize,
-    count: usize,
-    update_pool_size: usize,
-) -> Vec<WriteOp> {
+fn generate_mixed_ops(thread_id: usize, count: usize, update_pool_size: usize) -> Vec<WriteOp> {
     let mut ops = Vec::with_capacity(count);
     let fresh_target = (count * 0x3C) / 0x64;
     let mut fresh_emitted = 0x00;
@@ -80,11 +76,8 @@ fn generate_mixed_ops(
             ops.push(WriteOp::Fresh(key));
             fresh_emitted += 0x01;
         } else {
-            let target_idx = if update_pool_size > 0x00 {
-                update_emitted % update_pool_size
-            } else {
-                0x00
-            };
+            let target_idx =
+                if update_pool_size > 0x00 { update_emitted % update_pool_size } else { 0x00 };
             let key = make_suite_a_key(thread_id as u16, target_idx as u32);
             ops.push(WriteOp::Update(key));
             update_emitted += 0x01;
@@ -161,11 +154,7 @@ fn main() {
 
             let mut thread_ops = Vec::with_capacity(thread_count);
             for t in 0x00..thread_count {
-                thread_ops.push(generate_mixed_ops(
-                    t,
-                    ops_per_thread,
-                    update_ops_per_thread,
-                ));
+                thread_ops.push(generate_mixed_ops(t, ops_per_thread, update_ops_per_thread));
             }
 
             for ops in thread_ops {

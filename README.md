@@ -5,13 +5,13 @@
 
 # TurboFox 🦊🚀
 
+Embedded key-value storage engine engineered for on-device persistence
+
 > [!IMPORTANT]
 > `turbofox` is under active development and past the initial MVP phase, but is not yet reliable
 >
 > Architecture and disk layout remain subject to breaking changes; production use is discouraged,
 > but not prohibited, given __you assume all the risks__
-
-Embedded key-value storage engine engineered for on-device persistence
 
 ## Index
 
@@ -36,7 +36,7 @@ Add `turbofox` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-turbofox = "0.0.1"
+turbofox = "0.0.11"
 ```
 
 > [!NOTE]

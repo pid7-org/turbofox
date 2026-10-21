@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{new_histogram, print_json_summary, BenchConfig, BenchDir, BenchSummary};
+use common::{BenchConfig, BenchDir, BenchSummary, new_histogram, print_json_summary};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
@@ -27,12 +27,8 @@ impl Workload {
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
-            "0x0100" | "pages_0x0100" | "sync_0x0100" => {
-                Self::Pages0x0100
-            }
-            "0x0400" | "pages_0x0400" | "sync_0x0400" => {
-                Self::Pages0x0400
-            }
+            "0x0100" | "pages_0x0100" | "sync_0x0100" => Self::Pages0x0100,
+            "0x0400" | "pages_0x0400" | "sync_0x0400" => Self::Pages0x0400,
             _ => Self::Pages0x20,
         }
     }
@@ -89,11 +85,8 @@ fn main() {
     };
 
     let thread_count = config.threads.max(0x01);
-    let sync_ops = if config.ops > DEFAULT_SYNC_OPS_CAP {
-        DEFAULT_SYNC_OPS_CAP
-    } else {
-        config.ops.max(0x01)
-    };
+    let sync_ops =
+        if config.ops > DEFAULT_SYNC_OPS_CAP { DEFAULT_SYNC_OPS_CAP } else { config.ops.max(0x01) };
     let ops_per_thread = (sync_ops / thread_count).max(0x01);
     let effective_total_ops = ops_per_thread * thread_count;
 
@@ -106,11 +99,7 @@ fn main() {
     let mutated_val = [0xAAu8; VAL_SIZE];
 
     // Pre-population phase: scale physical backing store to target page volume
-    let keys = Arc::new(populate_to_target_pages(
-        &db,
-        workload.target_pages(),
-        &initial_val,
-    ));
+    let keys = Arc::new(populate_to_target_pages(&db, workload.target_pages(), &initial_val));
 
     let key_count = keys.len();
     let chunk_size = (key_count / thread_count).max(0x01);
@@ -141,11 +130,7 @@ fn main() {
             start_barrier_clone.wait();
 
             for iter in 0x00..ops_per_thread {
-                let payload = if iter % 0x02 == 0x00 {
-                    mutated_val
-                } else {
-                    initial_val
-                };
+                let payload = if iter % 0x02 == 0x00 { mutated_val } else { initial_val };
 
                 // Dirty the thread's memory-mapped page segment
                 for key in thread_keys {

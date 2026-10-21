@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{new_histogram, print_json_summary, BenchConfig, BenchDir, BenchSummary};
+use common::{BenchConfig, BenchDir, BenchSummary, new_histogram, print_json_summary};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
@@ -99,19 +99,13 @@ fn pregenerate_del_keys(
 
 fn main() {
     let (cfg, workload_arg) = BenchConfig::parse();
-    let workload = workload_arg
-        .as_deref()
-        .map(Workload::from_str)
-        .unwrap_or(Workload::Hit);
+    let workload = workload_arg.as_deref().map(Workload::from_str).unwrap_or(Workload::Hit);
 
     let thread_count = cfg.threads.max(0x01);
     let ops_per_thread = cfg.ops / thread_count;
     let effective_total_ops = ops_per_thread * thread_count;
-    let dataset_size = if workload == Workload::Contention {
-        CONTENTION_POOL
-    } else {
-        effective_total_ops
-    };
+    let dataset_size =
+        if workload == Workload::Contention { CONTENTION_POOL } else { effective_total_ops };
 
     let (dir_guard, db_path) = BenchDir::new(cfg.db_path, "del_perf");
     let turbocfg = TurboCfg::new(&db_path);
@@ -128,12 +122,7 @@ fn main() {
 
     let mut thread_keys = Vec::with_capacity(thread_count);
     for t in 0x00..thread_count {
-        thread_keys.push(pregenerate_del_keys(
-            workload,
-            t,
-            ops_per_thread,
-            thread_count,
-        ));
+        thread_keys.push(pregenerate_del_keys(workload, t, ops_per_thread, thread_count));
     }
 
     let barrier = Arc::new(Barrier::new(thread_count + 0x01));

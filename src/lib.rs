@@ -1,4 +1,4 @@
-//! TurboFox is an embedded key-value storage engine for low-latency on-device persistence
+//! TurboFox is an embedded key-value storage engine engineered for on-device persistence
 //!
 //! ## Example (Key-Value)
 //!
@@ -66,7 +66,7 @@ pub use ticket::TurboTicket;
 use engine::Engine;
 use std::sync::Arc;
 
-/// TurboFox is an embedded key-value storage engine for low-latency on-device persistence
+/// TurboFox is an embedded key-value storage engine engineered for on-device persistence
 ///
 /// ## Example
 ///

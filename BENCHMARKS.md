@@ -34,7 +34,7 @@ Post-run procedure:
 - Stop latency timers
 - Invoke explicit storage sync to commit dirty memory pages to NVMe storage
 
-### Suite B Point Retrieval
+### Suite B Point Retrieval (read_perf)
 
 Target: evaluate index lookup overhead, SIMD bucket probe efficiency, and CPU cache residency
 

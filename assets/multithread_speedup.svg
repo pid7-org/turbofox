@@ -1,88 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 536" width="1220" height="536" style="background:#faf4ed; font-family:ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace;">
-<rect width="1220" height="536" rx="12" fill="#faf4ed" stroke="#dfdad9" stroke-width="1"/>
-<text x="36" y="34" fill="#575279" font-size="16" font-weight="bold">TurboFox Multi-Thread Speedup Ratio (c5d.large - 2 vCPUs)</text>
-<text x="36" y="56" fill="#797593" font-size="10">Relative throughput scaling (Ops_N / Ops_1T) across worker threads (Rosé Pine Dawn theme)</text>
-<rect x="950" y="26" width="10" height="10" rx="2" fill="#286983"/>
-<text x="964" y="34" fill="#575279" font-size="9" font-weight="bold">1T</text>
-<rect x="1004" y="26" width="10" height="10" rx="2" fill="#907aa9"/>
-<text x="1018" y="34" fill="#575279" font-size="9" font-weight="bold">2T</text>
-<rect x="1058" y="26" width="10" height="10" rx="2" fill="#b4637a"/>
-<text x="1072" y="34" fill="#575279" font-size="9" font-weight="bold">4T</text>
-<line x1="280.0" y1="80" x2="280.0" y2="400" stroke="#f2e9e1" stroke-width="1"/>
-<text x="280.0" y="418" fill="#9893a5" font-size="8" text-anchor="middle">0.0x</text>
-<line x1="492.0" y1="80" x2="492.0" y2="400" stroke="#f2e9e1" stroke-width="1"/>
-<text x="492.0" y="418" fill="#9893a5" font-size="8" text-anchor="middle">0.5x</text>
-<line x1="704.0" y1="80" x2="704.0" y2="400" stroke="#f2e9e1" stroke-width="1"/>
-<text x="704.0" y="418" fill="#9893a5" font-size="8" text-anchor="middle">1.0x</text>
-<line x1="916.0" y1="80" x2="916.0" y2="400" stroke="#f2e9e1" stroke-width="1"/>
-<text x="916.0" y="418" fill="#9893a5" font-size="8" text-anchor="middle">1.5x</text>
-<line x1="1128.0" y1="80" x2="1128.0" y2="400" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="1128.0" y="418" fill="#9893a5" font-size="8" text-anchor="middle">2.0x</text>
-<line x1="280" y1="80" x2="280" y2="400" stroke="#cecacd" stroke-width="1"/>
-<text x="270" y="100.8" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">CHURN: 50/50 Put/Del</text>
-<rect x="280" y="82.0" width="424.0" height="7" rx="2" fill="#286983"/>
-<text x="708.0" y="88.0" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="91.0" width="424.0" height="7" rx="2" fill="#907aa9"/>
-<text x="708.0" y="97.0" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="100.0" width="499.0" height="7" rx="2" fill="#b4637a"/>
-<text x="783.0" y="106.0" fill="#b4637a" font-size="7" font-weight="bold">1.18x</text>
-<text x="270" y="136.3" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Hit (Existing)</text>
-<rect x="280" y="117.6" width="424.0" height="7" rx="2" fill="#286983"/>
-<text x="708.0" y="123.6" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="126.6" width="424.0" height="7" rx="2" fill="#907aa9"/>
-<text x="708.0" y="132.6" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="135.6" width="558.9" height="7" rx="2" fill="#b4637a"/>
-<text x="842.9" y="141.6" fill="#b4637a" font-size="7" font-weight="bold">1.32x</text>
-<text x="270" y="171.9" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Zipfian (80/20 Skew)</text>
-<rect x="280" y="153.1" width="424.0" height="7" rx="2" fill="#286983"/>
-<text x="708.0" y="159.1" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="162.1" width="424.0" height="7" rx="2" fill="#907aa9"/>
-<text x="708.0" y="168.1" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="171.1" width="561.5" height="7" rx="2" fill="#b4637a"/>
-<text x="845.5" y="177.1" fill="#b4637a" font-size="7" font-weight="bold">1.32x</text>
-<text x="270" y="207.4" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
-<rect x="280" y="188.7" width="424.0" height="7" rx="2" fill="#286983"/>
-<text x="708.0" y="194.7" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="197.7" width="424.0" height="7" rx="2" fill="#907aa9"/>
-<text x="708.0" y="203.7" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="206.7" width="537.5" height="7" rx="2" fill="#b4637a"/>
-<text x="821.5" y="212.7" fill="#b4637a" font-size="7" font-weight="bold">1.27x</text>
-<text x="270" y="243.0" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Hot-Key Contention</text>
-<rect x="280" y="224.2" width="424.0" height="7" rx="2" fill="#286983"/>
-<text x="708.0" y="230.2" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="233.2" width="424.0" height="7" rx="2" fill="#907aa9"/>
-<text x="708.0" y="239.2" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="242.2" width="531.2" height="7" rx="2" fill="#b4637a"/>
-<text x="815.2" y="248.2" fill="#b4637a" font-size="7" font-weight="bold">1.25x</text>
-<text x="270" y="278.6" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Miss (Absent)</text>
-<rect x="280" y="259.8" width="424.0" height="7" rx="2" fill="#286983"/>
-<text x="708.0" y="265.8" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="268.8" width="424.0" height="7" rx="2" fill="#907aa9"/>
-<text x="708.0" y="274.8" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="277.8" width="544.7" height="7" rx="2" fill="#b4637a"/>
-<text x="828.7" y="283.8" fill="#b4637a" font-size="7" font-weight="bold">1.28x</text>
-<text x="270" y="314.1" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Miss (Absent)</text>
-<rect x="280" y="295.3" width="424.0" height="7" rx="2" fill="#286983"/>
-<text x="708.0" y="301.3" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="304.3" width="424.0" height="7" rx="2" fill="#907aa9"/>
-<text x="708.0" y="310.3" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="313.3" width="545.9" height="7" rx="2" fill="#b4637a"/>
-<text x="829.9" y="319.3" fill="#b4637a" font-size="7" font-weight="bold">1.29x</text>
-<text x="270" y="349.7" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ/WRITE: Mixed 95/5 OLTP</text>
-<rect x="280" y="330.9" width="424.0" height="7" rx="2" fill="#286983"/>
-<text x="708.0" y="336.9" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="339.9" width="424.0" height="7" rx="2" fill="#907aa9"/>
-<text x="708.0" y="345.9" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="348.9" width="424.0" height="7" rx="2" fill="#b4637a"/>
-<text x="708.0" y="354.9" fill="#b4637a" font-size="7" font-weight="bold">1.00x</text>
-<text x="270" y="385.2" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">WAL: Ingest (NVMe fsync)</text>
-<rect x="280" y="366.4" width="424.0" height="7" rx="2" fill="#286983"/>
-<text x="708.0" y="372.4" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="375.4" width="424.0" height="7" rx="2" fill="#907aa9"/>
-<text x="708.0" y="381.4" fill="#907aa9" font-size="7" font-weight="bold">1.00x</text>
-<rect x="280" y="384.4" width="355.8" height="7" rx="2" fill="#b4637a"/>
-<text x="639.8" y="390.4" fill="#b4637a" font-size="7" font-weight="bold">0.84x</text>
-<text x="36" y="442" fill="#797593" font-size="8">* Note: Speedup ratio (Ops_N / Ops_1T) benchmarked on AWS c5d.large (2 physical vCPUs); 2.0x represents ideal linear scaling limit</text>
-<text x="36" y="458" fill="#797593" font-size="8">  In-memory read and churn workloads scale to ~1.22x - 1.32x at 2T saturation before hyperthread cache contention plateaus scaling at 4T</text>
-<text x="36" y="474" fill="#797593" font-size="8">  WAL Ingest exhibits flat-to-regressive scaling (~0.85x - 1.03x) constrained by serialize-on-fsync queueing and storage controller barriers</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 536" width="1220" height="536" style="background:#eff1f5; font-family:ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace;">
+<rect width="1220" height="536" rx="12" fill="#eff1f5" stroke="#ccd0da" stroke-width="1"/>
+<text x="36" y="34" fill="#4c4f69" font-size="16" font-weight="bold">TurboFox Multi-Thread Speedup Ratio (c5d.large - 2 vCPUs)</text>
+<text x="36" y="56" fill="#6c6f85" font-size="10">Relative throughput scaling (Ops_N / Ops_1T) across worker threads (Catppuccin Latte theme)</text>
+<rect x="1076" y="26" width="10" height="10" rx="2" fill="#1e66f5"/>
+<text x="1090" y="34" fill="#4c4f69" font-size="9" font-weight="bold">1T</text>
+<rect x="1130" y="26" width="10" height="10" rx="2" fill="#8839ef"/>
+<text x="1144" y="34" fill="#4c4f69" font-size="9" font-weight="bold">4T</text>
+<line x1="280.0" y1="80" x2="280.0" y2="400" stroke="#ccd0da" stroke-width="1"/>
+<text x="280.0" y="418" fill="#8c8fa1" font-size="8" text-anchor="middle">0.0x</text>
+<line x1="492.0" y1="80" x2="492.0" y2="400" stroke="#ccd0da" stroke-width="1"/>
+<text x="492.0" y="418" fill="#8c8fa1" font-size="8" text-anchor="middle">0.5x</text>
+<line x1="704.0" y1="80" x2="704.0" y2="400" stroke="#ccd0da" stroke-width="1"/>
+<text x="704.0" y="418" fill="#8c8fa1" font-size="8" text-anchor="middle">1.0x</text>
+<line x1="916.0" y1="80" x2="916.0" y2="400" stroke="#ccd0da" stroke-width="1"/>
+<text x="916.0" y="418" fill="#8c8fa1" font-size="8" text-anchor="middle">1.5x</text>
+<line x1="1128.0" y1="80" x2="1128.0" y2="400" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="1128.0" y="418" fill="#8c8fa1" font-size="8" text-anchor="middle">2.0x</text>
+<line x1="280" y1="80" x2="280" y2="400" stroke="#bcc0cc" stroke-width="1"/>
+<text x="270" y="103.0" fill="#4c4f69" font-size="8" font-weight="bold" text-anchor="end">CHURN: 50/50 Put/Del</text>
+<rect x="280" y="83.0" width="424.0" height="8" rx="2" fill="#1e66f5"/>
+<text x="708.0" y="90.0" fill="#1e66f5" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="94.0" width="499.0" height="8" rx="2" fill="#8839ef"/>
+<text x="783.0" y="101.0" fill="#8839ef" font-size="7" font-weight="bold">1.18x</text>
+<text x="270" y="143.0" fill="#4c4f69" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Hit (Existing)</text>
+<rect x="280" y="123.0" width="424.0" height="8" rx="2" fill="#1e66f5"/>
+<text x="708.0" y="130.0" fill="#1e66f5" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="134.0" width="558.9" height="8" rx="2" fill="#8839ef"/>
+<text x="842.9" y="141.0" fill="#8839ef" font-size="7" font-weight="bold">1.32x</text>
+<text x="270" y="183.0" fill="#4c4f69" font-size="8" font-weight="bold" text-anchor="end">READ: Zipfian (80/20 Skew)</text>
+<rect x="280" y="163.0" width="424.0" height="8" rx="2" fill="#1e66f5"/>
+<text x="708.0" y="170.0" fill="#1e66f5" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="174.0" width="561.5" height="8" rx="2" fill="#8839ef"/>
+<text x="845.5" y="181.0" fill="#8839ef" font-size="7" font-weight="bold">1.32x</text>
+<text x="270" y="223.0" fill="#4c4f69" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
+<rect x="280" y="203.0" width="424.0" height="8" rx="2" fill="#1e66f5"/>
+<text x="708.0" y="210.0" fill="#1e66f5" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="214.0" width="537.5" height="8" rx="2" fill="#8839ef"/>
+<text x="821.5" y="221.0" fill="#8839ef" font-size="7" font-weight="bold">1.27x</text>
+<text x="270" y="263.0" fill="#4c4f69" font-size="8" font-weight="bold" text-anchor="end">DELETE: Hot-Key Contention</text>
+<rect x="280" y="243.0" width="424.0" height="8" rx="2" fill="#1e66f5"/>
+<text x="708.0" y="250.0" fill="#1e66f5" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="254.0" width="531.2" height="8" rx="2" fill="#8839ef"/>
+<text x="815.2" y="261.0" fill="#8839ef" font-size="7" font-weight="bold">1.25x</text>
+<text x="270" y="303.0" fill="#4c4f69" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Miss (Absent)</text>
+<rect x="280" y="283.0" width="424.0" height="8" rx="2" fill="#1e66f5"/>
+<text x="708.0" y="290.0" fill="#1e66f5" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="294.0" width="544.7" height="8" rx="2" fill="#8839ef"/>
+<text x="828.7" y="301.0" fill="#8839ef" font-size="7" font-weight="bold">1.28x</text>
+<text x="270" y="343.0" fill="#4c4f69" font-size="8" font-weight="bold" text-anchor="end">READ: Point Miss (Absent)</text>
+<rect x="280" y="323.0" width="424.0" height="8" rx="2" fill="#1e66f5"/>
+<text x="708.0" y="330.0" fill="#1e66f5" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="334.0" width="545.9" height="8" rx="2" fill="#8839ef"/>
+<text x="829.9" y="341.0" fill="#8839ef" font-size="7" font-weight="bold">1.29x</text>
+<text x="270" y="383.0" fill="#4c4f69" font-size="8" font-weight="bold" text-anchor="end">WAL: Ingest (NVMe fsync)</text>
+<rect x="280" y="363.0" width="424.0" height="8" rx="2" fill="#1e66f5"/>
+<text x="708.0" y="370.0" fill="#1e66f5" font-size="7" font-weight="bold">1.00x</text>
+<rect x="280" y="374.0" width="355.8" height="8" rx="2" fill="#8839ef"/>
+<text x="639.8" y="381.0" fill="#8839ef" font-size="7" font-weight="bold">0.84x</text>
+<text x="36" y="442" fill="#6c6f85" font-size="8">* Note: Speedup ratio (Ops_4T / Ops_1T) benchmarked on AWS c5d.large (2 physical vCPUs); 2.0x represents ideal linear scaling limit; in-memory read and churn workloads scale before hyperthread contention plateaus at 4T</text>
+<text x="36" y="458" fill="#6c6f85" font-size="8">  WAL Ingest exhibits flat-to-regressive scaling constrained by serialize-on-fsync queueing and storage controller barriers under concurrent fsync flush contention</text>
 </svg>

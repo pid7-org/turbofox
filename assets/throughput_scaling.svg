@@ -1,91 +1,84 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 536" width="1220" height="536" style="background:#faf4ed; font-family:ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace;">
-<rect width="1220" height="536" rx="12" fill="#faf4ed" stroke="#dfdad9" stroke-width="1"/>
-<text x="36" y="34" fill="#575279" font-size="16" font-weight="bold">TurboFox Concurrency Scaling &amp; Operation Throughput</text>
-<text x="36" y="56" fill="#797593" font-size="10">Benchmark: AWS c5d.large (2 vCPUs) | Local NVMe SSD | 0x10000 operations per workload</text>
-<rect x="940" y="26" width="10" height="10" rx="2" fill="#286983"/>
-<text x="954" y="34" fill="#575279" font-size="9" font-weight="bold">1T</text>
-<rect x="994" y="26" width="10" height="10" rx="2" fill="#907aa9"/>
-<text x="1008" y="34" fill="#575279" font-size="9" font-weight="bold">2T</text>
-<rect x="1048" y="26" width="10" height="10" rx="2" fill="#b4637a"/>
-<text x="1062" y="34" fill="#575279" font-size="9" font-weight="bold">4T</text>
-<text x="70" y="74" fill="#575279" font-size="10" font-weight="bold">IN-MEMORY &amp; INDEX OPERATIONS (Mops/sec)</text>
-<line x1="70" y1="420.0" x2="822" y2="420.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="62" y="423.0" fill="#9893a5" font-size="8" text-anchor="end">0.0M</text>
-<line x1="70" y1="336.0" x2="822" y2="336.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="62" y="339.0" fill="#9893a5" font-size="8" text-anchor="end">1.0M</text>
-<line x1="70" y1="252.0" x2="822" y2="252.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="62" y="255.0" fill="#9893a5" font-size="8" text-anchor="end">2.0M</text>
-<line x1="70" y1="168.0" x2="822" y2="168.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="62" y="171.0" fill="#9893a5" font-size="8" text-anchor="end">3.0M</text>
-<line x1="70" y1="84.0" x2="822" y2="84.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="62" y="87.0" fill="#9893a5" font-size="8" text-anchor="end">4.0M</text>
-<line x1="70" y1="84" x2="70" y2="420" stroke="#cecacd" stroke-width="1"/>
-<line x1="70" y1="420" x2="822" y2="420" stroke="#cecacd" stroke-width="1"/>
-<rect x="94.7" y="302.0" width="18.0" height="118.0" rx="2" fill="#286983"><title>READ: Point Miss (Absent) (1T): 1404185.55 ops/s</title></rect>
-<text x="103.7" y="299.0" fill="#286983" font-size="7" text-anchor="middle" font-weight="bold">1.40M</text>
-<rect x="134.7" y="268.1" width="18.0" height="151.9" rx="2" fill="#b4637a"><title>READ: Point Miss (Absent) (4T): 1807799.93 ops/s</title></rect>
-<text x="143.7" y="265.1" fill="#b4637a" font-size="7" text-anchor="middle" font-weight="bold">1.81M</text>
-<text x="123.7" y="436" fill="#286983" font-size="8" text-anchor="middle" font-weight="bold">READ</text>
-<text x="123.7" y="448" fill="#797593" font-size="7" text-anchor="middle">Point Miss (Absent)</text>
-<rect x="202.1" y="338.4" width="18.0" height="81.6" rx="2" fill="#286983"><title>READ: Point Hit (Existing) (1T): 971404.95 ops/s</title></rect>
-<text x="211.1" y="335.4" fill="#286983" font-size="7" text-anchor="middle" font-weight="bold">0.97M</text>
-<rect x="242.1" y="316.6" width="18.0" height="103.4" rx="2" fill="#b4637a"><title>READ: Point Hit (Existing) (4T): 1231509.37 ops/s</title></rect>
-<text x="251.1" y="313.6" fill="#b4637a" font-size="7" text-anchor="middle" font-weight="bold">1.23M</text>
-<text x="231.1" y="436" fill="#286983" font-size="8" text-anchor="middle" font-weight="bold">READ</text>
-<text x="231.1" y="448" fill="#797593" font-size="7" text-anchor="middle">Point Hit (Existing)</text>
-<rect x="309.6" y="342.9" width="18.0" height="77.1" rx="2" fill="#286983"><title>READ: Zipfian 80/20 Skew (1T): 917809.20 ops/s</title></rect>
-<text x="318.6" y="339.9" fill="#286983" font-size="7" text-anchor="middle" font-weight="bold">0.92M</text>
-<rect x="349.6" y="317.9" width="18.0" height="102.1" rx="2" fill="#b4637a"><title>READ: Zipfian 80/20 Skew (4T): 1215472.69 ops/s</title></rect>
-<text x="358.6" y="314.9" fill="#b4637a" font-size="7" text-anchor="middle" font-weight="bold">1.22M</text>
-<text x="338.6" y="436" fill="#286983" font-size="8" text-anchor="middle" font-weight="bold">READ</text>
-<text x="338.6" y="448" fill="#797593" font-size="7" text-anchor="middle">Zipfian 80/20 Skew</text>
-<rect x="417.0" y="334.1" width="18.0" height="85.9" rx="2" fill="#286983"><title>READ/WRITE: Mixed 95/5 OLTP (1T): 1022115.39 ops/s</title></rect>
-<text x="426.0" y="331.1" fill="#286983" font-size="7" text-anchor="middle" font-weight="bold">1.02M</text>
-<rect x="457.0" y="311.1" width="18.0" height="108.9" rx="2" fill="#b4637a"><title>READ/WRITE: Mixed 95/5 OLTP (4T): 1295895.13 ops/s</title></rect>
-<text x="466.0" y="308.1" fill="#b4637a" font-size="7" text-anchor="middle" font-weight="bold">1.30M</text>
-<text x="446.0" y="436" fill="#ea9d34" font-size="8" text-anchor="middle" font-weight="bold">READ/WRITE</text>
-<text x="446.0" y="448" fill="#797593" font-size="7" text-anchor="middle">Mixed 95/5 OLTP</text>
-<rect x="524.4" y="301.0" width="18.0" height="119.0" rx="2" fill="#286983"><title>DELETE: Point Miss (Absent) (1T): 1416130.90 ops/s</title></rect>
-<text x="533.4" y="298.0" fill="#286983" font-size="7" text-anchor="middle" font-weight="bold">1.42M</text>
-<rect x="564.4" y="267.2" width="18.0" height="152.8" rx="2" fill="#b4637a"><title>DELETE: Point Miss (Absent) (4T): 1819194.95 ops/s</title></rect>
-<text x="573.4" y="264.2" fill="#b4637a" font-size="7" text-anchor="middle" font-weight="bold">1.82M</text>
-<text x="553.4" y="436" fill="#b4637a" font-size="8" text-anchor="middle" font-weight="bold">DELETE</text>
-<text x="553.4" y="448" fill="#797593" font-size="7" text-anchor="middle">Point Miss (Absent)</text>
-<rect x="631.9" y="370.8" width="18.0" height="49.2" rx="2" fill="#286983"><title>DELETE: Point Hit (Existing) (1T): 586078.96 ops/s</title></rect>
-<text x="640.9" y="367.8" fill="#286983" font-size="7" text-anchor="middle" font-weight="bold">0.59M</text>
-<rect x="671.9" y="355.1" width="18.0" height="64.9" rx="2" fill="#b4637a"><title>DELETE: Point Hit (Existing) (4T): 772603.07 ops/s</title></rect>
-<text x="680.9" y="352.1" fill="#b4637a" font-size="7" text-anchor="middle" font-weight="bold">0.77M</text>
-<text x="660.9" y="436" fill="#b4637a" font-size="8" text-anchor="middle" font-weight="bold">DELETE</text>
-<text x="660.9" y="448" fill="#797593" font-size="7" text-anchor="middle">Point Hit (Existing)</text>
-<rect x="739.3" y="152.5" width="18.0" height="267.5" rx="2" fill="#286983"><title>DELETE: Hot-Key Contention (1T): 3184491.84 ops/s</title></rect>
-<text x="748.3" y="149.5" fill="#286983" font-size="7" text-anchor="middle" font-weight="bold">3.18M</text>
-<rect x="779.3" y="84.9" width="18.0" height="335.1" rx="2" fill="#b4637a"><title>DELETE: Hot-Key Contention (4T): 3989253.75 ops/s</title></rect>
-<text x="788.3" y="81.9" fill="#b4637a" font-size="7" text-anchor="middle" font-weight="bold">3.99M</text>
-<text x="768.3" y="436" fill="#b4637a" font-size="8" text-anchor="middle" font-weight="bold">DELETE</text>
-<text x="768.3" y="448" fill="#797593" font-size="7" text-anchor="middle">Hot-Key Contention</text>
-<text x="896" y="74" fill="#575279" font-size="10" font-weight="bold">NVMe PERSISTENCE (kops/sec)</text>
-<line x1="896" y1="420.0" x2="1152" y2="420.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="888" y="423.0" fill="#9893a5" font-size="8" text-anchor="end">0k</text>
-<line x1="896" y1="336.0" x2="1152" y2="336.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="888" y="339.0" fill="#9893a5" font-size="8" text-anchor="end">4k</text>
-<line x1="896" y1="252.0" x2="1152" y2="252.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="888" y="255.0" fill="#9893a5" font-size="8" text-anchor="end">8k</text>
-<line x1="896" y1="168.0" x2="1152" y2="168.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="888" y="171.0" fill="#9893a5" font-size="8" text-anchor="end">12k</text>
-<line x1="896" y1="84.0" x2="1152" y2="84.0" stroke="#f2e9e1" stroke-width="1" stroke-dasharray="3,3"/>
-<text x="888" y="87.0" fill="#9893a5" font-size="8" text-anchor="end">16k</text>
-<line x1="896" y1="84" x2="896" y2="420" stroke="#cecacd" stroke-width="1"/>
-<line x1="896" y1="420" x2="1152" y2="420" stroke="#cecacd" stroke-width="1"/>
-<rect x="931.0" y="230.8" width="18.0" height="189.2" rx="2" fill="#286983"><title>WAL: Sequential Ingest (1T): 9010.37 ops/s</title></rect>
-<text x="940.0" y="227.8" fill="#286983" font-size="7" text-anchor="middle" font-weight="bold">9.0k</text>
-<rect x="971.0" y="261.2" width="18.0" height="158.8" rx="2" fill="#b4637a"><title>WAL: Sequential Ingest (4T): 7560.66 ops/s</title></rect>
-<text x="980.0" y="258.2" fill="#b4637a" font-size="7" text-anchor="middle" font-weight="bold">7.6k</text>
-<text x="960.0" y="436" fill="#907aa9" font-size="8" text-anchor="middle" font-weight="bold">WAL</text>
-<text x="960.0" y="448" fill="#797593" font-size="7" text-anchor="middle">Sequential Ingest</text>
-<rect x="1059.0" y="403.7" width="18.0" height="16.3" rx="2" fill="#286983"><title>CHURN: Churn 50/50 (1T): 773.95 ops/s</title></rect>
-<text x="1068.0" y="400.7" fill="#286983" font-size="7" text-anchor="middle" font-weight="bold">0.8k</text>
-<rect x="1099.0" y="400.9" width="18.0" height="19.1" rx="2" fill="#b4637a"><title>CHURN: Churn 50/50 (4T): 910.87 ops/s</title></rect>
-<text x="1108.0" y="397.9" fill="#b4637a" font-size="7" text-anchor="middle" font-weight="bold">0.9k</text>
-<text x="1088.0" y="436" fill="#d7827e" font-size="8" text-anchor="middle" font-weight="bold">CHURN</text>
-<text x="1088.0" y="448" fill="#797593" font-size="7" text-anchor="middle">Churn 50/50</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 536" width="1220" height="536" style="background:#eff1f5; font-family:ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace;">
+<rect width="1220" height="536" rx="12" fill="#eff1f5" stroke="#ccd0da" stroke-width="1"/>
+<text x="36" y="34" fill="#4c4f69" font-size="16" font-weight="bold">TurboFox Concurrency Scaling &amp; Operation Throughput</text>
+<text x="36" y="56" fill="#6c6f85" font-size="10">Benchmark: AWS c5d.large (2 vCPUs) | Local NVMe SSD | 0x10000 operations per workload (Catppuccin Latte theme)</text>
+<rect x="1076" y="26" width="10" height="10" rx="2" fill="#1e66f5"/>
+<text x="1090" y="34" fill="#4c4f69" font-size="9" font-weight="bold">1T</text>
+<rect x="1130" y="26" width="10" height="10" rx="2" fill="#8839ef"/>
+<text x="1144" y="34" fill="#4c4f69" font-size="9" font-weight="bold">4T</text>
+<text x="70" y="74" fill="#4c4f69" font-size="10" font-weight="bold">IN-MEMORY &amp; INDEX OPERATIONS (Mops/sec)</text>
+<line x1="70" y1="404.0" x2="822" y2="404.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="62" y="407.0" fill="#8c8fa1" font-size="8" text-anchor="end">0.0M</text>
+<line x1="70" y1="324.0" x2="822" y2="324.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="62" y="327.0" fill="#8c8fa1" font-size="8" text-anchor="end">1.0M</text>
+<line x1="70" y1="244.0" x2="822" y2="244.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="62" y="247.0" fill="#8c8fa1" font-size="8" text-anchor="end">2.0M</text>
+<line x1="70" y1="164.0" x2="822" y2="164.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="62" y="167.0" fill="#8c8fa1" font-size="8" text-anchor="end">3.0M</text>
+<line x1="70" y1="84.0" x2="822" y2="84.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="62" y="87.0" fill="#8c8fa1" font-size="8" text-anchor="end">4.0M</text>
+<line x1="70" y1="84" x2="70" y2="404" stroke="#bcc0cc" stroke-width="1"/>
+<line x1="70" y1="404" x2="822" y2="404" stroke="#bcc0cc" stroke-width="1"/>
+<rect x="111.2" y="291.7" width="20.0" height="112.3" rx="2" fill="#1e66f5"><title>READ: Point Miss (Absent) (1T): 1404185.55 ops/s</title></rect>
+<text x="121.2" y="288.7" fill="#1e66f5" font-size="7" text-anchor="middle" font-weight="bold">1.40M</text>
+<rect x="134.2" y="259.4" width="20.0" height="144.6" rx="2" fill="#8839ef"><title>READ: Point Miss (Absent) (4T): 1807799.93 ops/s</title></rect>
+<text x="144.2" y="256.4" fill="#8839ef" font-size="7" text-anchor="middle" font-weight="bold">1.81M</text>
+<text x="132.7" y="420" fill="#1e66f5" font-size="8" text-anchor="middle" font-weight="bold">READ</text>
+<text x="132.7" y="432" fill="#6c6f85" font-size="7" text-anchor="middle">Point Miss (Absent)</text>
+<rect x="236.5" y="326.3" width="20.0" height="77.7" rx="2" fill="#1e66f5"><title>READ: Point Hit (Existing) (1T): 971404.95 ops/s</title></rect>
+<text x="246.5" y="323.3" fill="#1e66f5" font-size="7" text-anchor="middle" font-weight="bold">0.97M</text>
+<rect x="259.5" y="305.5" width="20.0" height="98.5" rx="2" fill="#8839ef"><title>READ: Point Hit (Existing) (4T): 1231509.37 ops/s</title></rect>
+<text x="269.5" y="302.5" fill="#8839ef" font-size="7" text-anchor="middle" font-weight="bold">1.23M</text>
+<text x="258.0" y="420" fill="#1e66f5" font-size="8" text-anchor="middle" font-weight="bold">READ</text>
+<text x="258.0" y="432" fill="#6c6f85" font-size="7" text-anchor="middle">Point Hit (Existing)</text>
+<rect x="361.8" y="330.6" width="20.0" height="73.4" rx="2" fill="#1e66f5"><title>READ: Zipfian 80/20 Skew (1T): 917809.20 ops/s</title></rect>
+<text x="371.8" y="327.6" fill="#1e66f5" font-size="7" text-anchor="middle" font-weight="bold">0.92M</text>
+<rect x="384.8" y="306.8" width="20.0" height="97.2" rx="2" fill="#8839ef"><title>READ: Zipfian 80/20 Skew (4T): 1215472.69 ops/s</title></rect>
+<text x="394.8" y="303.8" fill="#8839ef" font-size="7" text-anchor="middle" font-weight="bold">1.22M</text>
+<text x="383.3" y="420" fill="#1e66f5" font-size="8" text-anchor="middle" font-weight="bold">READ</text>
+<text x="383.3" y="432" fill="#6c6f85" font-size="7" text-anchor="middle">Zipfian 80/20 Skew</text>
+<rect x="487.2" y="290.7" width="20.0" height="113.3" rx="2" fill="#1e66f5"><title>DELETE: Point Miss (Absent) (1T): 1416130.90 ops/s</title></rect>
+<text x="497.2" y="287.7" fill="#1e66f5" font-size="7" text-anchor="middle" font-weight="bold">1.42M</text>
+<rect x="510.2" y="258.5" width="20.0" height="145.5" rx="2" fill="#8839ef"><title>DELETE: Point Miss (Absent) (4T): 1819194.95 ops/s</title></rect>
+<text x="520.2" y="255.5" fill="#8839ef" font-size="7" text-anchor="middle" font-weight="bold">1.82M</text>
+<text x="508.7" y="420" fill="#d20f39" font-size="8" text-anchor="middle" font-weight="bold">DELETE</text>
+<text x="508.7" y="432" fill="#6c6f85" font-size="7" text-anchor="middle">Point Miss (Absent)</text>
+<rect x="612.5" y="357.1" width="20.0" height="46.9" rx="2" fill="#1e66f5"><title>DELETE: Point Hit (Existing) (1T): 586078.96 ops/s</title></rect>
+<text x="622.5" y="354.1" fill="#1e66f5" font-size="7" text-anchor="middle" font-weight="bold">0.59M</text>
+<rect x="635.5" y="342.2" width="20.0" height="61.8" rx="2" fill="#8839ef"><title>DELETE: Point Hit (Existing) (4T): 772603.07 ops/s</title></rect>
+<text x="645.5" y="339.2" fill="#8839ef" font-size="7" text-anchor="middle" font-weight="bold">0.77M</text>
+<text x="634.0" y="420" fill="#d20f39" font-size="8" text-anchor="middle" font-weight="bold">DELETE</text>
+<text x="634.0" y="432" fill="#6c6f85" font-size="7" text-anchor="middle">Point Hit (Existing)</text>
+<rect x="737.8" y="149.2" width="20.0" height="254.8" rx="2" fill="#1e66f5"><title>DELETE: Hot-Key Contention (1T): 3184491.84 ops/s</title></rect>
+<text x="747.8" y="146.2" fill="#1e66f5" font-size="7" text-anchor="middle" font-weight="bold">3.18M</text>
+<rect x="760.8" y="84.9" width="20.0" height="319.1" rx="2" fill="#8839ef"><title>DELETE: Hot-Key Contention (4T): 3989253.75 ops/s</title></rect>
+<text x="770.8" y="81.9" fill="#8839ef" font-size="7" text-anchor="middle" font-weight="bold">3.99M</text>
+<text x="759.3" y="420" fill="#d20f39" font-size="8" text-anchor="middle" font-weight="bold">DELETE</text>
+<text x="759.3" y="432" fill="#6c6f85" font-size="7" text-anchor="middle">Hot-Key Contention</text>
+<text x="896" y="74" fill="#4c4f69" font-size="10" font-weight="bold">NVMe PERSISTENCE (kops/sec)</text>
+<line x1="896" y1="404.0" x2="1152" y2="404.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="888" y="407.0" fill="#8c8fa1" font-size="8" text-anchor="end">0k</text>
+<line x1="896" y1="324.0" x2="1152" y2="324.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="888" y="327.0" fill="#8c8fa1" font-size="8" text-anchor="end">4k</text>
+<line x1="896" y1="244.0" x2="1152" y2="244.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="888" y="247.0" fill="#8c8fa1" font-size="8" text-anchor="end">8k</text>
+<line x1="896" y1="164.0" x2="1152" y2="164.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="888" y="167.0" fill="#8c8fa1" font-size="8" text-anchor="end">12k</text>
+<line x1="896" y1="84.0" x2="1152" y2="84.0" stroke="#ccd0da" stroke-width="1" stroke-dasharray="3,3"/>
+<text x="888" y="87.0" fill="#8c8fa1" font-size="8" text-anchor="end">16k</text>
+<line x1="896" y1="84" x2="896" y2="404" stroke="#bcc0cc" stroke-width="1"/>
+<line x1="896" y1="404" x2="1152" y2="404" stroke="#bcc0cc" stroke-width="1"/>
+<rect x="938.5" y="223.8" width="20.0" height="180.2" rx="2" fill="#1e66f5"><title>WAL: Sequential Ingest (1T): 9010.37 ops/s</title></rect>
+<text x="948.5" y="220.8" fill="#1e66f5" font-size="7" text-anchor="middle" font-weight="bold">9.0k</text>
+<rect x="961.5" y="252.8" width="20.0" height="151.2" rx="2" fill="#8839ef"><title>WAL: Sequential Ingest (4T): 7560.66 ops/s</title></rect>
+<text x="971.5" y="249.8" fill="#8839ef" font-size="7" text-anchor="middle" font-weight="bold">7.6k</text>
+<text x="960.0" y="420" fill="#8839ef" font-size="8" text-anchor="middle" font-weight="bold">WAL</text>
+<text x="960.0" y="432" fill="#6c6f85" font-size="7" text-anchor="middle">Sequential Ingest</text>
+<rect x="1066.5" y="388.5" width="20.0" height="15.5" rx="2" fill="#1e66f5"><title>CHURN: Churn 50/50 (1T): 773.95 ops/s</title></rect>
+<text x="1076.5" y="385.5" fill="#1e66f5" font-size="7" text-anchor="middle" font-weight="bold">0.8k</text>
+<rect x="1089.5" y="385.8" width="20.0" height="18.2" rx="2" fill="#8839ef"><title>CHURN: Churn 50/50 (4T): 910.87 ops/s</title></rect>
+<text x="1099.5" y="382.8" fill="#8839ef" font-size="7" text-anchor="middle" font-weight="bold">0.9k</text>
+<text x="1088.0" y="420" fill="#ea76cb" font-size="8" text-anchor="middle" font-weight="bold">CHURN</text>
+<text x="1088.0" y="432" fill="#6c6f85" font-size="7" text-anchor="middle">Churn 50/50</text>
+<text x="36" y="452" fill="#6c6f85" font-size="8">* Note: Throughput scaling across 1T baseline and 4T oversubscribed concurrency on AWS c5d.large (2 vCPUs); memory-mapped lookups achieve multi-million ops/sec while NVMe WAL persists durable transactions</text>
 </svg>

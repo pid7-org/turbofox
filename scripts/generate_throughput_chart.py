@@ -1,48 +1,41 @@
 #!/usr/bin/env python3
-"""Generate Rosé Pine Dawn throughput benchmark SVG with monospace font"""
+"""Generate Catppuccin Latte throughput benchmark SVG with monospace font"""
 
 import json
 import os
 import sys
 import xml.etree.ElementTree as ET
 
-# Rosé Pine Dawn palette tokens
-COLOR_BASE = "#faf4ed"
-COLOR_SURFACE = "#fffaf3"
-COLOR_OVERLAY = "#f2e9e1"
-COLOR_MUTED = "#9893a5"
-COLOR_SUBTLE = "#797593"
-COLOR_TEXT = "#575279"
-COLOR_BORDER = "#dfdad9"
-COLOR_LINE = "#cecacd"
+COLOR_BASE = "#eff1f5"
+COLOR_SURFACE = "#e6e9ef"
+COLOR_OVERLAY = "#ccd0da"
+COLOR_MUTED = "#8c8fa1"
+COLOR_SUBTLE = "#6c6f85"
+COLOR_TEXT = "#4c4f69"
+COLOR_BORDER = "#ccd0da"
+COLOR_LINE = "#bcc0cc"
 
-# Accent series tokens
-ACCENT_PINE = "#286983"
-ACCENT_IRIS = "#907aa9"
-ACCENT_LOVE = "#b4637a"
-ACCENT_GOLD = "#ea9d34"
-ACCENT_FOAM = "#56949f"
-ACCENT_ROSE = "#d7827e"
+ACCENT_BLUE = "#1e66f5"
+ACCENT_MAUVE = "#8839ef"
+ACCENT_RED = "#d20f39"
+ACCENT_PINK = "#ea76cb"
 
-# In-memory and index lookup / mutation workloads (Mops/sec)
 MEM_WORKLOADS = [
     ("read_perf", "point_miss", "READ", "Point Miss (Absent)"),
     ("read_perf", "point_hit", "READ", "Point Hit (Existing)"),
     ("read_perf", "zipf_skewed", "READ", f"Zipfian {0x50}/{0x14} Skew"),
-    ("read_perf", "mixed", "READ/WRITE", f"Mixed {0x5F}/5 OLTP"),
     ("del_perf", "delete_miss", "DELETE", "Point Miss (Absent)"),
     ("del_perf", "delete_hit", "DELETE", "Point Hit (Existing)"),
     ("del_perf", "high_contention", "DELETE", "Hot-Key Contention"),
 ]
 
-# NVMe disk persistence & churn workloads (kops/sec)
 DISK_WORKLOADS = [
     ("write_ingest", "sequential_append", "WAL", "Sequential Ingest"),
     ("del_perf", "churn", "CHURN", f"Churn {0x32}/{0x32}"),
 ]
 
-THREADS = [1, 2, 4]
-THREAD_COLORS = [ACCENT_PINE, ACCENT_IRIS, ACCENT_LOVE]
+THREADS = [1, 4]
+THREAD_COLORS = [ACCENT_BLUE, ACCENT_MAUVE]
 
 FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
@@ -84,17 +77,15 @@ def load_results(path):
 
 
 def get_op_color(op_type):
-    if "READ/WRITE" in op_type:
-        return ACCENT_GOLD
     if "READ" in op_type:
-        return ACCENT_PINE
+        return ACCENT_BLUE
     if "DELETE" in op_type:
-        return ACCENT_LOVE
+        return ACCENT_RED
     if "CHURN" in op_type:
-        return ACCENT_ROSE
+        return ACCENT_PINK
     if "WAL" in op_type:
-        return ACCENT_IRIS
-    return ACCENT_PINE
+        return ACCENT_MAUVE
+    return ACCENT_BLUE
 
 
 def generate_svg(lookup):
@@ -103,7 +94,7 @@ def generate_svg(lookup):
     p1_x = 0x46
     p1_y = 0x54
     p1_w = 0x02F0
-    p1_h = 0x0150
+    p1_h = 0x0140
 
     p2_x = 0x0380
     p2_y = p1_y
@@ -118,13 +109,11 @@ def generate_svg(lookup):
         f'style="background:{COLOR_BASE}; font-family:{FONT_STACK};">'
     )
 
-    # Rosé Pine Dawn Card Frame
     svg.append(
         f'<rect width="{svg_w}" height="{svg_h}" rx="{0x0C}" '
         f'fill="{COLOR_BASE}" stroke="{COLOR_BORDER}" stroke-width="1"/>'
     )
 
-    # Header Titles
     title_x = 0x24
     svg.append(
         f'<text x="{title_x}" y="{0x22}" fill="{COLOR_TEXT}" '
@@ -136,12 +125,11 @@ def generate_svg(lookup):
         f'<text x="{title_x}" y="{0x38}" fill="{COLOR_SUBTLE}" '
         f'font-size="{0x0A}">'
         f'Benchmark: AWS c5d.large (2 vCPUs) | Local NVMe SSD | '
-        f'0x10000 operations per workload'
+        f'0x10000 operations per workload (Catppuccin Latte theme)'
         f'</text>'
     )
 
-    # Legend
-    leg_x = svg_w - 0x0118
+    leg_x = svg_w - 0x90
     leg_y = 0x22
     for idx, (th, col) in enumerate(zip(THREADS, THREAD_COLORS)):
         bx = leg_x + idx * 0x36
@@ -155,7 +143,6 @@ def generate_svg(lookup):
             f'{th}T</text>'
         )
 
-    # Panel 1: Memory & Index Ops (Mops/s)
     svg.append(
         f'<text x="{p1_x}" y="{p1_y - 0x0A}" fill="{COLOR_TEXT}" '
         f'font-size="{0x0A}" font-weight="bold">'
@@ -186,9 +173,11 @@ def generate_svg(lookup):
     )
 
     p1_group_w = float(p1_w) / float(len(MEM_WORKLOADS))
-    bar_w = float(0x12)
-    bar_gap = float(2)
-    p1_pad = (p1_group_w - (float(3) * bar_w + float(2) * bar_gap)) / float(2)
+    bar_w = float(0x14)
+    bar_gap = float(3)
+    p1_pad = (
+        p1_group_w - (float(len(THREADS)) * bar_w + float(len(THREADS) - 1) * bar_gap)
+    ) / float(2)
 
     for g_idx, (bench, pat, op_type, op_detail) in enumerate(MEM_WORKLOADS):
         gx = p1_x + g_idx * p1_group_w
@@ -230,7 +219,6 @@ def generate_svg(lookup):
             f'font-size="{0x07}" text-anchor="middle">{op_detail}</text>'
         )
 
-    # Panel 2: NVMe Storage Ops (kops/s)
     svg.append(
         f'<text x="{p2_x}" y="{p2_y - 0x0A}" fill="{COLOR_TEXT}" '
         f'font-size="{0x0A}" font-weight="bold">'
@@ -261,7 +249,9 @@ def generate_svg(lookup):
     )
 
     p2_group_w = float(p2_w) / float(len(DISK_WORKLOADS))
-    p2_pad = (p2_group_w - (float(3) * bar_w + float(2) * bar_gap)) / float(2)
+    p2_pad = (
+        p2_group_w - (float(len(THREADS)) * bar_w + float(len(THREADS) - 1) * bar_gap)
+    ) / float(2)
 
     for g_idx, (bench, pat, op_type, op_detail) in enumerate(DISK_WORKLOADS):
         gx = p2_x + g_idx * p2_group_w
@@ -303,6 +293,20 @@ def generate_svg(lookup):
             f'font-size="{0x07}" text-anchor="middle">{op_detail}</text>'
         )
 
+    note_x = title_x
+    note_y = p1_y + p1_h + 0x30
+    note_lines = [
+        "* Note: Throughput scaling across 1T baseline and 4T oversubscribed concurrency on "
+        "AWS c5d.large (2 vCPUs); memory-mapped lookups achieve multi-million ops/sec while "
+        "NVMe WAL persists durable transactions",
+    ]
+    for idx, line in enumerate(note_lines):
+        ly = note_y + idx * 0x10
+        svg.append(
+            f'<text x="{note_x}" y="{ly}" fill="{COLOR_SUBTLE}" '
+            f'font-size="{0x08}">{line}</text>'
+        )
+
     svg.append('</svg>')
     return "\n".join(svg)
 
@@ -325,7 +329,6 @@ def main():
     lookup = load_results(src_json)
     svg_content = generate_svg(lookup)
 
-    # Validate XML before writing
     ET.fromstring(svg_content)
 
     with open(out_svg, "w", encoding="utf-8") as handle:

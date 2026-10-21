@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""Generate Rosé Pine Dawn concurrency tail latency (p99) SVG with monospace font"""
+"""Generate Catppuccin Latte concurrency tail latency (p99) SVG with monospace font"""
 
 import json
 import os
 import sys
 import xml.etree.ElementTree as ET
 
-# Workloads profiled: (bench, workload, display_label)
 MEM_WORKLOADS = [
     ("read_perf", "point_hit", "READ: Point Hit (Existing)"),
     ("read_perf", "point_miss", "READ: Point Miss (Absent)"),
     ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)"),
-    ("read_perf", "mixed_95_5", f"READ/WRITE: Mixed {0x5F}/5 OLTP"),
     ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)"),
     ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)"),
     ("del_perf", "high_contention", "DELETE: Hot-Key Contention"),
@@ -22,20 +20,18 @@ DISK_WORKLOADS = [
     ("write_ingest", "sequential_append", "WAL: Ingest (NVMe fsync)"),
 ]
 
-THREADS = [1, 2, 4]
+THREADS = [1, 4]
 
-# Rosé Pine Dawn palette
-COLOR_BASE = "#faf4ed"
-COLOR_SURFACE = "#fffaf3"
-COLOR_OVERLAY = "#f2e9e1"
-COLOR_MUTED = "#9893a5"
-COLOR_SUBTLE = "#797593"
-COLOR_TEXT = "#575279"
-COLOR_BORDER = "#dfdad9"
-COLOR_LINE = "#cecacd"
+COLOR_BASE = "#eff1f5"
+COLOR_SURFACE = "#e6e9ef"
+COLOR_OVERLAY = "#ccd0da"
+COLOR_MUTED = "#8c8fa1"
+COLOR_SUBTLE = "#6c6f85"
+COLOR_TEXT = "#4c4f69"
+COLOR_BORDER = "#ccd0da"
+COLOR_LINE = "#bcc0cc"
 
-# Accent colors for threads (Pine, Iris, Love)
-THREAD_COLORS = ["#286983", "#907aa9", "#b4637a"]
+THREAD_COLORS = ["#1e66f5", "#8839ef"]
 
 FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
@@ -77,13 +73,11 @@ def generate_svg(lookup):
         f'style="background:{COLOR_BASE}; font-family:{FONT_STACK};">'
     )
 
-    # Base card container
     svg.append(
         f'<rect width="{svg_w}" height="{svg_h}" rx="{0x0C}" '
         f'fill="{COLOR_BASE}" stroke="{COLOR_BORDER}" stroke-width="1"/>'
     )
 
-    # Header section
     title_x = 0x24
     svg.append(
         f'<text x="{title_x}" y="{0x22}" fill="{COLOR_TEXT}" '
@@ -94,13 +88,11 @@ def generate_svg(lookup):
     svg.append(
         f'<text x="{title_x}" y="{0x38}" fill="{COLOR_SUBTLE}" '
         f'font-size="{0x0A}">'
-        f'Tail latency scaling across 1, 2, and 4 concurrent threads '
-        f'(Rosé Pine Dawn theme)'
+        f'Tail latency scaling across 1 and 4 concurrent threads (Catppuccin Latte theme)'
         f'</text>'
     )
 
-    # Legend in header
-    leg_x = svg_w - 0x010E
+    leg_x = svg_w - 0x90
     leg_y = 0x22
     for t_idx, thr in enumerate(THREADS):
         lx = leg_x + t_idx * 0x36
@@ -113,7 +105,6 @@ def generate_svg(lookup):
             f'font-size="{0x09}" font-weight="bold">{thr}T</text>'
         )
 
-    # Panel 1: In-Memory Workloads header & grid (0 to 0x16 µs)
     svg.append(
         f'<text x="{p1_x}" y="{p1_y - 0x0A}" fill="{COLOR_TEXT}" '
         f'font-size="{0x0A}" font-weight="bold">'
@@ -134,9 +125,8 @@ def generate_svg(lookup):
             f'font-size="{0x08}" text-anchor="middle">{tick} µs</text>'
         )
 
-    # Panel 1 Bars & Labels
     row_h1 = p1_h / float(len(MEM_WORKLOADS))
-    bar_h = 0x07
+    bar_h = 0x09
     for r_idx, (bench, workload, label) in enumerate(MEM_WORKLOADS):
         y_top = p1_y + float(r_idx) * row_h1
         svg.append(
@@ -148,18 +138,17 @@ def generate_svg(lookup):
             entry = lookup.get((bench, workload, thr))
             val = entry["latency_micros"]["p99"] if entry else 0.0
             bw = max((val / max_p1) * p1_w, 2.0)
-            by = y_top + 2 + t_idx * (bar_h + 2)
+            by = y_top + 4 + t_idx * (bar_h + 3)
             c = THREAD_COLORS[t_idx]
             svg.append(
                 f'<rect x="{p1_x}" y="{by:.1f}" width="{bw:.1f}" '
                 f'height="{bar_h}" rx="2" fill="{c}"/>'
             )
             svg.append(
-                f'<text x="{p1_x + bw + 4:.1f}" y="{by + 6:.1f}" fill="{c}" '
+                f'<text x="{p1_x + bw + 4:.1f}" y="{by + 7:.1f}" fill="{c}" '
                 f'font-size="{0x07}" font-weight="bold">{val:.2f}</text>'
             )
 
-    # Panel 2: Disk WAL Persistence header & grid (0 to 0x0A ms)
     svg.append(
         f'<text x="{p2_x}" y="{p2_y - 0x0A}" fill="{COLOR_TEXT}" '
         f'font-size="{0x0A}" font-weight="bold">'
@@ -167,8 +156,8 @@ def generate_svg(lookup):
         f'</text>'
     )
 
-    max_p2 = float(0x2710)
-    ticks_p2 = [0, float(0x09C4), float(0x1388), float(0x1D4C), float(0x2710)]
+    max_p2 = float(0x4E20)
+    ticks_p2 = [0, float(0x1388), float(0x2710), float(0x3A98), float(0x4E20)]
     for tick in ticks_p2:
         x = p2_x + (tick / max_p2) * p2_w
         svg.append(
@@ -185,7 +174,6 @@ def generate_svg(lookup):
             f'font-size="{0x08}" text-anchor="middle">{ms_lbl}</text>'
         )
 
-    # Panel 2 Bars & Labels
     y_top2 = p2_y + 0x28
     svg.append(
         f'<text x="{p2_x}" y="{y_top2 - 8}" fill="{COLOR_SUBTLE}" '
@@ -208,16 +196,15 @@ def generate_svg(lookup):
             f'</text>'
         )
 
-    # Minimal left-aligned side notes without container box
     note_x = title_x
     note_y = p1_y + p1_h + 0x30
     note_lines = [
-        "* Note: p99 tail latency across 1T, 2T, and 4T worker threads; "
-        "Point Hit/Miss tests uniform lookup vs key-not-found rejection",
-        f"  Zipfian ({0x50}/{0x14}) evaluates cache skew; Mixed {0x5F}/5 "
-        f"simulates OLTP; Churn {0x32}/{0x32} stresses tombstone cleanup",
-        "  WAL Ingest evaluates parallel append logging durability and NVMe "
-        "fsync flush queueing under thread contention",
+        "* Note: p99 tail latency across 1T and 4T worker threads; "
+        "Point Hit/Miss tests uniform lookup vs key-not-found rejection; "
+        f"Zipfian ({0x50}/{0x14}) evaluates cache skew; Churn {0x32}/{0x32} stresses "
+        "tombstone cleanup",
+        "  WAL Ingest evaluates parallel append logging durability and NVMe fsync "
+        "flush queueing under thread contention",
     ]
     for idx, line in enumerate(note_lines):
         ly = note_y + idx * 0x10
@@ -237,7 +224,6 @@ def main():
     lookup = load_results(json_path)
     svg = generate_svg(lookup)
 
-    # Validate XML before writing
     ET.fromstring(svg)
 
     with open(out_path, "w", encoding="utf-8") as handle:

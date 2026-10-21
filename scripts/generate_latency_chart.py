@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Rosé Pine Dawn latency percentile profile SVG with monospace font"""
+"""Generate Catppuccin Latte latency percentile profile SVG with monospace font"""
 
 import json
 import math
@@ -7,34 +7,30 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 
-# Rosé Pine Dawn palette
-COLOR_BASE = "#faf4ed"
-COLOR_SURFACE = "#fffaf3"
-COLOR_OVERLAY = "#f2e9e1"
-COLOR_MUTED = "#9893a5"
-COLOR_SUBTLE = "#797593"
-COLOR_TEXT = "#575279"
-COLOR_BORDER = "#dfdad9"
-COLOR_LINE = "#cecacd"
+COLOR_BASE = "#eff1f5"
+COLOR_SURFACE = "#e6e9ef"
+COLOR_OVERLAY = "#ccd0da"
+COLOR_MUTED = "#8c8fa1"
+COLOR_SUBTLE = "#6c6f85"
+COLOR_TEXT = "#4c4f69"
+COLOR_BORDER = "#ccd0da"
+COLOR_LINE = "#bcc0cc"
 
-# Accent colors for series
-ACCENT_PINE = "#286983"
-ACCENT_FOAM = "#56949f"
-ACCENT_IRIS = "#907aa9"
-ACCENT_LOVE = "#b4637a"
-ACCENT_GOLD = "#ea9d34"
-ACCENT_ROSE = "#d7827e"
-ACCENT_PINE_ALT = "#31748f"
+ACCENT_BLUE = "#1e66f5"
+ACCENT_TEAL = "#179299"
+ACCENT_MAUVE = "#8839ef"
+ACCENT_RED = "#d20f39"
+ACCENT_PEACH = "#fe640b"
+ACCENT_PINK = "#ea76cb"
+ACCENT_SAPPHIRE = "#209fb5"
 
-# Core operations profiled at 1-thread baseline (isolated core performance)
 SERIES_SPECS = [
-    ("del_perf", "high_contention", "DELETE: Hot-Key Contention", ACCENT_IRIS),
-    ("read_perf", "point_miss", "READ: Point Miss (Absent)", ACCENT_FOAM),
-    ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)", ACCENT_ROSE),
-    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_PINE),
-    ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)", ACCENT_GOLD),
-    ("read_perf", "mixed", f"READ/WRITE: Mixed {0x5F}/5 OLTP", ACCENT_PINE_ALT),
-    ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_LOVE),
+    ("del_perf", "high_contention", "DELETE: Hot-Key Contention", ACCENT_MAUVE),
+    ("read_perf", "point_miss", "READ: Point Miss (Absent)", ACCENT_TEAL),
+    ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)", ACCENT_PINK),
+    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_BLUE),
+    ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)", ACCENT_PEACH),
+    ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_RED),
 ]
 
 PERCENTILES = [
@@ -60,16 +56,8 @@ def load_results(path):
         workload = entry["workload"]
         threads = entry["threads"]
         lookup[(bench, workload, threads)] = entry
-        if bench == "read_perf" and workload == "mixed_hit_miss":
-            lookup[("read_perf", "mixed", threads)] = entry
-        elif bench == "read_perf" and workload == "mixed_95_5":
-            lookup[("read_perf", "mixed", threads)] = entry
-        elif bench == "read_perf" and workload == "mixed":
-            lookup[("read_perf", "mixed_hit_miss", threads)] = entry
-        elif bench == "del_perf" and workload == "mixed_delete":
-            lookup[("del_perf", "mixed", threads)] = entry
-        elif bench == "del_perf" and workload == "mixed":
-            lookup[("del_perf", "mixed_delete", threads)] = entry
+        if bench == "read_perf" and workload == "point_hit":
+            lookup[("read_perf", "point_hit", threads)] = entry
         elif bench == "del_perf" and workload == "churn_insert_delete":
             lookup[("del_perf", "churn", threads)] = entry
         elif bench == "del_perf" and workload == "churn":
@@ -103,9 +91,7 @@ def generate_svg(lookup):
     plot_w = 0x02E0
     plot_h = 0x0150
 
-    min_log = -1.0
-    max_log = 2.0
-    span_log = max_log - min_log
+    max_y = float(0x0A)
 
     svg = []
     svg.append(
@@ -115,13 +101,11 @@ def generate_svg(lookup):
         f'style="background:{COLOR_BASE}; font-family:{FONT_STACK};">'
     )
 
-    # Rosé Pine Dawn Frame
     svg.append(
         f'<rect width="{svg_w}" height="{svg_h}" rx="{0x0C}" '
         f'fill="{COLOR_BASE}" stroke="{COLOR_BORDER}" stroke-width="1"/>'
     )
 
-    # Title & Subtitle
     title_x = 0x24
     svg.append(
         f'<text x="{title_x}" y="{0x22}" fill="{COLOR_TEXT}" '
@@ -133,37 +117,20 @@ def generate_svg(lookup):
         f'<text x="{title_x}" y="{0x38}" fill="{COLOR_SUBTLE}" '
         f'font-size="{0x0A}">'
         f'Platform: AWS c5d.large (1 Thread baseline) | '
-        f'Logarithmic latency scale (0.1 µs to {0x64} µs)'
+        f'Linear latency scale (0 µs to {0x0A} µs) (Catppuccin Latte theme)'
         f'</text>'
     )
 
-    # Sub-microsecond boundary indicator (1.0 µs line)
-    y_1us = plot_y + plot_h - ((0.0 - min_log) / span_log * float(plot_h))
+    y_1us = plot_y + plot_h - ((1.0 / max_y) * float(plot_h))
     svg.append(
         f'<rect x="{plot_x}" y="{y_1us:.1f}" width="{plot_w}" '
-        f'height="{plot_y + plot_h - y_1us:.1f}" fill="{ACCENT_FOAM}" '
+        f'height="{plot_y + plot_h - y_1us:.1f}" fill="{ACCENT_TEAL}" '
         f'fill-opacity="0.08"/>'
     )
-    # Position SUB-MICROSECOND REGION text near the bottom border
-    text_y = plot_y + plot_h - 0x08
-    svg.append(
-        f'<text x="{plot_x + plot_w - 0x08}" y="{text_y:.1f}" '
-        f'fill="{ACCENT_FOAM}" font-size="{0x08}" font-weight="bold" '
-        f'text-anchor="end">'
-        f'SUB-MICROSECOND REGION (&lt; 1.0 µs)'
-        f'</text>'
-    )
 
-    # Y-axis major gridlines
-    y_ticks = [
-        (0.1, "0.1 µs"),
-        (1.0, "1.0 µs"),
-        (float(0x0A), f"{0x0A} µs"),
-        (float(0x64), f"{0x64} µs"),
-    ]
-
-    for val, label in y_ticks:
-        norm_y = (math.log10(val) - min_log) / span_log
+    y_ticks = [0, 2, 4, 6, 8, 0x0A]
+    for val in y_ticks:
+        norm_y = float(val) / max_y
         ty = plot_y + plot_h - (norm_y * float(plot_h))
         svg.append(
             f'<line x1="{plot_x}" y1="{ty:.1f}" x2="{plot_x + plot_w}" '
@@ -171,24 +138,9 @@ def generate_svg(lookup):
         )
         svg.append(
             f'<text x="{plot_x - 8}" y="{ty + 3:.1f}" fill="{COLOR_MUTED}" '
-            f'font-size="{0x08}" text-anchor="end">{label}</text>'
+            f'font-size="{0x08}" text-anchor="end">{val} µs</text>'
         )
 
-    # Y-axis minor gridlines
-    minor_vals = [
-        0.2, 0.5, 2.0, 5.0,
-        float(0x14), float(0x32)
-    ]
-    for val in minor_vals:
-        norm_y = (math.log10(val) - min_log) / span_log
-        ty = plot_y + plot_h - (norm_y * float(plot_h))
-        svg.append(
-            f'<line x1="{plot_x}" y1="{ty:.1f}" x2="{plot_x + plot_w}" '
-            f'y2="{ty:.1f}" stroke="{COLOR_OVERLAY}" stroke-width="1" '
-            f'stroke-dasharray="2,2"/>'
-        )
-
-    # X-axis coordinate calculator
     num_pct = len(PERCENTILES)
     x_step = float(plot_w) / float(num_pct - 1)
     pct_x_coords = [plot_x + i * x_step for i in range(num_pct)]
@@ -205,7 +157,6 @@ def generate_svg(lookup):
             f'text-anchor="middle">{label}</text>'
         )
 
-    # Axes boundary lines
     svg.append(
         f'<line x1="{plot_x}" y1="{plot_y}" x2="{plot_x}" '
         f'y2="{plot_y + plot_h}" stroke="{COLOR_LINE}" stroke-width="1"/>'
@@ -216,7 +167,6 @@ def generate_svg(lookup):
         f'stroke="{COLOR_LINE}" stroke-width="1"/>'
     )
 
-    # Series lines and markers
     for bench, pat, label, color in SERIES_SPECS:
         entry = next(
             (e for (b, w, t), e in lookup.items()
@@ -228,20 +178,18 @@ def generate_svg(lookup):
         lat_table = entry.get("latency_micros", {})
         coords = []
         for x_c, (pkey, plabel) in zip(pct_x_coords, PERCENTILES):
-            val = lat_table.get(pkey, 0.1)
-            clamped = max(val, 0.1)
-            norm_y = (math.log10(clamped) - min_log) / span_log
+            val = lat_table.get(pkey, 0.0)
+            clamped = min(max(val, 0.0), max_y)
+            norm_y = clamped / max_y
             y_c = plot_y + plot_h - (norm_y * float(plot_h))
             coords.append((x_c, y_c, val, plabel))
 
-        # Polyline path
         pts_str = " ".join(f"{xc:.1f},{yc:.1f}" for xc, yc, _, _ in coords)
         svg.append(
             f'<polyline points="{pts_str}" fill="none" stroke="{color}" '
             f'stroke-width="2"/>'
         )
 
-        # Point markers with tooltips
         for xc, yc, val, plabel in coords:
             svg.append(
                 f'<circle cx="{xc:.1f}" cy="{yc:.1f}" r="3" fill="{color}">'
@@ -249,7 +197,15 @@ def generate_svg(lookup):
                 f'</circle>'
             )
 
-    # Legend Panel on the right side
+    text_y = y_1us + 0x0C
+    svg.append(
+        f'<text x="{plot_x + plot_w - 0x08}" y="{text_y:.1f}" '
+        f'fill="{ACCENT_TEAL}" font-size="{0x08}" font-weight="bold" '
+        f'text-anchor="end">'
+        f'SUB-MICROSECOND REGION'
+        f'</text>'
+    )
+
     leg_x = plot_x + plot_w + 0x18
     leg_y = plot_y + 4
     svg.append(
@@ -271,6 +227,20 @@ def generate_svg(lookup):
         svg.append(
             f'<text x="{leg_x + 0x14}" y="{ly + 3}" fill="{COLOR_TEXT}" '
             f'font-size="{0x08}" font-weight="bold">{label}</text>'
+        )
+
+    note_x = title_x
+    note_y = plot_y + plot_h + 0x2C
+    note_lines = [
+        f"* Note: Percentile latency distribution (p50 to p99.9) capped at {0x0A} µs with 2 µs "
+        "step on AWS c5d.large (1T); sub-microsecond band showcases pure in-memory SIMD "
+        "and hash table fast-path",
+    ]
+    for idx, line in enumerate(note_lines):
+        ly = note_y + idx * 0x10
+        svg.append(
+            f'<text x="{note_x}" y="{ly}" fill="{COLOR_SUBTLE}" '
+            f'font-size="{0x08}">{line}</text>'
         )
 
     svg.append('</svg>')
@@ -295,7 +265,6 @@ def main():
     lookup = load_results(src_json)
     svg_content = generate_svg(lookup)
 
-    # Validate XML before writing
     ET.fromstring(svg_content)
 
     with open(out_svg, "w", encoding="utf-8") as handle:

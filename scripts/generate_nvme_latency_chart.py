@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Rosé Pine Dawn NVMe persistence latency distribution SVG with monospace font"""
+"""Generate Catppuccin Latte NVMe persistence latency distribution SVG with monospace font"""
 
 import json
 import math
@@ -7,31 +7,25 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 
-# Rosé Pine Dawn palette
-COLOR_BASE = "#faf4ed"
-COLOR_SURFACE = "#fffaf3"
-COLOR_OVERLAY = "#f2e9e1"
-COLOR_MUTED = "#9893a5"
-COLOR_SUBTLE = "#797593"
-COLOR_TEXT = "#575279"
-COLOR_BORDER = "#dfdad9"
-COLOR_LINE = "#cecacd"
+COLOR_BASE = "#eff1f5"
+COLOR_SURFACE = "#e6e9ef"
+COLOR_OVERLAY = "#ccd0da"
+COLOR_MUTED = "#8c8fa1"
+COLOR_SUBTLE = "#6c6f85"
+COLOR_TEXT = "#4c4f69"
+COLOR_BORDER = "#ccd0da"
+COLOR_LINE = "#bcc0cc"
 
-# Accent colors
-ACCENT_PINE = "#286983"
-ACCENT_IRIS = "#907aa9"
-ACCENT_LOVE = "#b4637a"
-ACCENT_GOLD = "#ea9d34"
-ACCENT_FOAM = "#56949f"
-ACCENT_ROSE = "#d7827e"
+ACCENT_BLUE = "#1e66f5"
+ACCENT_MAUVE = "#8839ef"
+ACCENT_PEACH = "#fe640b"
+ACCENT_RED = "#d20f39"
 
 SERIES = [
-    ("write_ingest", "sequential_append", 1, "WAL: Ingest (1T)", ACCENT_PINE),
-    ("write_ingest", "sequential_append", 2, "WAL: Ingest (2T)", ACCENT_IRIS),
-    ("write_ingest", "sequential_append", 4, "WAL: Ingest (4T)", ACCENT_LOVE),
-    ("del_perf", "churn_insert_delete", 1, f"CHURN: {0x32}/{0x32} (1T)", ACCENT_GOLD),
-    ("del_perf", "churn_insert_delete", 2, f"CHURN: {0x32}/{0x32} (2T)", ACCENT_FOAM),
-    ("del_perf", "churn_insert_delete", 4, f"CHURN: {0x32}/{0x32} (4T)", ACCENT_ROSE),
+    ("write_ingest", "sequential_append", 1, "WAL: Ingest (1T)", ACCENT_BLUE),
+    ("write_ingest", "sequential_append", 4, "WAL: Ingest (4T)", ACCENT_MAUVE),
+    ("del_perf", "churn_insert_delete", 1, f"CHURN: {0x32}/{0x32} (1T)", ACCENT_PEACH),
+    ("del_perf", "churn_insert_delete", 4, f"CHURN: {0x32}/{0x32} (4T)", ACCENT_RED),
 ]
 
 PERCENTILES = [
@@ -73,7 +67,6 @@ def generate_svg(lookup):
     plot_w = 0x0310
     plot_h = 0x0140
 
-    # Log scale: 10^0 (1 µs) to 10^5 (0x000186A0 µs)
     min_log = 0.0
     max_log = 5.0
     span_log = max_log - min_log
@@ -96,11 +89,10 @@ def generate_svg(lookup):
     )
     svg.append(
         f'<text x="{title_x}" y="{0x38}" fill="{COLOR_SUBTLE}" font-size="{0x0A}">'
-        f'Logarithmic latency profile (µs) across worker threads (Rosé Pine Dawn theme)'
+        f'Logarithmic latency profile (µs) across worker threads (Catppuccin Latte theme)'
         f'</text>'
     )
 
-    # Gridlines
     grid_decades = [0, 1, 2, 3, 4, 5]
     for dec in grid_decades:
         y = plot_y + plot_h - ((dec - min_log) / span_log) * plot_h
@@ -114,7 +106,6 @@ def generate_svg(lookup):
             f'font-size="{0x08}" text-anchor="end">{label}</text>'
         )
 
-    # X axis points
     n_pts = len(PERCENTILES)
     x_coords = []
     for idx, (_, p_name) in enumerate(PERCENTILES):
@@ -129,7 +120,6 @@ def generate_svg(lookup):
             f'font-size="{0x08}" text-anchor="middle">{p_name}</text>'
         )
 
-    # Axis border lines
     svg.append(
         f'<line x1="{plot_x}" y1="{plot_y}" x2="{plot_x}" '
         f'y2="{plot_y + plot_h}" stroke="{COLOR_LINE}" stroke-width="1"/>'
@@ -139,7 +129,6 @@ def generate_svg(lookup):
         f'y2="{plot_y + plot_h}" stroke="{COLOR_LINE}" stroke-width="1"/>'
     )
 
-    # Draw series
     legend_x = plot_x + plot_w + 0x18
     legend_y = plot_y + 0x10
 
@@ -167,7 +156,6 @@ def generate_svg(lookup):
                 f'fill="{color}" stroke="{COLOR_BASE}" stroke-width="1.2"/>'
             )
 
-        # Legend entry
         ly = legend_y + s_idx * 0x18
         svg.append(
             f'<rect x="{legend_x}" y="{ly - 8}" width="{0x0A}" height="{0x0A}" '
@@ -178,14 +166,13 @@ def generate_svg(lookup):
             f'font-size="{0x08}" font-weight="bold">{label}</text>'
         )
 
-    # Footnote
     note_x = title_x
     note_y = plot_y + plot_h + 0x2C
     note_lines = [
-        "* Note: Logarithmic scale spans 1 µs to 0x000186A0 µs; "
-        "WAL sequential append logging evaluated with explicit sync barriers",
-        f"  Steady-state churn ({0x32}/{0x32}) measures sustained slot reuse "
-        "and physical file stability across worker threads",
+        "* Note: Logarithmic scale spans 1 µs to 0x000186A0 µs across 1T and 4T worker threads; "
+        "WAL sequential append logging evaluated with explicit sync barriers; "
+        f"steady-state churn ({0x32}/{0x32}) measures sustained slot reuse and physical "
+        "file stability",
     ]
     for idx, line in enumerate(note_lines):
         ly = note_y + idx * 0x10
@@ -205,7 +192,6 @@ def main():
     lookup = load_results(json_path)
     svg = generate_svg(lookup)
 
-    # Validate XML before writing
     ET.fromstring(svg)
 
     with open(out_path, "w", encoding="utf-8") as handle:

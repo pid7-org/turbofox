@@ -1,41 +1,36 @@
 #!/usr/bin/env python3
-"""Generate Rosé Pine Dawn latency jitter & variance SVG with monospace font"""
 
 import json
 import os
 import sys
 import xml.etree.ElementTree as ET
 
-# Rosé Pine Dawn palette
-COLOR_BASE = "#faf4ed"
-COLOR_SURFACE = "#fffaf3"
-COLOR_OVERLAY = "#f2e9e1"
-COLOR_MUTED = "#9893a5"
-COLOR_SUBTLE = "#797593"
-COLOR_TEXT = "#575279"
-COLOR_BORDER = "#dfdad9"
-COLOR_LINE = "#cecacd"
+COLOR_BASE = "#eff1f5"
+COLOR_SURFACE = "#e6e9ef"
+COLOR_OVERLAY = "#ccd0da"
+COLOR_MUTED = "#8c8fa1"
+COLOR_SUBTLE = "#6c6f85"
+COLOR_TEXT = "#4c4f69"
+COLOR_BORDER = "#ccd0da"
+COLOR_LINE = "#bcc0cc"
 
-# Accent colors
-ACCENT_LOVE = "#b4637a"
-ACCENT_IRIS = "#907aa9"
-ACCENT_FOAM = "#56949f"
-ACCENT_GOLD = "#ea9d34"
-ACCENT_ROSE = "#d7827e"
-ACCENT_PINE = "#286983"
-ACCENT_PINE_ALT = "#31748f"
+ACCENT_RED = "#d20f39"
+ACCENT_MAUVE = "#8839ef"
+ACCENT_TEAL = "#179299"
+ACCENT_PEACH = "#fe640b"
+ACCENT_PINK = "#ea76cb"
+ACCENT_BLUE = "#1e66f5"
+ACCENT_SAPPHIRE = "#209fb5"
 
-# Workloads profiled: (bench, workload, display_label, bar_color)
 WORKLOADS = [
-    ("write_ingest", "sequential_append", "WAL: Ingest (NVMe fsync)", ACCENT_LOVE),
-    ("del_perf", "high_contention", "DELETE: Hot-Key Contention", ACCENT_IRIS),
-    ("read_perf", "point_miss", "READ: Point Miss (Absent)", ACCENT_FOAM),
-    ("read_perf", "mixed_95_5", f"READ/WRITE: Mixed {0x5F}/5 OLTP", ACCENT_GOLD),
-    ("del_perf", "churn_insert_delete", f"CHURN: {0x32}/{0x32} Put/Del", ACCENT_ROSE),
-    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_PINE),
-    ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)", ACCENT_PINE_ALT),
-    ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)", ACCENT_IRIS),
-    ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_LOVE),
+    ("write_ingest", "sequential_append", "WAL: Ingest (NVMe fsync)", ACCENT_RED),
+    ("del_perf", "high_contention", "DELETE: Hot-Key Contention", ACCENT_MAUVE),
+    ("read_perf", "point_miss", "READ: Point Miss (Absent)", ACCENT_TEAL),
+    ("del_perf", "churn_insert_delete", f"CHURN: {0x32}/{0x32} Put/Del", ACCENT_PINK),
+    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_BLUE),
+    ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)", ACCENT_SAPPHIRE),
+    ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)", ACCENT_PEACH),
+    ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_RED),
 ]
 
 FONT_STACK = (
@@ -66,7 +61,7 @@ def generate_svg(lookup):
     plot_w = 0x0350
     plot_h = 0x0140
 
-    max_cv = 8.0
+    max_cv = 9.0
     num_rows = len(WORKLOADS)
     row_h = float(plot_h) / float(num_rows)
     bar_h = 0x0E
@@ -90,12 +85,11 @@ def generate_svg(lookup):
     svg.append(
         f'<text x="{title_x}" y="{0x38}" fill="{COLOR_SUBTLE}" font-size="{0x0A}">'
         f'Coefficient of variation (1T baseline): lower indicates tighter SLA predictability '
-        f'(Ros\u00e9 Pine Dawn theme)'
+        f'(Catppuccin Latte theme)'
         f'</text>'
     )
 
-    # Gridlines and numeric ticks
-    ticks = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    ticks = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
     for tick in ticks:
         x = plot_x + (tick / max_cv) * plot_w
         svg.append(
@@ -107,13 +101,11 @@ def generate_svg(lookup):
             f'font-size="{0x08}" text-anchor="middle">{tick:.1f}</text>'
         )
 
-    # Axis boundary line
     svg.append(
         f'<line x1="{plot_x}" y1="{plot_y}" x2="{plot_x}" '
         f'y2="{plot_y + plot_h}" stroke="{COLOR_LINE}" stroke-width="1"/>'
     )
 
-    # Workload rows
     for idx, (bench, workload, label, color) in enumerate(WORKLOADS):
         entry = lookup.get((bench, workload, 1))
         lat = entry.get("latency_micros", {}) if entry else {}
@@ -137,16 +129,15 @@ def generate_svg(lookup):
             f'CV={cv:.2f} (\u03bc={mean_val:.2f}\u00b5s, \u03c3={std_val:.2f}\u00b5s)</text>'
         )
 
-    # Bottom notes section for complex domain concepts
     note_x = title_x
     note_y = plot_y + plot_h + 0x2A
     note_lines = [
         "* Note: CV (Coefficient of Variation = \u03c3 / \u03bc) quantifies relative latency "
-        "jitter independent of scale; lower CV denotes superior SLA determinism",
-        "  In-memory hash index probes and deletions show tight variance (CV &lt; 0.8), "
-        "proving low jitter across branch targets and cache lines",
-        "  WAL NVMe persistence displays elevated CV (~7.4) driven by hardware controller "
-        "queueing and OS page writeback spikes during fsync barriers",
+        "jitter independent of scale; lower CV denotes superior SLA determinism; "
+        "in-memory hash index probes and deletions show tight variance (CV &lt; 0.8)",
+        "  Low jitter confirmed across branch targets and cache lines; WAL NVMe persistence "
+        "displays elevated CV (~7.4) driven by hardware controller queueing and OS page writeback "
+        "spikes during fsync barriers",
     ]
     for idx, line in enumerate(note_lines):
         ly = note_y + idx * 0x10
@@ -171,7 +162,6 @@ def main():
     lookup = load_results(json_path)
     svg = generate_svg(lookup)
 
-    # Validate XML before writing
     ET.fromstring(svg)
 
     with open(out_path, "w", encoding="utf-8") as handle:

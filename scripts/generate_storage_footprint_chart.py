@@ -1,36 +1,32 @@
 #!/usr/bin/env python3
-"""Generate Rosé Pine Dawn storage footprint and tombstone SVG with monospace font"""
+"""Generate Catppuccin Latte storage footprint and tombstone SVG with monospace font"""
 
 import json
 import os
 import sys
 import xml.etree.ElementTree as ET
 
-# Rosé Pine Dawn palette
-COLOR_BASE = "#faf4ed"
-COLOR_SURFACE = "#fffaf3"
-COLOR_OVERLAY = "#f2e9e1"
-COLOR_MUTED = "#9893a5"
-COLOR_SUBTLE = "#797593"
-COLOR_TEXT = "#575279"
-COLOR_BORDER = "#dfdad9"
-COLOR_LINE = "#cecacd"
+COLOR_BASE = "#eff1f5"
+COLOR_SURFACE = "#e6e9ef"
+COLOR_OVERLAY = "#ccd0da"
+COLOR_MUTED = "#8c8fa1"
+COLOR_SUBTLE = "#6c6f85"
+COLOR_TEXT = "#4c4f69"
+COLOR_BORDER = "#ccd0da"
+COLOR_LINE = "#bcc0cc"
 
-# Accent colors
-ACCENT_PINE = "#286983"
-ACCENT_IRIS = "#907aa9"
-ACCENT_LOVE = "#b4637a"
-ACCENT_GOLD = "#ea9d34"
-ACCENT_FOAM = "#56949f"
-ACCENT_ROSE = "#d7827e"
+ACCENT_RED = "#d20f39"
+ACCENT_BLUE = "#1e66f5"
+ACCENT_TEAL = "#179299"
+ACCENT_PEACH = "#fe640b"
+ACCENT_MAUVE = "#8839ef"
 
 WORKLOADS = [
-    ("del_perf", "churn_insert_delete", f"CHURN: {0x32}/{0x32} Tombstones", ACCENT_LOVE),
-    ("write_ingest", "sequential_append", "WAL: Ingest (Sequential Append)", ACCENT_PINE),
-    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_FOAM),
-    ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_GOLD),
-    ("read_perf", "mixed_95_5", f"READ/WRITE: Mixed {0x5F}/5 OLTP", ACCENT_ROSE),
-    ("del_perf", "high_contention", "DELETE: Hot-Key Contention", ACCENT_IRIS),
+    ("del_perf", "churn_insert_delete", f"CHURN: {0x32}/{0x32} Tombstones", ACCENT_RED),
+    ("write_ingest", "sequential_append", "WAL: Ingest (Sequential Append)", ACCENT_BLUE),
+    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_TEAL),
+    ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_PEACH),
+    ("del_perf", "high_contention", "DELETE: Hot-Key Contention", ACCENT_MAUVE),
 ]
 
 FONT_STACK = (
@@ -58,10 +54,10 @@ def generate_svg(lookup):
     title_x = 0x24
     plot_x = 0x0158
     plot_y = 0x54
-    plot_w = 0x0300
+    plot_w = 0x0270
     plot_h = 0x0140
 
-    max_mb = float(0x1E)
+    max_mb = float(0x64)
     row_h = float(plot_h) / float(len(WORKLOADS))
     bar_h = 0x10
 
@@ -84,12 +80,11 @@ def generate_svg(lookup):
     svg.append(
         f'<text x="{title_x}" y="{0x38}" fill="{COLOR_SUBTLE}" font-size="{0x0A}">'
         f'Final database storage footprint after 0x10000 operations per workload '
-        f'(Rosé Pine Dawn theme)'
+        f'(Catppuccin Latte theme)'
         f'</text>'
     )
 
-    # Gridlines
-    ticks = [0, 5, 0x0A, 0x0F, 0x14, 0x19, 0x1E]
+    ticks = [0, float(0x14), float(0x28), float(0x3C), float(0x50), float(0x64)]
     for tick in ticks:
         x = plot_x + (float(tick) / max_mb) * plot_w
         svg.append(
@@ -98,10 +93,9 @@ def generate_svg(lookup):
         )
         svg.append(
             f'<text x="{x:.1f}" y="{plot_y + plot_h + 0x12}" fill="{COLOR_MUTED}" '
-            f'font-size="{0x08}" text-anchor="middle">{tick} MB</text>'
+            f'font-size="{0x08}" text-anchor="middle">{int(tick)} MB</text>'
         )
 
-    # Axis boundary lines
     svg.append(
         f'<line x1="{plot_x}" y1="{plot_y}" x2="{plot_x}" '
         f'y2="{plot_y + plot_h}" stroke="{COLOR_LINE}" stroke-width="1"/>'
@@ -111,7 +105,6 @@ def generate_svg(lookup):
         f'y2="{plot_y + plot_h}" stroke="{COLOR_LINE}" stroke-width="1"/>'
     )
 
-    # Bars
     for idx, (bench, workload, label, color) in enumerate(WORKLOADS):
         entry = lookup.get((bench, workload, 1))
         bytes_val = entry["db_size_bytes"] if entry else 0
@@ -133,13 +126,12 @@ def generate_svg(lookup):
             f'{mb_val:.2f} MB ({bytes_val:,} B)</text>'
         )
 
-    # Footnote
     note_x = title_x
     note_y = plot_y + plot_h + 0x2C
     note_lines = [
-        "* Note: Final storage size includes index slot arrays, DataBuf pages, and header metadata",
-        f"  Steady-state churn ({0x32}/{0x32}) demonstrates bounded storage footprint via "
-        "tombstone recycling",
+        "* Note: Final storage size includes index slot arrays, DataBuf pages, and header "
+        f"metadata; steady-state churn ({0x32}/{0x32}) demonstrates bounded storage footprint "
+        "via tombstone recycling",
     ]
     for idx, line in enumerate(note_lines):
         ly = note_y + idx * 0x10
@@ -159,7 +151,6 @@ def main():
     lookup = load_results(json_path)
     svg = generate_svg(lookup)
 
-    # Validate XML before writing
     ET.fromstring(svg)
 
     with open(out_path, "w", encoding="utf-8") as handle:

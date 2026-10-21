@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Rosé Pine Dawn full-spectrum throughput SVG with monospace font"""
+"""Generate Catppuccin Latte full-spectrum throughput SVG with monospace font"""
 
 import json
 import math
@@ -7,35 +7,31 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 
-# Rosé Pine Dawn palette
-COLOR_BASE = "#faf4ed"
-COLOR_SURFACE = "#fffaf3"
-COLOR_OVERLAY = "#f2e9e1"
-COLOR_MUTED = "#9893a5"
-COLOR_SUBTLE = "#797593"
-COLOR_TEXT = "#575279"
-COLOR_BORDER = "#dfdad9"
-COLOR_LINE = "#cecacd"
+COLOR_BASE = "#eff1f5"
+COLOR_SURFACE = "#e6e9ef"
+COLOR_OVERLAY = "#ccd0da"
+COLOR_MUTED = "#8c8fa1"
+COLOR_SUBTLE = "#6c6f85"
+COLOR_TEXT = "#4c4f69"
+COLOR_BORDER = "#ccd0da"
+COLOR_LINE = "#bcc0cc"
 
-# Accent colors
-ACCENT_PINE = "#286983"
-ACCENT_PINE_ALT = "#31748f"
-ACCENT_IRIS = "#907aa9"
-ACCENT_LOVE = "#b4637a"
-ACCENT_GOLD = "#ea9d34"
-ACCENT_FOAM = "#56949f"
-ACCENT_ROSE = "#d7827e"
+ACCENT_MAUVE = "#8839ef"
+ACCENT_TEAL = "#179299"
+ACCENT_BLUE = "#1e66f5"
+ACCENT_SAPPHIRE = "#209fb5"
+ACCENT_PEACH = "#fe640b"
+ACCENT_RED = "#d20f39"
+ACCENT_PINK = "#ea76cb"
 
 WORKLOADS = [
-    ("del_perf", "high_contention", "DELETE: Hot-Key Contention", ACCENT_IRIS),
-    ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)", ACCENT_FOAM),
-    ("read_perf", "point_miss", "READ: Point Miss (Absent)", ACCENT_PINE),
-    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_PINE_ALT),
-    ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)", ACCENT_GOLD),
-    ("read_perf", "mixed_95_5", f"READ/WRITE: Mixed {0x5F}/5 OLTP", ACCENT_ROSE),
-    ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_LOVE),
-    ("write_ingest", "sequential_append", "WAL: Ingest (NVMe fsync)", ACCENT_LOVE),
-    ("del_perf", "churn_insert_delete", f"CHURN: {0x32}/{0x32} Put/Del", ACCENT_IRIS),
+    ("del_perf", "high_contention", "DELETE: Hot-Key Contention", ACCENT_MAUVE),
+    ("del_perf", "delete_miss", "DELETE: Point Miss (Absent)", ACCENT_TEAL),
+    ("read_perf", "point_miss", "READ: Point Miss (Absent)", ACCENT_BLUE),
+    ("read_perf", "point_hit", "READ: Point Hit (Existing)", ACCENT_SAPPHIRE),
+    ("read_perf", "zipf_skewed", f"READ: Zipfian ({0x50}/{0x14} Skew)", ACCENT_PEACH),
+    ("del_perf", "delete_hit", "DELETE: Point Hit (Existing)", ACCENT_RED),
+    ("write_ingest", "sequential_append", "WAL: Ingest (NVMe fsync)", ACCENT_RED),
 ]
 
 FONT_STACK = (
@@ -66,7 +62,6 @@ def generate_svg(lookup):
     plot_w = 0x0330
     plot_h = 0x0140
 
-    # Log scale: 10^3 (1 kops/s) to 10^7 (0x0A Mops/s)
     min_log = 3.0
     max_log = 7.0
     span_log = max_log - min_log
@@ -92,11 +87,10 @@ def generate_svg(lookup):
     svg.append(
         f'<text x="{title_x}" y="{0x38}" fill="{COLOR_SUBTLE}" font-size="{0x0A}">'
         f'1-thread baseline (ops/sec): dynamic range from disk WAL to memory lookup '
-        f'(Rosé Pine Dawn theme)'
+        f'(Catppuccin Latte theme)'
         f'</text>'
     )
 
-    # Decades
     decades = [
         (3.0, "1 kops/s"),
         (4.0, f"{0x0A} kops/s"),
@@ -115,7 +109,6 @@ def generate_svg(lookup):
             f'font-size="{0x08}" text-anchor="middle">{label}</text>'
         )
 
-    # Axis boundary lines
     svg.append(
         f'<line x1="{plot_x}" y1="{plot_y}" x2="{plot_x}" '
         f'y2="{plot_y + plot_h}" stroke="{COLOR_LINE}" stroke-width="1"/>'
@@ -125,7 +118,6 @@ def generate_svg(lookup):
         f'y2="{plot_y + plot_h}" stroke="{COLOR_LINE}" stroke-width="1"/>'
     )
 
-    # Workload rows
     for idx, (bench, workload, label, color) in enumerate(WORKLOADS):
         entry = lookup.get((bench, workload, 1))
         ops = entry["throughput_ops_sec"] if entry else float(0x03E8)
@@ -151,12 +143,11 @@ def generate_svg(lookup):
             f'font-size="{0x08}" font-weight="bold">{str_ops}</text>'
         )
 
-    # Footnote
     note_x = title_x
     note_y = plot_y + plot_h + 0x2C
     note_lines = [
-        "* Note: Logarithmic scale spans 1 kops/sec to 0x0A Mops/sec at 1-thread core baseline",
-        "  Separates userspace memory-mapped slot lookup fast-paths from NVMe writeback latency",
+        "* Note: Logarithmic scale spans 1 kops/sec to 0x0A Mops/sec at 1-thread core baseline; "
+        "separates userspace memory-mapped slot lookup fast-paths from NVMe writeback latency",
     ]
     for idx, line in enumerate(note_lines):
         ly = note_y + idx * 0x10
@@ -176,7 +167,6 @@ def main():
     lookup = load_results(json_path)
     svg = generate_svg(lookup)
 
-    # Validate XML before writing
     ET.fromstring(svg)
 
     with open(out_path, "w", encoding="utf-8") as handle:

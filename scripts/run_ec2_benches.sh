@@ -12,14 +12,16 @@
 set -euo pipefail
 
 DEFAULT_OPS="0x186A0"
-DEFAULT_THREADS="1,2,4"
+DEFAULT_THREADS="1,4"
 DEFAULT_WARMUP="0x00"
 DEFAULT_OUT="turbofox_benchmark_results.json"
+DEFAULT_REGION="us-east-1"
 
 OPS="${DEFAULT_OPS}"
 THREADS_LIST="${DEFAULT_THREADS}"
 WARMUP="${DEFAULT_WARMUP}"
 OUT_FILE="${DEFAULT_OUT}"
+REGION="${DEFAULT_REGION}"
 TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/turbofox-target}"
 BENCH_DIR=""
 
@@ -43,6 +45,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --warmup)
       WARMUP="$2"
+      shift 2
+      ;;
+    --region)
+      REGION="$2"
       shift 2
       ;;
     *)
@@ -86,12 +92,11 @@ WRITE_BIN=$(find "${DEPS_DIR}" -maxdepth 1 \( -name "write_perf-*" -o \
   -name "write_ingest-*" \) -executable -type f | head -n 1)
 READ_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "read_perf-*" -executable -type f | head -n 1)
 DEL_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "del_perf-*" -executable -type f | head -n 1)
-LIST_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "list_perf-*" -executable -type f | head -n 1)
 SYNC_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "sync_perf-*" -executable -type f | head -n 1)
 CHURN_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "churn_perf-*" -executable -type f | head -n 1)
 
 if [[ -z "${WRITE_BIN}" || -z "${READ_BIN}" || -z "${DEL_BIN}" || \
-      -z "${LIST_BIN}" || -z "${SYNC_BIN}" || -z "${CHURN_BIN}" ]]; then
+      -z "${SYNC_BIN}" || -z "${CHURN_BIN}" ]]; then
   echo "Error: Failed to locate benchmark binaries in ${DEPS_DIR}" >&2
   exit 1
 fi
@@ -119,10 +124,9 @@ run_benchmark() {
 
   drop_page_cache
 
-  local max_core=$((thread_count - 1))
   local taskset_cmd=""
-  if command -v taskset >/dev/null 2>&1 && [[ ${thread_count} -le ${TOTAL_CPUS} ]]; then
-    taskset_cmd="taskset -c 0-${max_core}"
+  if [[ "${thread_count}" -eq 1 ]] && command -v taskset >/dev/null 2>&1; then
+    taskset_cmd="taskset -c 0"
   fi
 
   local json_out
@@ -161,11 +165,6 @@ for T in "${THREAD_ARRAY[@]}"; do
     run_benchmark "${DEL_BIN}" "del_perf" "${WL}" "${T}"
   done
 
-  for WL in append read pop; do
-    echo "Running list_perf [${WL}] (threads=${T})..." >&2
-    run_benchmark "${LIST_BIN}" "list_perf" "${WL}" "${T}"
-  done
-
   for WL in pages_0x20 pages_0x0100 pages_0x0400; do
     echo "Running sync_perf [${WL}] (threads=${T})..." >&2
     run_benchmark "${SYNC_BIN}" "sync_perf" "${WL}" "${T}"
@@ -184,6 +183,7 @@ cat <<EOF > "${OUT_FILE}"
 {
   "metadata": {
     "timestamp_utc": "${TIMESTAMP}",
+    "region": "${REGION}",
     "instance_type": "${INSTANCE_TYPE}",
     "cpu_model": "${CPU_MODEL}",
     "kernel": "${KERNEL}",

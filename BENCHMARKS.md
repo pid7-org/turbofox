@@ -51,7 +51,7 @@ Measurement phase:
 - 0x14% point misses (probing keys with disjoint prefix or known vacant keys)
 - Strictly read-only execution; zero writes or flushes during timer interval
 
-### Suite C Deletion & Tombstone
+### Suite C Deletion & Tombstone (del_perf)
 
 Target: evaluate OCC slot spinlocks, deletion tombstone markers, and bucket reorganization
 

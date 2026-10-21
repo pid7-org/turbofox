@@ -15,6 +15,15 @@ categories = [
     "caching",
     "database-implementations",
 ]
+exclude = [
+    "/assets",
+    "/bencher",
+    "/scripts",
+    "/.github",
+    "BENCHMARKS.md",
+    "DESIGN.md",
+    "rustfmt.toml",
+]
 autobenches = false
 
 [package.metadata.docs.rs]

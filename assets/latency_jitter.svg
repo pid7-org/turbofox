@@ -36,7 +36,7 @@
 <text x="270" y="243.0" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">CHURN: 50/50 Put/Del</text>
 <rect x="280" y="233.0" width="57.6" height="14" rx="2" fill="#d7827e"/>
 <text x="343.6" y="243.0" fill="#d7827e" font-size="8" font-weight="bold">CV=0.54 (μ=4.18µs, σ=2.27µs)</text>
-<text x="270" y="278.6" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Uniform)</text>
+<text x="270" y="278.6" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
 <rect x="280" y="268.6" width="56.3" height="14" rx="2" fill="#286983"/>
 <text x="342.3" y="278.6" fill="#286983" font-size="8" font-weight="bold">CV=0.53 (μ=0.81µs, σ=0.43µs)</text>
 <text x="270" y="314.1" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Miss (Absent)</text>

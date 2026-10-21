@@ -40,7 +40,7 @@
 <text x="801.4" y="168.1" fill="#907aa9" font-size="7" font-weight="bold">1.22x</text>
 <rect x="280" y="171.1" width="512.0" height="7" rx="2" fill="#b4637a"/>
 <text x="796.0" y="177.1" fill="#b4637a" font-size="7" font-weight="bold">1.21x</text>
-<text x="270" y="207.4" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Uniform)</text>
+<text x="270" y="207.4" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
 <rect x="280" y="188.7" width="424.0" height="7" rx="2" fill="#286983"/>
 <text x="708.0" y="194.7" fill="#286983" font-size="7" font-weight="bold">1.00x</text>
 <rect x="280" y="197.7" width="515.4" height="7" rx="2" fill="#907aa9"/>

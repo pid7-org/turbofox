@@ -19,7 +19,7 @@
 <text x="566.4" y="446" fill="#9893a5" font-size="8" text-anchor="middle">15 µs</text>
 <line x1="661.8" y1="84" x2="661.8" y2="428" stroke="#f2e9e1" stroke-width="1"/>
 <text x="661.8" y="446" fill="#9893a5" font-size="8" text-anchor="middle">20 µs</text>
-<text x="270" y="108.5" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Uniform)</text>
+<text x="270" y="108.5" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
 <rect x="280" y="86.0" width="24.1" height="7" rx="2" fill="#286983"/>
 <text x="308.1" y="92.0" fill="#286983" font-size="7" font-weight="bold">1.26</text>
 <rect x="280" y="95.0" width="37.6" height="7" rx="2" fill="#907aa9"/>
@@ -86,7 +86,7 @@
 <text x="1070.0" y="446" fill="#9893a5" font-size="8" text-anchor="middle">7.5 ms</text>
 <line x1="1150.0" y1="84" x2="1150.0" y2="428" stroke="#f2e9e1" stroke-width="1"/>
 <text x="1150.0" y="446" fill="#9893a5" font-size="8" text-anchor="middle">10.0 ms</text>
-<text x="830" y="116" fill="#797593" font-size="8" font-weight="bold">WAL: Ingest (fsync)</text>
+<text x="830" y="116" fill="#797593" font-size="8" font-weight="bold">WAL: Ingest (NVMe fsync)</text>
 <rect x="830" y="124.0" width="140.4" height="12" rx="2" fill="#286983"/>
 <text x="974.4" y="133.0" fill="#286983" font-size="8" font-weight="bold">4.39 ms</text>
 <rect x="830" y="146.0" width="173.7" height="12" rx="2" fill="#907aa9"/>

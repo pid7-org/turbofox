@@ -1,37 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1056 480" width="1056" height="480" style="background:#eff1f5; font-family:'JetBrains Mono','Fira Code','Roboto Mono',Menlo,Monaco,Consolas,monospace;">
-<rect width="1056" height="480" rx="12" fill="#eff1f5" stroke="#ccd0da" stroke-width="1"/>
-<text x="48" y="34" fill="#4c4f69" font-size="16" font-weight="bold">TurboFox On-Disk Storage Footprint &amp; Tombstone Overhead</text>
-<text x="48" y="56" fill="#6c6f85" font-size="10">Final database size (MB) after 0x10000 operations per workload</text>
-<line x1="280.0" y1="85" x2="280.0" y2="389" stroke="#dce0e8" stroke-width="1"/>
-<text x="280.0" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">0 MB</text>
-<line x1="397.3" y1="85" x2="397.3" y2="389" stroke="#dce0e8" stroke-width="1"/>
-<text x="397.3" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">5 MB</text>
-<line x1="514.7" y1="85" x2="514.7" y2="389" stroke="#dce0e8" stroke-width="1"/>
-<text x="514.7" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">10 MB</text>
-<line x1="632.0" y1="85" x2="632.0" y2="389" stroke="#dce0e8" stroke-width="1"/>
-<text x="632.0" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">15 MB</text>
-<line x1="749.3" y1="85" x2="749.3" y2="389" stroke="#dce0e8" stroke-width="1"/>
-<text x="749.3" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">20 MB</text>
-<line x1="866.7" y1="85" x2="866.7" y2="389" stroke="#dce0e8" stroke-width="1"/>
-<text x="866.7" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">25 MB</text>
-<line x1="984.0" y1="85" x2="984.0" y2="389" stroke="#dce0e8" stroke-width="1"/>
-<text x="984.0" y="407" fill="#8c8fa1" font-size="9" text-anchor="middle">30 MB</text>
-<text x="270" y="114.3" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Churn 50/50 (Tombstones)</text>
-<rect x="280" y="101.3" width="616.8" height="18" rx="3" fill="#d20f39"/>
-<text x="902.8" y="114.3" fill="#d20f39" font-size="9" font-weight="bold">26.29 MB (27,561,984 B)</text>
-<text x="270" y="165.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Sequential Append (WAL)</text>
-<rect x="280" y="152.0" width="256.0" height="18" rx="3" fill="#1e66f5"/>
-<text x="542.0" y="165.0" fill="#1e66f5" font-size="9" font-weight="bold">10.91 MB (11,440,128 B)</text>
-<text x="270" y="215.7" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Point Hit Baseline</text>
-<rect x="280" y="202.7" width="254.6" height="18" rx="3" fill="#40a02b"/>
-<text x="540.6" y="215.7" fill="#40a02b" font-size="9" font-weight="bold">10.85 MB (11,374,592 B)</text>
-<text x="270" y="266.3" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Delete Hit Baseline</text>
-<rect x="280" y="253.3" width="254.6" height="18" rx="3" fill="#fe640b"/>
-<text x="540.6" y="266.3" fill="#fe640b" font-size="9" font-weight="bold">10.85 MB (11,374,592 B)</text>
-<text x="270" y="317.0" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">Mixed 95/5 Baseline</text>
-<rect x="280" y="304.0" width="254.6" height="18" rx="3" fill="#179299"/>
-<text x="540.6" y="317.0" fill="#179299" font-size="9" font-weight="bold">10.85 MB (11,374,592 B)</text>
-<text x="270" y="367.7" fill="#4c4f69" font-size="9" font-weight="600" text-anchor="end">High Contention (Key Overwrite)</text>
-<rect x="280" y="354.7" width="2.0" height="18" rx="3" fill="#8839ef"/>
-<text x="288.0" y="367.7" fill="#8839ef" font-size="9" font-weight="bold">0.03 MB (32,768 B)</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1220 536" width="1220" height="536" style="background:#faf4ed; font-family:ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace;">
+<rect width="1220" height="536" rx="12" fill="#faf4ed" stroke="#dfdad9" stroke-width="1"/>
+<text x="36" y="34" fill="#575279" font-size="16" font-weight="bold">TurboFox On-Disk Storage Footprint &amp; Allocation Density</text>
+<text x="36" y="56" fill="#797593" font-size="10">Final database storage footprint after 0x10000 operations per workload (Rosé Pine Dawn theme)</text>
+<line x1="344.0" y1="84" x2="344.0" y2="404" stroke="#f2e9e1" stroke-width="1"/>
+<text x="344.0" y="422" fill="#9893a5" font-size="8" text-anchor="middle">0 MB</text>
+<line x1="472.0" y1="84" x2="472.0" y2="404" stroke="#f2e9e1" stroke-width="1"/>
+<text x="472.0" y="422" fill="#9893a5" font-size="8" text-anchor="middle">5 MB</text>
+<line x1="600.0" y1="84" x2="600.0" y2="404" stroke="#f2e9e1" stroke-width="1"/>
+<text x="600.0" y="422" fill="#9893a5" font-size="8" text-anchor="middle">10 MB</text>
+<line x1="728.0" y1="84" x2="728.0" y2="404" stroke="#f2e9e1" stroke-width="1"/>
+<text x="728.0" y="422" fill="#9893a5" font-size="8" text-anchor="middle">15 MB</text>
+<line x1="856.0" y1="84" x2="856.0" y2="404" stroke="#f2e9e1" stroke-width="1"/>
+<text x="856.0" y="422" fill="#9893a5" font-size="8" text-anchor="middle">20 MB</text>
+<line x1="984.0" y1="84" x2="984.0" y2="404" stroke="#f2e9e1" stroke-width="1"/>
+<text x="984.0" y="422" fill="#9893a5" font-size="8" text-anchor="middle">25 MB</text>
+<line x1="1112.0" y1="84" x2="1112.0" y2="404" stroke="#f2e9e1" stroke-width="1"/>
+<text x="1112.0" y="422" fill="#9893a5" font-size="8" text-anchor="middle">30 MB</text>
+<line x1="344" y1="84" x2="344" y2="404" stroke="#cecacd" stroke-width="1"/>
+<line x1="344" y1="404" x2="1112" y2="404" stroke="#cecacd" stroke-width="1"/>
+<text x="334" y="113.7" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">CHURN: 50/50 Tombstones</text>
+<rect x="344" y="102.7" width="672.9" height="16" rx="2" fill="#b4637a"/>
+<text x="1022.9" y="113.7" fill="#b4637a" font-size="8" font-weight="bold">26.29 MB (27,561,984 B)</text>
+<text x="334" y="167.0" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">WAL: Ingest (Sequential Append)</text>
+<rect x="344" y="156.0" width="279.3" height="16" rx="2" fill="#286983"/>
+<text x="629.3" y="167.0" fill="#286983" font-size="8" font-weight="bold">10.91 MB (11,440,128 B)</text>
+<text x="334" y="220.3" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ: Point Hit (Existing)</text>
+<rect x="344" y="209.3" width="277.7" height="16" rx="2" fill="#56949f"/>
+<text x="627.7" y="220.3" fill="#56949f" font-size="8" font-weight="bold">10.85 MB (11,374,592 B)</text>
+<text x="334" y="273.7" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Point Hit (Existing)</text>
+<rect x="344" y="262.7" width="277.7" height="16" rx="2" fill="#ea9d34"/>
+<text x="627.7" y="273.7" fill="#ea9d34" font-size="8" font-weight="bold">10.85 MB (11,374,592 B)</text>
+<text x="334" y="327.0" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">READ/WRITE: Mixed 95/5 OLTP</text>
+<rect x="344" y="316.0" width="277.7" height="16" rx="2" fill="#d7827e"/>
+<text x="627.7" y="327.0" fill="#d7827e" font-size="8" font-weight="bold">10.85 MB (11,374,592 B)</text>
+<text x="334" y="380.3" fill="#575279" font-size="8" font-weight="bold" text-anchor="end">DELETE: Hot-Key Contention</text>
+<rect x="344" y="369.3" width="2.0" height="16" rx="2" fill="#907aa9"/>
+<text x="352.0" y="380.3" fill="#907aa9" font-size="8" font-weight="bold">0.03 MB (32,768 B)</text>
+<text x="36" y="448" fill="#797593" font-size="8">* Note: Final storage size includes index slot arrays, DataBuf pages, and header metadata</text>
+<text x="36" y="464" fill="#797593" font-size="8">  Steady-state churn (50/50) demonstrates bounded storage footprint via tombstone recycling</text>
 </svg>

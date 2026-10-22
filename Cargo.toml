@@ -60,23 +60,3 @@ turbo_crc = { version = "0.0.4" }
 [dev-dependencies]
 hdrhistogram = "7.5.4"
 tempfile = "3.27.0"
-
-[[bench]]
-name = "write_perf"
-harness = false
-
-[[bench]]
-name = "read_perf"
-harness = false
-
-[[bench]]
-name = "del_perf"
-harness = false
-
-[[bench]]
-name = "sync_perf"
-harness = false
-
-[[bench]]
-name = "churn_perf"
-harness = false

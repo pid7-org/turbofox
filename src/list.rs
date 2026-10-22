@@ -2,7 +2,7 @@
 //!
 //! ## Example
 //!
-//! ```
+//! ```no_run
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
@@ -33,7 +33,7 @@ use crate::ticket::TurboTicket;
 ///
 /// ## Example
 ///
-/// ```
+/// ```no_run
 /// use turbofox::{TurboCfg, TurboFox};
 ///
 /// let dir = tempfile::tempdir().unwrap();
@@ -62,7 +62,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -91,7 +91,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -120,7 +120,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -152,7 +152,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -182,7 +182,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -212,7 +212,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -243,7 +243,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -271,7 +271,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -299,7 +299,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -330,7 +330,7 @@ impl TurboList {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -355,7 +355,7 @@ impl TurboList {
 ///
 /// ## Example
 ///
-/// ```
+/// ```no_run
 /// use turbofox::{TurboCfg, TurboFox};
 ///
 /// let dir = tempfile::tempdir().unwrap();

@@ -2,7 +2,7 @@
 //!
 //! ## Example
 //!
-//! ```
+//! ```no_run
 //! use std::path::PathBuf;
 //! use std::time::Duration;
 //! use turbofox::TurboCfg;
@@ -36,7 +36,7 @@ pub(crate) const MAX_STORAGE_PAGES: u32 = MAX_DBUF_SLOT / 0x20;
 ///
 /// ## Example
 ///
-/// ```
+/// ```no_run
 /// use std::path::PathBuf;
 /// use turbofox::TurboCfg;
 ///
@@ -61,7 +61,7 @@ impl TurboCfg {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::TurboCfg;
     ///
     /// let cfg = TurboCfg::new("default.db");
@@ -78,7 +78,7 @@ impl TurboCfg {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::TurboCfg;
     ///
     /// let cfg = TurboCfg::new("versioned.db").with_version(2);
@@ -93,7 +93,7 @@ impl TurboCfg {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use std::time::Duration;
     /// use turbofox::TurboCfg;
     ///

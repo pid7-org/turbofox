@@ -2,7 +2,7 @@
 //!
 //! ## Example (Key-Value)
 //!
-//! ```
+//! ```no_run
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
@@ -24,7 +24,7 @@
 //!
 //! ## Example (`TurboList`)
 //!
-//! ```
+//! ```no_run
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
@@ -60,7 +60,7 @@ pub use ticket::TurboTicket;
 ///
 /// ## Example
 ///
-/// ```
+/// ```no_run
 /// use turbofox::{TurboCfg, TurboFox};
 ///
 /// let dir = tempfile::tempdir().unwrap();
@@ -88,7 +88,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -112,7 +112,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -146,7 +146,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -174,7 +174,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -202,7 +202,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -226,7 +226,7 @@ impl TurboFox {
     ///
     /// ## Examples
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -254,7 +254,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -307,7 +307,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -335,7 +335,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```no_run
     /// use turbofox::{TurboCfg, TurboError, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();

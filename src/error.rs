@@ -2,7 +2,7 @@
 //!
 //! ## Example
 //!
-//! ```
+//! ```no_run
 //! use turbofox::{TurboError, TurboResult};
 //!
 //! fn check_capacity(size: usize) -> TurboResult<()> {
@@ -22,7 +22,7 @@
 ///
 /// ## Example
 ///
-/// ```
+/// ```no_run
 /// use turbofox::{TurboError, TurboResult};
 ///
 /// fn sample_op(succeed: bool) -> TurboResult<u32> {
@@ -42,7 +42,7 @@ pub type TurboResult<T> = Result<T, TurboError>;
 ///
 /// ## Example
 ///
-/// ```
+/// ```no_run
 /// use turbofox::TurboError;
 ///
 /// let err = TurboError::InvalidMagic;

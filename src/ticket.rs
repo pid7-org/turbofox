@@ -18,7 +18,7 @@
 //! db.delete().unwrap();
 //! ```
 
-use crate::error::{TurboError, TurboResult};
+use crate::error::TurboResult;
 use frozen_core::ack::AckTicket;
 
 /// Durability acknowledgement handle tracking write persistence
@@ -45,6 +45,7 @@ pub struct TurboTicket {
 
 impl TurboTicket {
     /// Constructs a new [`TurboTicket`] wrapping an [`AckTicket`]
+    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) const fn new(inner: AckTicket) -> Self {
         Self { inner }
@@ -67,7 +68,7 @@ impl TurboTicket {
     /// ```
     #[inline(always)]
     pub const fn epoch(&self) -> u64 {
-        self.inner.epoch()
+        todo!()
     }
 
     /// Checks if the ticket is already durable without blocking
@@ -87,7 +88,7 @@ impl TurboTicket {
     /// ```
     #[inline(always)]
     pub fn is_durable(&self) -> bool {
-        self.inner.is_durable()
+        todo!()
     }
 
     /// Blocks the current thread until the ticket becomes durable; translates low-level durability
@@ -113,7 +114,7 @@ impl TurboTicket {
     /// ```
     #[inline]
     pub fn wait(&self) -> TurboResult<u64> {
-        self.inner.wait().map_err(TurboError::from)
+        todo!()
     }
 
     /// Forces synchronization for this ticket and blocks until durable; while translating low-level
@@ -138,7 +139,7 @@ impl TurboTicket {
     /// ```
     #[inline]
     pub fn force(&self) -> TurboResult<u64> {
-        self.inner.force().map_err(TurboError::from)
+        todo!()
     }
 }
 
@@ -166,6 +167,7 @@ impl AsRef<AckTicket> for TurboTicket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::TurboError;
     use frozen_core::ack::Completion;
     use frozen_core::error::{ErrCode, FrozenError};
     use std::sync::Arc;

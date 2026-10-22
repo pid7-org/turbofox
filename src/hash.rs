@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use core::hash::Hasher;
 use frozen_core::hints;
 use twox_hash::XxHash32;
@@ -7,7 +9,6 @@ pub(crate) const HASH_EMPTY: u32 = 0;
 pub(crate) const HASH_TOMBSTONE: u32 = 1;
 pub(crate) const MIN_VALID_HASH: u32 = 2;
 
-/// Ref: `DESIGN.md` §3.1
 #[inline(always)]
 pub(crate) fn hash_key(key: &[u8]) -> u32 {
     let mut hasher = XxHash32::with_seed(SEED);

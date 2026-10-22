@@ -24,10 +24,10 @@
 //! db.delete().unwrap();
 //! ```
 
-use crate::engine::Engine;
+#![allow(dead_code)]
+
 use crate::error::TurboResult;
 use crate::ticket::TurboTicket;
-use std::sync::Arc;
 
 /// Handle representing a 1-to-N list structure in [`TurboFox`]
 ///
@@ -49,14 +49,13 @@ use std::sync::Arc;
 /// ```
 #[derive(Debug, Clone)]
 pub struct TurboList {
-    engine: Arc<Engine>,
     key: Vec<u8>,
 }
 
 impl TurboList {
     #[inline(always)]
-    pub(crate) fn new(engine: Arc<Engine>, key: Vec<u8>) -> Self {
-        Self { engine, key }
+    pub(crate) fn new(key: Vec<u8>) -> Self {
+        Self { key }
     }
 
     /// Target key associated with this list handle
@@ -78,7 +77,7 @@ impl TurboList {
     /// ```
     #[inline(always)]
     pub fn key(&self) -> &[u8] {
-        &self.key
+        todo!()
     }
 
     /// Appends an item payload to the tail of the list; returns a [`TurboTicket`] tracking
@@ -108,8 +107,8 @@ impl TurboList {
     /// db.delete().unwrap();
     /// ```
     #[inline(always)]
-    pub fn append(&self, item: &[u8]) -> TurboResult<TurboTicket> {
-        self.engine.list_append(&self.key, item)
+    pub fn append(&self, _item: &[u8]) -> TurboResult<TurboTicket> {
+        todo!()
     }
 
     /// Pops and removes the item payload at the tail of the list; returns `Ok(None)` if the list
@@ -140,7 +139,7 @@ impl TurboList {
     /// ```
     #[inline(always)]
     pub fn pop(&self) -> TurboResult<Option<Vec<u8>>> {
-        self.engine.list_pop(&self.key)
+        todo!()
     }
 
     /// Retrieves the first item payload in the list without removing it; returns `Ok(None)` if the
@@ -170,7 +169,7 @@ impl TurboList {
     /// ```
     #[inline(always)]
     pub fn first(&self) -> TurboResult<Option<Vec<u8>>> {
-        self.engine.list_first(&self.key)
+        todo!()
     }
 
     /// Retrieves the last item payload in the list without removing it; returns `Ok(None)` if the
@@ -200,7 +199,7 @@ impl TurboList {
     /// ```
     #[inline(always)]
     pub fn last(&self) -> TurboResult<Option<Vec<u8>>> {
-        self.engine.list_last(&self.key)
+        todo!()
     }
 
     /// Retrieves the item payload at the specified 0-based index; returns `Ok(None)` if index is
@@ -231,8 +230,8 @@ impl TurboList {
     /// db.delete().unwrap();
     /// ```
     #[inline(always)]
-    pub fn get_at(&self, idx: usize) -> TurboResult<Option<Vec<u8>>> {
-        self.engine.list_get_at(&self.key, idx)
+    pub fn get_at(&self, _idx: usize) -> TurboResult<Option<Vec<u8>>> {
+        todo!()
     }
 
     /// Total number of item entries in this list; traverses allocated descriptor blocks to compute
@@ -261,7 +260,7 @@ impl TurboList {
     /// ```
     #[inline(always)]
     pub fn len(&self) -> TurboResult<usize> {
-        self.engine.list_len(&self.key)
+        todo!()
     }
 
     /// Returns true if this list contains zero items;
@@ -289,7 +288,7 @@ impl TurboList {
     /// ```
     #[inline(always)]
     pub fn is_empty(&self) -> TurboResult<bool> {
-        Ok(self.len()? == 0)
+        todo!()
     }
 
     /// Returns an iterator over all item payloads in the list
@@ -319,8 +318,7 @@ impl TurboList {
     /// ```
     #[inline(always)]
     pub fn iter(&self) -> TurboResult<TurboListIter> {
-        let items = self.engine.list_items(&self.key)?;
-        Ok(TurboListIter { items, index: 0 })
+        todo!()
     }
 
     /// Removes this list and frees all associated blocks and buffers; returns `Ok(true)` if list
@@ -349,7 +347,7 @@ impl TurboList {
     /// ```
     #[inline(always)]
     pub fn clear(&self) -> TurboResult<bool> {
-        self.engine.list_del(&self.key)
+        todo!()
     }
 }
 

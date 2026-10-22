@@ -9,6 +9,7 @@
 //!     if size > 0x1000 {
 //!         return Err(TurboError::PayloadTooLarge);
 //!     }
+//!
 //!     Ok(())
 //! }
 //!
@@ -104,21 +105,6 @@ impl From<std::io::Error> for TurboError {
     #[inline]
     fn from(err: std::io::Error) -> Self {
         Self::Io(err)
-    }
-}
-
-impl From<crate::databuf::DataBufError> for TurboError {
-    #[inline]
-    fn from(err: crate::databuf::DataBufError) -> Self {
-        match err {
-            crate::databuf::DataBufError::PayloadTooLarge => Self::PayloadTooLarge,
-            crate::databuf::DataBufError::CrcMismatch { .. } => {
-                Self::CorruptedPayload("databuf payload crc32 mismatch")
-            }
-            crate::databuf::DataBufError::InvalidIndex => {
-                Self::CorruptedPayload("invalid databuf index")
-            }
-        }
     }
 }
 

@@ -19,11 +19,17 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+#[allow(dead_code)]
 pub(crate) const MODULE_ID: u8 = 0x46;
+#[allow(dead_code)]
 pub(crate) const PAGE_SIZE: u32 = 0x1000;
+#[allow(dead_code)]
 pub(crate) const DEFAULT_VERSION: u32 = 1;
+#[allow(dead_code)]
 pub(crate) const MAX_BUF_IDX: u32 = 0x7FFF_FFFF;
+#[allow(dead_code)]
 pub(crate) const MAX_DBUF_SLOT: u32 = MAX_BUF_IDX / 0x3F;
+#[allow(dead_code)]
 pub(crate) const MAX_STORAGE_PAGES: u32 = MAX_DBUF_SLOT / 0x20;
 
 /// Configuration parameters for initializing or opening a [`crate::TurboFox`] instance
@@ -63,8 +69,8 @@ impl TurboCfg {
     /// assert!(cfg.sync_interval.is_none());
     /// ```
     #[inline]
-    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
-        Self { path: path.into(), version: DEFAULT_VERSION, sync_interval: None }
+    pub fn new<P: Into<PathBuf>>(_path: P) -> Self {
+        todo!()
     }
 
     /// Configures layout and backing file version to enable schema migration or multi-version file
@@ -79,9 +85,8 @@ impl TurboCfg {
     /// assert_eq!(cfg.version, 2);
     /// ```
     #[inline]
-    pub fn with_version(mut self, version: u32) -> Self {
-        self.version = version;
-        self
+    pub fn with_version(self, _version: u32) -> Self {
+        todo!()
     }
 
     /// Configures periodic background flush interval
@@ -97,8 +102,7 @@ impl TurboCfg {
     /// assert_eq!(cfg.sync_interval, Some(Duration::from_millis(0x64)));
     /// ```
     #[inline]
-    pub fn with_sync_interval(mut self, interval: Duration) -> Self {
-        self.sync_interval = Some(interval);
-        self
+    pub fn with_sync_interval(self, _interval: Duration) -> Self {
+        todo!()
     }
 }

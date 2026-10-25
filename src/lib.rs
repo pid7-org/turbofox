@@ -2,7 +2,7 @@
 //!
 //! ## Example (Key-Value)
 //!
-//! ```no_run
+//! ```
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
@@ -24,7 +24,7 @@
 //!
 //! ## Example (`TurboList`)
 //!
-//! ```no_run
+//! ```
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
@@ -70,7 +70,7 @@ use engine::Engine;
 ///
 /// ## Example
 ///
-/// ```no_run
+/// ```
 /// use turbofox::{TurboCfg, TurboFox};
 ///
 /// let dir = tempfile::tempdir().unwrap();
@@ -100,7 +100,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -122,11 +122,11 @@ impl TurboFox {
     /// ## Errors
     ///
     /// Returns [`TurboError::Storage`] if the file does not exist or cannot be accessed; returns
-    /// [`TurboError::Engine`] if header validation or layout checks fail
+    /// [`TurboError::CorruptedHeader`] if header validation or layout checks fail
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -157,12 +157,12 @@ impl TurboFox {
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::PayloadOversize`] if key or value exceeds maximum payload limits; or
+    /// Returns [`TurboError::PayloadTooLarge`] if key or value exceeds maximum payload limits; or
     /// [`TurboError::Storage`] if physical storage expansion fails
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -187,11 +187,11 @@ impl TurboFox {
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Engine`] if data buffer verification or CRC integrity fails
+    /// Returns [`TurboError::CorruptedPayload`] if data buffer verification or CRC integrity fails
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -220,7 +220,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -245,7 +245,7 @@ impl TurboFox {
     ///
     /// ## Examples
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -274,7 +274,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -302,7 +302,7 @@ impl TurboFox {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -319,30 +319,130 @@ impl TurboFox {
         self.engine.active_dbuf_hint()
     }
 
+    /// Returns the total number of physical pages currently allocated to the database
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`TurboError::Storage`] if reading metadata fails
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::new(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// assert!(db.total_pages().unwrap() > 0);
+    ///
+    /// db.delete().unwrap();
+    /// ```
     /// Ref: `DESIGN.md` §3.1
     #[inline]
     pub fn total_pages(&self) -> TurboResult<u32> {
         self.engine.total_pages()
     }
 
+    /// Returns the remaining physical pages available before reaching maximum database capacity
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`TurboError::Storage`] if querying database length fails
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::new(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// assert!(db.remaining_pages().unwrap() > 0);
+    ///
+    /// db.delete().unwrap();
+    /// ```
     /// Ref: `DESIGN.md` §9.1
     #[inline]
     pub fn remaining_pages(&self) -> TurboResult<u32> {
         self.engine.remaining_pages()
     }
 
+    /// Returns the remaining available storage capacity in bytes before reaching maximum limit
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`TurboError::Storage`] if querying database length fails
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::new(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// assert!(db.remaining_bytes().unwrap() > 0);
+    ///
+    /// db.delete().unwrap();
+    /// ```
     /// Ref: `DESIGN.md` §9.1
     #[inline]
     pub fn remaining_bytes(&self) -> TurboResult<u64> {
         self.engine.remaining_bytes()
     }
 
+    /// Flushes dirty pages and persists pending metadata and writes to storage
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`TurboError::Storage`] if synchronization or metadata writeback fails
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::new(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// db.set(b"key", b"value").unwrap();
+    /// assert!(db.sync().is_ok());
+    ///
+    /// db.delete().unwrap();
+    /// ```
     /// Ref: `DESIGN.md` §8.1
     #[inline]
     pub fn sync(&self) -> TurboResult<()> {
         self.engine.sync()
     }
 
+    /// Closes the database and deletes all backing files from disk; fails if other handles exist
+    ///
+    /// ## Errors
+    ///
+    /// Returns [`TurboError::ResourceBusy`] if other references or active handles exist;
+    /// returns [`TurboError::Storage`] if filesystem deletion fails
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::new(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// assert!(db.delete().is_ok());
+    /// ```
     /// Ref: `DESIGN.md` §8.1
     pub fn delete(self) -> TurboResult<()> {
         match Arc::try_unwrap(self.engine) {

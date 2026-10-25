@@ -3,7 +3,7 @@
 //!
 //! ## Example
 //!
-//! ```no_run
+//! ```
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
@@ -25,7 +25,7 @@ use frozen_core::ack::AckTicket;
 ///
 /// ## Example
 ///
-/// ```no_run
+/// ```
 /// use turbofox::{TurboCfg, TurboFox};
 ///
 /// let dir = tempfile::tempdir().unwrap();
@@ -54,7 +54,7 @@ impl TurboTicket {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -74,7 +74,7 @@ impl TurboTicket {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -99,7 +99,7 @@ impl TurboTicket {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
@@ -125,7 +125,7 @@ impl TurboTicket {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();

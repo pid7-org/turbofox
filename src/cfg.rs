@@ -2,7 +2,7 @@
 //!
 //! ## Example
 //!
-//! ```no_run
+//! ```
 //! use std::path::PathBuf;
 //! use std::time::Duration;
 //! use turbofox::TurboCfg;
@@ -29,7 +29,7 @@ pub(crate) use crate::common::{
 ///
 /// ## Example
 ///
-/// ```no_run
+/// ```
 /// use std::path::PathBuf;
 /// use turbofox::TurboCfg;
 ///
@@ -51,7 +51,7 @@ impl TurboCfg {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use turbofox::TurboCfg;
     ///
     /// let cfg = TurboCfg::new("data_dir");
@@ -66,7 +66,7 @@ impl TurboCfg {
     ///
     /// ## Example
     ///
-    /// ```no_run
+    /// ```
     /// use std::time::Duration;
     /// use turbofox::TurboCfg;
     ///

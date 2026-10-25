@@ -2,7 +2,7 @@
 //!
 //! ## Example
 //!
-//! ```no_run
+//! ```
 //! use turbofox::{TurboError, TurboResult};
 //!
 //! fn check_capacity(size: usize) -> TurboResult<()> {
@@ -17,12 +17,12 @@
 //! assert!(matches!(check_capacity(0x2000), Err(TurboError::PayloadTooLarge)));
 //! ```
 
-/// Specialized [`Result`] type alias for [`TurboFox`] engine operations; returns a [`TurboError`]
-/// on failure
+/// Specialized [`Result`] type alias for [`crate::TurboFox`] engine operations; returns a
+/// [`TurboError`] on failure
 ///
 /// ## Example
 ///
-/// ```no_run
+/// ```
 /// use turbofox::{TurboError, TurboResult};
 ///
 /// fn sample_op(succeed: bool) -> TurboResult<u32> {
@@ -38,11 +38,11 @@
 /// ```
 pub type TurboResult<T> = Result<T, TurboError>;
 
-/// [`TurboFox`] engine error variants
+/// [`crate::TurboFox`] engine error variants
 ///
 /// ## Example
 ///
-/// ```no_run
+/// ```
 /// use turbofox::TurboError;
 ///
 /// let err = TurboError::InvalidMagic;

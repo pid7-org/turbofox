@@ -298,6 +298,27 @@ impl TurboFox {
         self.engine.total_entries()
     }
 
+    /// Returns the in-memory DataBuf pool slot index currently hinted for allocation;
+    ///
+    /// ## Example
+    ///
+    /// ```no_run
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::new(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// assert_eq!(db.active_dbuf_hint(), 0x10);
+    /// db.delete().unwrap();
+    /// ```
+    /// Ref: `DESIGN.md` §3.3
+    #[inline]
+    pub fn active_dbuf_hint(&self) -> u32 {
+        self.engine.active_dbuf_hint()
+    }
+
     /// Ref: `DESIGN.md` §3.1
     #[inline]
     pub fn total_pages(&self) -> TurboResult<u32> {

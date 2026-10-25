@@ -33,6 +33,7 @@ pub(crate) struct Engine {
     total_slots: AtomicU32,
     total_entries: AtomicU64,
     free_slot_marker: AtomicU32,
+    active_dbuf_hint: AtomicU32,
     sys_page_size: PageSize,
 }
 
@@ -67,6 +68,7 @@ impl Engine {
             total_slots: AtomicU32::new(initial_slots as u32),
             total_entries: AtomicU64::new(0),
             free_slot_marker: AtomicU32::new(INITIAL_FREE_SLOT_MARKER),
+            active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
             sys_page_size: page_size,
         };
 
@@ -143,6 +145,7 @@ impl Engine {
             total_slots: AtomicU32::new(meta.total_slots),
             total_entries: AtomicU64::new(meta.total_entries),
             free_slot_marker: AtomicU32::new(meta.free_slot_marker),
+            active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
             sys_page_size,
         };
 
@@ -180,9 +183,7 @@ impl Engine {
         Ok(())
     }
 
-    /// Ref: `DESIGN.md` §5.1
-    pub(crate) fn alloc_uniform_slots(&self, count: u32) -> TurboResult<u32> {
-        let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
+    fn alloc_uniform_slots_locked(&self, count: u32) -> TurboResult<u32> {
         let current_free = self.free_slot_marker.load(Ordering::Acquire);
         let total = self.total_slots.load(Ordering::Acquire);
 
@@ -199,6 +200,12 @@ impl Engine {
         })?;
 
         Ok(allocated)
+    }
+
+    /// Ref: `DESIGN.md` §5.1
+    pub(crate) fn alloc_uniform_slots(&self, count: u32) -> TurboResult<u32> {
+        let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
+        self.alloc_uniform_slots_locked(count)
     }
 
     /// Ref: `DESIGN.md` §5.4
@@ -244,9 +251,8 @@ impl Engine {
         Ok(new_slot)
     }
 
-    /// Ref: `DESIGN.md` §5.3
-    pub(crate) fn expand_databuf(&self, tail_slot: usize) -> TurboResult<u32> {
-        let new_slot = self.alloc_uniform_slots(DATABUF_SLOTS as u32)?;
+    fn expand_databuf_locked(&self, tail_slot: usize) -> TurboResult<u32> {
+        let new_slot = self.alloc_uniform_slots_locked(DATABUF_SLOTS as u32)?;
         let new_dbuf = DataBuf::new();
 
         self.mmap.write_exact::<DataBuf, _, _>(new_slot as usize, |d| *d = new_dbuf)?;
@@ -254,6 +260,14 @@ impl Engine {
             d.set_next_dbuf_index(new_slot);
         })?;
 
+        Ok(new_slot)
+    }
+
+    /// Ref: `DESIGN.md` §5.3
+    pub(crate) fn expand_databuf(&self, tail_slot: usize) -> TurboResult<u32> {
+        let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
+        let new_slot = self.expand_databuf_locked(tail_slot)?;
+        self.active_dbuf_hint.store(new_slot, Ordering::Relaxed);
         Ok(new_slot)
     }
 
@@ -315,36 +329,102 @@ impl Engine {
         needed: usize,
         exclude_slot: usize,
     ) -> TurboResult<DbufAllocPlan> {
-        let mut curr = DATABUF_HEAD_SLOT as usize;
-        let mut last_slot = curr;
+        let hint = self.active_dbuf_hint.load(Ordering::Relaxed) as usize;
+        let start_slot = if hint == 0 { DATABUF_HEAD_SLOT as usize } else { hint };
 
-        while curr != 0 {
-            last_slot = curr;
+        let mut curr = start_slot;
+        let mut tail_slot = start_slot;
+        let mut wrapped = false;
+
+        loop {
             if curr == exclude_slot {
-                curr = self
-                    .mmap
-                    .read_exact::<DataBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
-                continue;
-            }
+                let next = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
+                    d.next_dbuf_index() as usize
+                })?;
 
-            let (next, alloc_opt) = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
-                let next = d.next_dbuf_index() as usize;
-                let mut mutated = *d;
-
-                match mutated.alloc_contiguous(needed) {
-                    Some(local_idx) => (next, Some((local_idx, *d, mutated))),
-                    None => (next, None),
+                if next != 0 {
+                    curr = next;
+                } else {
+                    tail_slot = curr;
+                    if wrapped || start_slot == (DATABUF_HEAD_SLOT as usize) {
+                        break;
+                    }
+                    wrapped = true;
+                    curr = DATABUF_HEAD_SLOT as usize;
                 }
-            })?;
+            } else {
+                let (next, alloc_opt) = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
+                    let next = d.next_dbuf_index() as usize;
+                    let mut mutated = *d;
 
-            if let Some((local_idx, orig, mutated)) = alloc_opt {
-                return Ok(DbufAllocPlan { start_slot: curr, local_idx, orig, mutated });
+                    match mutated.alloc_contiguous(needed) {
+                        Some(local_idx) => (next, Some((local_idx, *d, mutated))),
+                        None => (next, None),
+                    }
+                })?;
+
+                if let Some((local_idx, orig, mutated)) = alloc_opt {
+                    if wrapped {
+                        self.active_dbuf_hint.store(curr as u32, Ordering::Relaxed);
+                    }
+                    return Ok(DbufAllocPlan { start_slot: curr, local_idx, orig, mutated });
+                }
+
+                if next != 0 {
+                    if !wrapped {
+                        self.active_dbuf_hint.store(next as u32, Ordering::Relaxed);
+                    }
+                    curr = next;
+                } else {
+                    tail_slot = curr;
+                    if wrapped || start_slot == (DATABUF_HEAD_SLOT as usize) {
+                        break;
+                    }
+                    wrapped = true;
+                    curr = DATABUF_HEAD_SLOT as usize;
+                }
             }
 
-            curr = next;
+            if wrapped && curr == start_slot {
+                break;
+            }
         }
 
-        let new_slot = self.expand_databuf(last_slot)? as usize;
+        let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
+
+        let mut actual_tail = tail_slot;
+        loop {
+            let next = self.mmap.read_exact::<DataBuf, _, _>(actual_tail, |d| {
+                d.next_dbuf_index() as usize
+            })?;
+            if next == 0 {
+                break;
+            }
+            actual_tail = next;
+            if actual_tail != exclude_slot {
+                let (_, alloc_opt) = self.mmap.read_exact::<DataBuf, _, _>(actual_tail, |d| {
+                    let next = d.next_dbuf_index() as usize;
+                    let mut mutated = *d;
+                    match mutated.alloc_contiguous(needed) {
+                        Some(local_idx) => (next, Some((local_idx, *d, mutated))),
+                        None => (next, None),
+                    }
+                })?;
+                if let Some((local_idx, orig, mutated)) = alloc_opt {
+                    self.active_dbuf_hint.store(actual_tail as u32, Ordering::Relaxed);
+                    return Ok(DbufAllocPlan {
+                        start_slot: actual_tail,
+                        local_idx,
+                        orig,
+                        mutated,
+                    });
+                }
+            }
+        }
+
+        let new_slot = self.expand_databuf_locked(actual_tail)? as usize;
+        self.active_dbuf_hint.store(new_slot as u32, Ordering::Relaxed);
+
         let mut dbuf = self.mmap.read_exact::<DataBuf, _, _>(new_slot, |d| *d)?;
         let orig = dbuf;
         let local_idx = dbuf.alloc_contiguous(needed).ok_or(TurboError::DatabaseFull)?;
@@ -1625,6 +1705,12 @@ impl Engine {
     pub(crate) fn remaining_bytes(&self) -> TurboResult<u64> {
         let curr_len = self.mmap.length();
         Ok((MAX_DB_LEN.saturating_sub(curr_len)) as u64)
+    }
+
+    /// Ref: `DESIGN.md` §3.3
+    #[inline(always)]
+    pub(crate) fn active_dbuf_hint(&self) -> u32 {
+        self.active_dbuf_hint.load(Ordering::Relaxed)
     }
 
     /// Ref: `DESIGN.md` §8.1

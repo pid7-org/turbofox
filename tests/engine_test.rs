@@ -135,3 +135,58 @@ fn err_turbofox_delete_busy() {
 
     clone.delete().unwrap();
 }
+
+/// Ref: `DESIGN.md` §3.3
+#[test]
+fn ok_turbofox_databuf_cursor_hint_and_wraparound() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::new(dir.path());
+    let db = TurboFox::create(cfg.clone()).unwrap();
+
+    assert_eq!(db.active_dbuf_hint(), 0x10);
+
+    // Initial pool 0x10 holds 63 buffers of 16 B; 4-byte key + 8-byte val consumes 1 buffer
+    for i in 0..0x3F {
+        let k = format!("k{:03}", i).into_bytes();
+        db.set(&k, b"12345678").unwrap();
+    }
+    assert_eq!(db.active_dbuf_hint(), 0x10);
+
+    // Next insert overflows pool 0x10 and advances hint to pool 0x18
+    let overflow_key = b"k063";
+    db.set(overflow_key, b"12345678").unwrap();
+    assert_eq!(db.active_dbuf_hint(), 0x18);
+
+    // Fill pool 0x18 (remaining 62 entries)
+    for i in 0x40..0x7E {
+        let k = format!("k{:03}", i).into_bytes();
+        db.set(&k, b"12345678").unwrap();
+    }
+
+    // Next insert exhausts pool 0x18, triggers expansion under growth_mutex
+    let expand_key = b"k126";
+    db.set(expand_key, b"12345678").unwrap();
+    let expanded_hint = db.active_dbuf_hint();
+    assert!(expanded_hint > 0x18);
+
+    // Free a slot in pool 0x10
+    assert!(db.del(b"k000").unwrap());
+
+    // Fill remaining buffers in expanded pool
+    for i in 0x7F..0xBD {
+        let k = format!("k{:03}", i).into_bytes();
+        db.set(&k, b"12345678").unwrap();
+    }
+
+    // Allocation wraps around to head and harvests slot freed in pool 0x10
+    db.set(b"h000", b"12345678").unwrap();
+    assert_eq!(db.active_dbuf_hint(), 0x10);
+
+    // Reopening database resets in-memory hint safely to DATABUF_HEAD_SLOT
+    db.sync().unwrap();
+    drop(db);
+    let reopened = TurboFox::open(cfg).unwrap();
+    assert_eq!(reopened.active_dbuf_hint(), 0x10);
+    assert_eq!(reopened.get(b"h000").unwrap(), Some(b"12345678".to_vec()));
+    reopened.delete().unwrap();
+}

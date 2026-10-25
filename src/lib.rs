@@ -45,8 +45,11 @@
 //! db.delete().unwrap();
 //! ```
 
+mod adjarr;
+mod bucket;
 mod cfg;
 mod common;
+mod dbuf;
 mod error;
 mod hash;
 mod list;

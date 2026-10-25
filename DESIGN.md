@@ -371,8 +371,8 @@ When `free_slot_marker + 8 > total_slots`, backing file expands:
   Expand by 4 physical pages: `mmap.grow(4)` (16 KiB = 0x80 slots = 128 slots)
 
 Each expansion appends 128 slots (or 512 slots);
-`MemMap::grow` validates that `new_length <= MAX_DB_LEN` (`0x1_0411_8000`);
-fails with `err::GRW` if the 4.0635 GiB ceiling is breached;
+`MemMap::grow` validates that `new_length <= MAX_DB_LEN` (`0x80_0000_0000`);
+fails with `err::GRW` if the 512 GiB ceiling is breached;
 advances `total_pages` and `total_slots` atomically in Slot 0 via `mmap.write(0, ...)`
 
 ## 6. Concurrency & Transaction Model (OCC)
@@ -514,7 +514,7 @@ TurboFox delegates all directory presence, path validation, and file locking to 
 ```rs
 pub const DB_NAME_TAG: [u8; 4] = *b"tbfx";
 pub const MODULE_ID: u8 = 0x46;
-pub const MAX_DB_LEN: usize = 0x1_0411_8000; // 4,363,145,216 B (~4.0635 GiB)
+pub const MAX_DB_LEN: usize = 0x80_0000_0000; // 549,755,813,888 B (512 GiB)
 ```
 
 #### Configuration Mapping
@@ -527,7 +527,7 @@ version       u32              version                 Forwarded directly (defau
 sync_interval Option<Duration> sync_interval           Forwarded to background flush worker
 (constant)    [u8; 4]          name                    DB_NAME_TAG (*b"tbfx")
 (constant)    u8               module_id               MODULE_ID (0x46)
-(constant)    usize            max_len                 MAX_DB_LEN (0x1_0411_8000)
+(constant)    usize            max_len                 MAX_DB_LEN (0x80_0000_0000)
 (computed)    usize            initial_pages           4 on 4 KiB OS; 1 on 16 KiB / 64 KiB
 (flag)        bool             memory_priority_hint    true (Windows memory priority advice)
 (flag)        bool             sequential_access_hint  true (POSIX_FADV / SEQUENTIAL_SCAN)
@@ -546,50 +546,37 @@ formatted as `{dir_path}/{name}_{version}` without file extension:
 
 ### 9.1 Addressable Ceilings
 
-The primary architectural ceiling stems from `global_buf_idx` encoding:
+The primary architectural ceiling stems from 32-bit slot addressing (`u32`):
 
-- 31 bits encode `global_buf_idx` ($2^{31} - 1 = 0\text{x}7\text{FFF\_FFFF} = 2{,}147{,}483{,}647$)
-- Maximum addressable DataBuf slot:
-  $$\text{max\_slot} = \lfloor (2^{31} - 1) / 63 \rfloor = 34{,}087{,}042$$
-- Maximum addressable DataBufs (8 slots / 1024 B per DataBuf):
-  $$\text{max\_databufs} = \lfloor 34{,}087{,}042 / 8 \rfloor = 4{,}260{,}880$$
-- Maximum backing database file size (quantized to 4096 B OS pages):
-  $$\text{pages} = \lceil 34{,}087{,}042 / 32 \rceil = 1{,}065{,}221$$
-  $$\text{bytes} = 1{,}065{,}221 \times 4096 = 4{,}363{,}145{,}216 \text{ B}$$
-  ($\approx 4.0635 \text{ GiB}$)
+- 32 bits address up to $2^{32} = 4{,}294{,}967{,}296$ slots (`0..=0xFFFF_FFFF`)
+- At 128 bytes per slot, maximum addressable backing database file size is strictly:
+  $$\text{bytes} = 2^{32} \times 128 = 2^{39} \text{ B} = 549{,}755{,}813{,}888 \text{ B} \quad (512 \text{ GiB} = 0\text{x}80\_0000\_0000)$$
+- Quantized to physical OS pages:
+  - 4 KiB pages: $2^{39} / 4096 = 2^{27} = 134{,}217{,}728$ pages ($0\text{x}0800\_0000$)
+  - 16 KiB pages: $2^{39} / 16384 = 2^{25} = 33{,}554{,}432$ pages ($0\text{x}0200\_0000$)
+  - 64 KiB pages: $2^{39} / 65536 = 2^{23} = 8{,}388{,}608$ pages ($0\text{x}0080\_0000$)
 
 ### 9.2 Capacity Bounds for Common Payload Formats
 
+- **DataBuf Pools (8 slots / 1024 B per DataBuf, 63 buffers of 16 B)**:
+  - If entire 512 GiB space were dedicated to DataBuf pools:
+    $$2^{32} / 8 = 2^{29} = 536{,}870{,}912 \text{ pools}$$
+    $$536{,}870{,}912 \times 63 = 33{,}822{,}867{,}456 \text{ buffers}$$
 - **KV Entries (12 B key + 48 B value $\implies$ 64 B frame $\implies$ 4 buffers)**:
   - Each DataBuf fits $\lfloor 63 / 4 \rfloor = 15$ entries (3 slack buffers)
-  - Maximum total KV entries:
-    $$4{,}260{,}880 \times 15 = 63{,}913{,}200 \quad (0\text{x}03\text{CF\_3CF0})$$
-
 - **List Items (42 B value $\implies$ 48 B frame $\implies$ 3 buffers)**:
   - Each DataBuf fits $63 / 3 = 21$ item payloads (0 slack buffers)
-  - Maximum aggregate list items:
-    $$4{,}260{,}880 \times 21 = 89{,}478{,}480 \quad (0\text{x}0555\_5550)$$
   - Chained list item capacity: bounded by `next_arr_idx: u32` ($2^{32} - 1 \times 4$ items)
 
 ### 9.3 Verification Proof
 
 ```python
-MAX_BUF_IDX = (1 << 31) - 1
-BUFS_PER_DBUF = 63
-SLOTS_PER_DBUF = 8
+MAX_SLOTS = 1 << 32
+SLOT_SIZE = 128
+MAX_DB_LEN = MAX_SLOTS * SLOT_SIZE
 
-max_dbuf_slot = MAX_BUF_IDX // BUFS_PER_DBUF
-max_databufs = max_dbuf_slot // SLOTS_PER_DBUF
-
-pages = (max_dbuf_slot + 31) // 32
-file_bytes = pages * 4096
-
-kv_limit = max_databufs * (BUFS_PER_DBUF // 4)
-list_item_limit = max_databufs * (BUFS_PER_DBUF // 3)
-
-assert max_dbuf_slot == 34087042
-assert max_databufs == 4260880
-assert file_bytes == 4363145216
-assert kv_limit == 63913200
-assert list_item_limit == 89478480
+assert MAX_SLOTS == 4294967296
+assert SLOT_SIZE == 128
+assert MAX_DB_LEN == 549755813888
+assert MAX_DB_LEN == 0x80_0000_0000
 ```

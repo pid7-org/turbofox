@@ -1,4 +1,4 @@
-//! Configuration definitions for TurboFox engine instance
+//! Configuration parameters for initializing or opening a [`crate::TurboFox`] instance
 //!
 //! ## Example
 //!
@@ -24,8 +24,8 @@ pub(crate) use crate::common::{
 
 /// Configuration parameters for initializing or opening a [`crate::TurboFox`] instance
 ///
-/// Path must point strictly to an existing or target directory and not a file;
-/// engine backing files are managed internally within this directory
+/// Path must point strictly to a target directory and not a file; engine backing files are
+/// managed internally within this directory
 ///
 /// ## Example
 ///
@@ -38,16 +38,15 @@ pub(crate) use crate::common::{
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurboCfg {
-    /// Filesystem directory path hosting database storage files; must be a directory and not a file
+    /// Filesystem directory hosting memory-mapped database files; must be a directory
     pub path: PathBuf,
 
-    /// Optional interval for background synchronization worker
+    /// Optional flush interval driving the background persistence worker thread
     pub sync_interval: Option<Duration>,
 }
 
 impl TurboCfg {
-    /// Creates a configuration with default parameters for the specified target directory;
-    /// path must strictly be a directory and not a file
+    /// Construct configuration for the specified directory with default sync disabled
     ///
     /// ## Example
     ///
@@ -62,7 +61,20 @@ impl TurboCfg {
         Self { path: path.into(), sync_interval: None }
     }
 
-    /// Configures periodic background flush interval
+    /// Configure periodic background flush interval for committing dirty pages
+    ///
+    /// ## Background Worker Architecture
+    ///
+    /// When an interval is set, the engine spawns a dedicated background synchronization thread
+    /// that coalesces and commits dirty memory-mapped pages to storage
+    ///
+    /// While the database is idle (`target_epoch == durable_epoch`), the worker thread parks on an
+    /// internal condition variable, consuming zero CPU cycles; incoming write operations wake the
+    /// worker, which delays for `interval` to batch concurrent writes before issuing `msync`
+    ///
+    /// As flushes finish, the worker increments the global durable epoch counter and signals any
+    /// callers awaiting [`TurboTicket`](crate::TurboTicket) handles; without an interval, pages
+    /// persist only via explicit [`crate::TurboFox::sync`] calls or OS page cache writeback
     ///
     /// ## Example
     ///
@@ -80,7 +92,6 @@ impl TurboCfg {
         self
     }
 
-    /// Ref: `DESIGN.md` §8.2
     #[inline]
     pub(crate) fn resolve_dir(&self) -> PathBuf {
         self.path.clone()

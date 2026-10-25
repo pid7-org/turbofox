@@ -45,7 +45,6 @@ pub struct TurboTicket {
 
 impl TurboTicket {
     /// Constructs a new [`TurboTicket`] wrapping an [`AckTicket`]
-    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) const fn new(inner: AckTicket) -> Self {
         Self { inner }

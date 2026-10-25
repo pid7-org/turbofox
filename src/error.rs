@@ -1,4 +1,7 @@
-//! Error taxonomy and result type definitions
+//! Error taxonomy and specialized [`Result`] alias for [`crate::TurboFox`]
+//!
+//! Categorizes disk IO, memory-mapping faults, header corruption, layout mismatches, and resource
+//! busy conditions across the engine lifecycle
 //!
 //! ## Example
 //!
@@ -17,7 +20,7 @@
 //! assert!(matches!(check_capacity(0x2000), Err(TurboError::PayloadTooLarge)));
 //! ```
 
-/// Specialized [`Result`] type alias for [`crate::TurboFox`] engine operations; returns a
+/// Specialized [`Result`] type alias for [`crate::TurboFox`] engine operations which returns a
 /// [`TurboError`] on failure
 ///
 /// ## Example
@@ -97,6 +100,7 @@ impl From<frozen_core::error::FrozenError> for TurboError {
     #[inline]
     fn from(err: frozen_core::error::FrozenError) -> Self {
         let code = ((err.module as u32) << 0x10) | ((err.domain as u32) << 8) | (err.reason as u32);
+
         Self::Storage { code, context: err.context }
     }
 }

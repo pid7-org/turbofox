@@ -38,7 +38,7 @@ pub(crate) use crate::common::{
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurboCfg {
-    /// Filesystem path to database storage file
+    /// Filesystem path to database storage file or parent directory
     pub path: PathBuf,
 
     /// Format and backing file version
@@ -61,8 +61,12 @@ impl TurboCfg {
     /// assert!(cfg.sync_interval.is_none());
     /// ```
     #[inline]
-    pub fn new<P: Into<PathBuf>>(_path: P) -> Self {
-        todo!()
+    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
+        Self {
+            path: path.into(),
+            version: DEFAULT_VERSION,
+            sync_interval: None,
+        }
     }
 
     /// Configures layout and backing file version to enable schema migration or multi-version file
@@ -77,8 +81,9 @@ impl TurboCfg {
     /// assert_eq!(cfg.version, 2);
     /// ```
     #[inline]
-    pub fn with_version(self, _version: u32) -> Self {
-        todo!()
+    pub fn with_version(mut self, version: u32) -> Self {
+        self.version = version;
+        self
     }
 
     /// Configures periodic background flush interval
@@ -94,7 +99,24 @@ impl TurboCfg {
     /// assert_eq!(cfg.sync_interval, Some(Duration::from_millis(0x64)));
     /// ```
     #[inline]
-    pub fn with_sync_interval(self, _interval: Duration) -> Self {
-        todo!()
+    pub fn with_sync_interval(mut self, interval: Duration) -> Self {
+        self.sync_interval = Some(interval);
+        self
+    }
+
+    /// Ref: `DESIGN.md` §8.2
+    #[inline]
+    pub(crate) fn resolve_dir(&self) -> PathBuf {
+        if self.path.is_dir() {
+            self.path.clone()
+        } else if let Some(parent) = self.path.parent() {
+            if parent.is_dir() {
+                parent.to_path_buf()
+            } else {
+                self.path.clone()
+            }
+        } else {
+            self.path.clone()
+        }
     }
 }

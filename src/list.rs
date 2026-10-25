@@ -7,7 +7,7 @@
 //!
 //! let dir = tempfile::tempdir().unwrap();
 //! let path = dir.path();
-//! let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+//! let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
 //! let list = db.list(b"queue");
 //!
 //! list.append(b"msg_0").unwrap();
@@ -42,7 +42,7 @@ use std::sync::Arc;
 ///
 /// let dir = tempfile::tempdir().unwrap();
 /// let path = dir.path();
-/// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+/// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
 ///
 /// let list = db.list(b"tasks");
 /// list.append(b"run").unwrap();
@@ -72,7 +72,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"device:events");
     ///
     /// assert_eq!(list.key(), b"device:events");
@@ -117,7 +117,7 @@ impl TurboList {
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
     ///
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"log");
     ///
     /// let ticket = list.append(b"entry").unwrap();
@@ -147,7 +147,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"stack");
     ///
     /// list.append(b"bottom").unwrap();
@@ -181,7 +181,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"items");
     ///
     /// assert_eq!(list.first().unwrap(), None);
@@ -213,7 +213,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"items");
     ///
     /// assert_eq!(list.last().unwrap(), None);
@@ -245,7 +245,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"indexed");
     ///
     /// list.append(b"elem_0").unwrap();
@@ -275,7 +275,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"counted");
     ///
     /// assert_eq!(list.len().unwrap(), 0);
@@ -303,7 +303,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"check_empty");
     ///
     /// assert!(list.is_empty().unwrap());
@@ -335,7 +335,7 @@ impl TurboList {
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
     ///
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"iter_list");
     ///
     /// list.append(b"val_a").unwrap();
@@ -369,7 +369,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"to_clear");
     ///
     /// list.append(b"data").unwrap();
@@ -397,7 +397,7 @@ impl TurboList {
 /// let dir = tempfile::tempdir().unwrap();
 /// let path = dir.path();
 ///
-/// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+/// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
 /// let list = db.list(b"traverse");
 ///
 /// list.append(b"first").unwrap();

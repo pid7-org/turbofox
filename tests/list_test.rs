@@ -5,7 +5,7 @@ use turbofox::{TurboCfg, TurboError, TurboFox};
 #[test]
 fn ok_turbofox_list_append_pop_basic() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let list = db.list(b"sensor_queue");
@@ -41,7 +41,7 @@ fn ok_turbofox_list_append_pop_basic() {
 #[test]
 fn ok_turbofox_list_multi_block_chaining() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let list = db.list(b"chained_log");
@@ -78,7 +78,7 @@ fn ok_turbofox_list_multi_block_chaining() {
 #[test]
 fn ok_turbofox_list_clear_and_type_check() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let list = db.list(b"my_list");

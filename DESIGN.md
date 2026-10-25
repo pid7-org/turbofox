@@ -524,7 +524,7 @@ TurboCfg Field  Type             MemMapCfg Target        Resolution Logic
 --------------+----------------+-----------------------+--------------------------------------
 dir_path      PathBuf          path                    Forwarded directly; MemMap checks dir
 version       u32              version                 Forwarded directly (default 2)
-sync_interval Option<Duration> sync_interval           Forwarded to background flush worker
+sync_mode     SyncMode         sync_interval           Mapped to Some(Duration) or None
 (constant)    [u8; 4]          name                    DB_NAME_TAG (*b"tbfx")
 (constant)    u8               module_id               MODULE_ID (0x46)
 (constant)    usize            max_len                 MAX_DB_LEN (0x80_0000_0000)

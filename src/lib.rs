@@ -8,7 +8,7 @@
 //!
 //! let dir = tempfile::tempdir().unwrap();
 //! let path = dir.path();
-//! let cfg = TurboCfg::new(path);
+//! let cfg = TurboCfg::manual(path);
 //! let db = TurboFox::create(cfg).unwrap();
 //!
 //! let ticket = db.set(b"device:01", b"state:active").unwrap();
@@ -30,7 +30,7 @@
 //!
 //! let dir = tempfile::tempdir().unwrap();
 //! let path = dir.path();
-//! let cfg = TurboCfg::new(path);
+//! let cfg = TurboCfg::manual(path);
 //! let db = TurboFox::create(cfg).unwrap();
 //!
 //! let list = db.list(b"events");
@@ -58,7 +58,7 @@ mod list;
 mod meta;
 mod ticket;
 
-pub use cfg::TurboCfg;
+pub use cfg::{SyncMode, TurboCfg};
 pub use common::{MAX_KEY_LEN, MAX_VAL_LEN};
 pub use error::{TurboError, TurboResult};
 pub use list::{TurboList, TurboListIter};
@@ -80,7 +80,7 @@ use std::sync::Arc;
 ///
 /// let dir = tempfile::tempdir().unwrap();
 /// let path = dir.path();
-/// let cfg = TurboCfg::new(path);
+/// let cfg = TurboCfg::manual(path);
 /// let db = TurboFox::create(cfg).unwrap();
 ///
 /// let handle = db.clone();
@@ -110,7 +110,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert_eq!(db.total_entries(), 0);
@@ -138,7 +138,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     ///
     /// {
     ///     let db = TurboFox::create(cfg.clone()).unwrap();
@@ -190,7 +190,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// let ticket = db.set(b"key_a", b"val_a").unwrap();
@@ -223,7 +223,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert_eq!(db.get(b"missing").unwrap(), None);
@@ -255,7 +255,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert!(!db.contains_key(b"probe").unwrap());
@@ -285,7 +285,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// db.set(b"temp_key", b"temp_val").unwrap();
@@ -310,7 +310,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// let list = db.list(b"sensor_log");
@@ -339,7 +339,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert_eq!(db.total_entries(), 0);
@@ -366,7 +366,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert!(db.is_empty());
@@ -389,7 +389,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert_eq!(db.active_dbuf_hint(), 0x10);
@@ -414,7 +414,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert!(db.total_pages().unwrap() > 0);
@@ -439,7 +439,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert!(db.remaining_pages().unwrap() > 0);
@@ -464,7 +464,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert!(db.remaining_bytes().unwrap() > 0);
@@ -489,7 +489,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// db.set(b"key", b"value").unwrap();
@@ -518,7 +518,7 @@ impl TurboFox {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let cfg = TurboCfg::new(path);
+    /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert!(db.delete().is_ok());

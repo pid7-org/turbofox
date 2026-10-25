@@ -9,7 +9,7 @@
 //!
 //! let dir = tempfile::tempdir().unwrap();
 //! let path = dir.path();
-//! let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+//! let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
 //! let ticket = db.set(b"key", b"value").unwrap();
 //! db.sync().unwrap();
 //!
@@ -34,7 +34,7 @@ use frozen_core::ack::AckTicket;
 ///
 /// let dir = tempfile::tempdir().unwrap();
 /// let path = dir.path();
-/// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+/// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
 ///
 /// let ticket = db.set(b"key", b"value").unwrap();
 /// assert!(ticket.epoch() > 0);
@@ -64,7 +64,7 @@ impl TurboTicket {
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
     ///
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let ticket = db.set(b"key", b"value").unwrap();
     ///
     /// assert!(ticket.epoch() > 0);
@@ -89,7 +89,7 @@ impl TurboTicket {
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
     ///
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let ticket = db.set(b"key", b"value").unwrap();
     /// let _ = ticket.is_durable();
     ///
@@ -116,7 +116,7 @@ impl TurboTicket {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let ticket = db.set(b"key", b"value").unwrap();
     /// db.sync().unwrap();
     /// assert!(ticket.wait().is_ok());
@@ -148,7 +148,7 @@ impl TurboTicket {
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
     ///
-    /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let ticket = db.set(b"key", b"value").unwrap();
     ///
     /// assert!(ticket.force().is_ok());

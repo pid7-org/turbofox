@@ -5,7 +5,7 @@ use turbofox::{TurboCfg, TurboError, TurboFox};
 #[test]
 fn ok_turbofox_create_open_delete() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
 
     let db = TurboFox::create(cfg.clone()).unwrap();
     assert_eq!(db.total_entries(), 0);
@@ -22,7 +22,7 @@ fn ok_turbofox_create_open_delete() {
 #[test]
 fn ok_turbofox_kv_crud_lifecycle() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     assert_eq!(db.get(b"missing").unwrap(), None);
@@ -54,7 +54,7 @@ fn ok_turbofox_kv_crud_lifecycle() {
 #[test]
 fn ok_turbofox_persistence_across_reopen() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
 
     {
         let db = TurboFox::create(cfg.clone()).unwrap();
@@ -83,7 +83,7 @@ fn ok_turbofox_persistence_across_reopen() {
 #[test]
 fn ok_turbofox_growth_and_overflow_chaining() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let initial_pages = db.total_pages().unwrap();
@@ -111,7 +111,7 @@ fn ok_turbofox_growth_and_overflow_chaining() {
 #[test]
 fn err_turbofox_payload_oversize() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let oversized_key = vec![0x41; 0x0100];
@@ -127,7 +127,7 @@ fn err_turbofox_payload_oversize() {
 #[test]
 fn err_turbofox_delete_busy() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let clone = db.clone();
@@ -140,7 +140,7 @@ fn err_turbofox_delete_busy() {
 #[test]
 fn ok_turbofox_databuf_cursor_hint_and_wraparound() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path());
+    let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg.clone()).unwrap();
 
     assert_eq!(db.active_dbuf_hint(), 0x10);

@@ -54,7 +54,7 @@ impl Engine {
             version: LAYOUT_VERSION,
             initial_pages,
             max_len: MAX_DB_LEN,
-            sync_interval: cfg.sync_interval,
+            sync_interval: cfg.sync_interval(),
             memory_priority_hint: true,
             sequential_access_hint: true,
         };
@@ -94,7 +94,7 @@ impl Engine {
             version: LAYOUT_VERSION,
             initial_pages,
             max_len: MAX_DB_LEN,
-            sync_interval: cfg.sync_interval,
+            sync_interval: cfg.sync_interval(),
             memory_priority_hint: true,
             sequential_access_hint: true,
         };

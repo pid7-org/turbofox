@@ -49,7 +49,7 @@ use turbofox::{TurboCfg, TurboFox};
 
 let dir = tempfile::tempdir().unwrap();
 let path = dir.path();
-let cfg = TurboCfg::new(path);
+let cfg = TurboCfg::manual(path);
 let db = TurboFox::create(cfg).unwrap();
 
 let ticket = db.set(b"device:01", b"state_active").unwrap();

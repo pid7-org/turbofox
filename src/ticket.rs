@@ -18,7 +18,7 @@
 //! db.delete().unwrap();
 //! ```
 
-use crate::error::TurboResult;
+use crate::error::{TurboError, TurboResult};
 use frozen_core::ack::AckTicket;
 
 /// Durability acknowledgement handle tracking write persistence
@@ -67,7 +67,7 @@ impl TurboTicket {
     /// ```
     #[inline(always)]
     pub const fn epoch(&self) -> u64 {
-        todo!()
+        self.inner.epoch()
     }
 
     /// Checks if the ticket is already durable without blocking
@@ -87,7 +87,7 @@ impl TurboTicket {
     /// ```
     #[inline(always)]
     pub fn is_durable(&self) -> bool {
-        todo!()
+        self.inner.is_durable()
     }
 
     /// Blocks the current thread until the ticket becomes durable; translates low-level durability
@@ -113,7 +113,7 @@ impl TurboTicket {
     /// ```
     #[inline]
     pub fn wait(&self) -> TurboResult<u64> {
-        todo!()
+        self.inner.wait().map_err(TurboError::from)
     }
 
     /// Forces synchronization for this ticket and blocks until durable; while translating low-level
@@ -138,7 +138,7 @@ impl TurboTicket {
     /// ```
     #[inline]
     pub fn force(&self) -> TurboResult<u64> {
-        todo!()
+        self.inner.force().map_err(TurboError::from)
     }
 }
 

@@ -1,4 +1,4 @@
-//! List operations and iterator handle definitions
+//! 1-to-N list structure anchored by primary key
 //!
 //! ## Example
 //!
@@ -24,13 +24,16 @@
 //! db.delete().unwrap();
 //! ```
 
-use std::sync::Arc;
-
 use crate::engine::Engine;
 use crate::error::TurboResult;
 use crate::ticket::TurboTicket;
+use std::sync::Arc;
 
-/// Handle representing a 1-to-N list structure in [`crate::TurboFox`]
+/// Handle representing an ordered 1-to-N sequence anchored by key in [`crate::TurboFox`]
+///
+/// Backed by indexed adjacent array descriptor blocks and memory-mapped data buffers
+///
+/// Cloning the object shares the underlying engine reference and key
 ///
 /// ## Example
 ///
@@ -48,7 +51,6 @@ use crate::ticket::TurboTicket;
 /// drop(list);
 /// db.delete().unwrap();
 /// ```
-/// Ref: `DESIGN.md` §7.4
 #[derive(Debug, Clone)]
 pub struct TurboList {
     engine: Arc<Engine>,
@@ -61,7 +63,7 @@ impl TurboList {
         Self { engine, key }
     }
 
-    /// Target key associated with this list handle
+    /// Return byte slice of the target key anchoring [`TurboList`]
     ///
     /// ## Example
     ///
@@ -83,14 +85,29 @@ impl TurboList {
         &self.key
     }
 
-    /// Appends an item payload to the tail of the list; returns a [`TurboTicket`] tracking
-    /// persistence of the append operation
+    /// Append an item payload to the tail of the list
+    ///
+    /// Internally allocates new descriptor blocks as needed and returns a [`TurboTicket`] for
+    /// tracking write persistence
+    ///
+    /// ## Crash Safe Durability
+    ///
+    /// Returns a [`TurboTicket`] bound to this append operation's assigned commit epoch
+    ///
+    /// Internally the entry is commited to memory-mapped descriptor blocks immediately, while the
+    /// returned ticket allows tracking for crash safe durability (i.e. persistence on disk)
+    ///
+    /// Callers can query [`TurboTicket::is_durable`], block on [`TurboTicket::wait`], or force
+    /// writeback via [`TurboTicket::force`] for explicit durability guarantee
+    ///
+    /// Fire-and-forget callers can safely discard the ticket without blocking
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::PayloadTooLarge`](crate::TurboError::PayloadTooLarge) if item payload
-    /// exceeds max buffer capacity; or [`TurboError::Storage`](crate::TurboError::Storage)
-    /// if storage block allocation fails
+    /// * [`TurboError::PayloadTooLarge`](crate::TurboError::PayloadTooLarge) if item payload
+    ///   exceeds maximum buffer capacity
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if allocating storage descriptor
+    ///   blocks fails
     ///
     /// ## Example
     ///
@@ -99,6 +116,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
+    ///
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"log");
     ///
@@ -114,12 +132,13 @@ impl TurboList {
         self.engine.list_append(&self.key, item)
     }
 
-    /// Pops and removes the item payload at the tail of the list; returns `Ok(None)` if the list
-    /// is empty
+    /// Remove the item payload at the tail of the list
+    ///
+    /// Internally copies bytes into an owned `Vec<u8>` and returns `Ok(None)` if the list is empty
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`](crate::TurboError::Storage) if block deallocation fails
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if block deallocation fails
     ///
     /// ## Example
     ///
@@ -145,13 +164,15 @@ impl TurboList {
         self.engine.list_pop(&self.key)
     }
 
-    /// Retrieves the first item payload in the list without removing it; returns `Ok(None)` if the
-    /// list contains zero entries
+    /// Retrieve the first item payload in the list without removing it
+    ///
+    /// Internally copies bytes into an owned `Vec<u8>` or returns `Ok(None)` if the list contains
+    /// zero entries
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) if item
-    /// payload data integrity check fails
+    /// * [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) if item payload
+    ///   CRC32 validation fails
     ///
     /// ## Example
     ///
@@ -175,13 +196,15 @@ impl TurboList {
         self.engine.list_first(&self.key)
     }
 
-    /// Retrieves the last item payload in the list without removing it; returns `Ok(None)` if the
-    /// list contains zero entries
+    /// Retrieve the last item payload in the list without removing it
+    ///
+    /// Internally copies bytes into an owned `Vec<u8>` or returns `Ok(None)` if the list contains
+    /// zero entries
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) if item
-    /// payload data integrity check fails
+    /// * [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) if item payload
+    ///   CRC32 validation fails
     ///
     /// ## Example
     ///
@@ -205,13 +228,15 @@ impl TurboList {
         self.engine.list_last(&self.key)
     }
 
-    /// Retrieves the item payload at the specified 0-based index; returns `Ok(None)` if index is
+    /// Retrieve the item payload at the specified 0-based index and returns `Ok(None)` if index is
     /// out of bounds
+    ///
+    /// Internally traverses chained adjacent array descriptor blocks to locate the target item slot
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) if payload
-    /// traversal encounters corrupted links
+    /// * [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) if payload
+    ///   traversal encounters corrupted links or bad CRC32 checksums
     ///
     /// ## Example
     ///
@@ -237,12 +262,11 @@ impl TurboList {
         self.engine.list_get_at(&self.key, idx)
     }
 
-    /// Total number of item entries in this list; traverses allocated descriptor blocks to compute
-    /// item count
+    /// Compute total number of item entries in this list by reading allocated descriptor chains
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`](crate::TurboError::Storage) if reading list metadata fails
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if reading list metadata fails
     ///
     /// ## Example
     ///
@@ -266,11 +290,11 @@ impl TurboList {
         self.engine.list_len(&self.key)
     }
 
-    /// Returns true if this list contains zero items;
+    /// Return `true` if this list contains zero items
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`](crate::TurboError::Storage) if reading list length fails
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if reading list length fails
     ///
     /// ## Example
     ///
@@ -294,11 +318,14 @@ impl TurboList {
         Ok(self.len()? == 0)
     }
 
-    /// Returns an iterator over all item payloads in the list
+    /// Create an iterator snapshot over all item payloads in the list
+    ///
+    /// Internally eagerly reads and validates all item payloads into memory
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`](crate::TurboError::Storage) if reading item payloads fails
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if reading item payloads fails
+    /// * [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) on CRC fault
     ///
     /// ## Example
     ///
@@ -307,6 +334,7 @@ impl TurboList {
     ///
     /// let dir = tempfile::tempdir().unwrap();
     /// let path = dir.path();
+    ///
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"iter_list");
     ///
@@ -322,15 +350,17 @@ impl TurboList {
     #[inline(always)]
     pub fn iter(&self) -> TurboResult<TurboListIter> {
         let items = self.engine.list_items(&self.key)?;
+
         Ok(TurboListIter { items, index: 0 })
     }
 
-    /// Removes this list and frees all associated blocks and buffers; returns `Ok(true)` if list
-    /// existed and was cleared, `Ok(false)` otherwise
+    /// Remove [`crate::TurboList`] and reclaim all allocated descriptor blocks and payload buffers
+    ///
+    /// Returns `Ok(true)` if list existed and was cleared, `Ok(false)` otherwise
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`](crate::TurboError::Storage) if block reclamation fails
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if block reclamation fails
     ///
     /// ## Example
     ///
@@ -355,7 +385,9 @@ impl TurboList {
     }
 }
 
-/// Iterator over item payloads in a [`TurboList`]
+/// Iterator snapshot over item payloads in a [`TurboList`]
+///
+/// Implements [`ExactSizeIterator`] allowing pre-sized allocations and direct index queries
 ///
 /// ## Example
 ///
@@ -364,6 +396,7 @@ impl TurboList {
 ///
 /// let dir = tempfile::tempdir().unwrap();
 /// let path = dir.path();
+///
 /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
 /// let list = db.list(b"traverse");
 ///

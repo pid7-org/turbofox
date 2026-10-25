@@ -26,6 +26,22 @@ exclude = [
 ]
 autobenches = false
 
+[[bench]]
+name = "init_perf"
+harness = false
+
+[[bench]]
+name = "set_perf"
+harness = false
+
+[[bench]]
+name = "get_perf"
+harness = false
+
+[[bench]]
+name = "del_perf"
+harness = false
+
 [package.metadata.docs.rs]
 default-target = "x86_64-unknown-linux-gnu"
 additional-targets = ["i686-apple-darwin"]

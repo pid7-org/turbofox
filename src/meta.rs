@@ -136,4 +136,52 @@ mod tests {
         let slot = meta.as_slot();
         assert_eq!(&slot.0[..4], b"TBFX");
     }
+
+    #[test]
+    fn err_metadata_validation_matrix() {
+        let valid = Metadata::new(PAGE_SIZE_4K as u32, 2, 4);
+        assert!(valid.validate(PAGE_SIZE_4K as u32, 2));
+
+        let mut bad_magic = valid;
+        bad_magic.magic = *b"NOPE";
+        assert!(!bad_magic.validate(PAGE_SIZE_4K as u32, 2));
+
+        let mut bad_version = valid;
+        bad_version.version = 3;
+        assert!(!bad_version.validate(PAGE_SIZE_4K as u32, 2));
+
+        let mut bad_page_size = valid;
+        bad_page_size.page_size = 0x2000;
+        assert!(!bad_page_size.validate(0x2000, 2));
+
+        let mut zero_pages = valid;
+        zero_pages.total_pages = 0;
+        assert!(!zero_pages.validate(PAGE_SIZE_4K as u32, 2));
+
+        let mut bad_slots = valid;
+        bad_slots.total_slots = 0x7F;
+        assert!(!bad_slots.validate(PAGE_SIZE_4K as u32, 2));
+
+        let mut bad_marker_low = valid;
+        bad_marker_low.free_slot_marker = 0x1F;
+        assert!(!bad_marker_low.validate(PAGE_SIZE_4K as u32, 2));
+
+        let mut bad_marker_high = valid;
+        bad_marker_high.free_slot_marker = valid.total_slots + 1;
+        assert!(!bad_marker_high.validate(PAGE_SIZE_4K as u32, 2));
+    }
+
+    #[test]
+    fn ok_metadata_page_size_variants() {
+        let meta16 = Metadata::new(PAGE_SIZE_16K as u32, 2, 1);
+        assert!(meta16.validate(PAGE_SIZE_16K as u32, 2));
+        assert_eq!(meta16.total_slots, 0x80);
+
+        let meta64 = Metadata::new(PAGE_SIZE_64K as u32, 2, 1);
+        assert!(meta64.validate(PAGE_SIZE_64K as u32, 2));
+        assert_eq!(meta64.total_slots, 0x0200);
+
+        let default_meta = Metadata::default();
+        assert!(default_meta.validate(PAGE_SIZE_4K as u32, 2));
+    }
 }

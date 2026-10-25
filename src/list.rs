@@ -442,3 +442,39 @@ impl Iterator for TurboListIter {
 }
 
 impl ExactSizeIterator for TurboListIter {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ok_list_iter_empty() {
+        let mut iter = TurboListIter { items: Vec::new(), index: 0 };
+        assert_eq!(iter.len(), 0);
+        assert_eq!(iter.size_hint(), (0, Some(0)));
+        assert_eq!(iter.next(), None);
+        assert!(format!("{:?}", iter).contains("TurboListIter"));
+    }
+
+    #[test]
+    fn ok_list_iter_traversal_and_clone() {
+        let items = vec![b"one".to_vec(), b"two".to_vec(), b"three".to_vec()];
+        let mut iter = TurboListIter { items, index: 0 };
+        assert_eq!(iter.len(), 3);
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+
+        assert_eq!(iter.next(), Some(b"one".to_vec()));
+        assert_eq!(iter.len(), 2);
+
+        let mut cloned = iter.clone();
+        assert_eq!(cloned.len(), 2);
+        assert_eq!(cloned.next(), Some(b"two".to_vec()));
+        assert_eq!(cloned.next(), Some(b"three".to_vec()));
+        assert_eq!(cloned.next(), None);
+
+        assert_eq!(iter.next(), Some(b"two".to_vec()));
+        assert_eq!(iter.next(), Some(b"three".to_vec()));
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.len(), 0);
+    }
+}

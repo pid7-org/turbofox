@@ -181,3 +181,37 @@ impl AsRef<AckTicket> for TurboTicket {
         &self.inner
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{TurboCfg, TurboFox};
+    use tempfile::tempdir;
+
+    #[test]
+    fn ok_ticket_traits_and_conversions() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let db = TurboFox::create(cfg).unwrap();
+
+        let ticket = db.set(b"k1", b"v1").unwrap();
+        assert!(ticket.epoch() > 0);
+
+        let cloned = ticket.clone();
+        assert_eq!(cloned.epoch(), ticket.epoch());
+        assert!(format!("{:?}", ticket).contains("TurboTicket"));
+
+        let ack: AckTicket = ticket.clone().into();
+        assert_eq!(ack.epoch(), ticket.epoch());
+
+        let converted = TurboTicket::from(ack);
+        assert_eq!(converted.epoch(), ticket.epoch());
+        assert_eq!(converted.as_ref().epoch(), ticket.epoch());
+
+        assert!(converted.force().is_ok());
+        assert!(converted.is_durable());
+        assert_eq!(converted.wait().unwrap(), converted.epoch());
+
+        db.delete().unwrap();
+    }
+}

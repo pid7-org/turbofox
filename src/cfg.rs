@@ -83,10 +83,7 @@ impl TurboCfg {
     /// ```
     #[inline]
     pub fn new<P: Into<PathBuf>>(path: P, sync_mode: SyncMode) -> Self {
-        Self {
-            path: path.into(),
-            sync_mode,
-        }
+        Self { path: path.into(), sync_mode }
     }
 
     /// Construct configuration driving a periodic background synchronization thread
@@ -112,10 +109,7 @@ impl TurboCfg {
     /// ```
     #[inline]
     pub fn periodic<P: Into<PathBuf>>(path: P, interval: Duration) -> Self {
-        Self {
-            path: path.into(),
-            sync_mode: SyncMode::Periodic(interval),
-        }
+        Self { path: path.into(), sync_mode: SyncMode::Periodic(interval) }
     }
 
     /// Construct configuration with manual synchronization and no background worker thread
@@ -135,10 +129,7 @@ impl TurboCfg {
     /// ```
     #[inline]
     pub fn manual<P: Into<PathBuf>>(path: P) -> Self {
-        Self {
-            path: path.into(),
-            sync_mode: SyncMode::Manual,
-        }
+        Self { path: path.into(), sync_mode: SyncMode::Manual }
     }
 
     /// Update the synchronization mode
@@ -211,8 +202,8 @@ mod tests {
         let updated = manual.with_sync_mode(SyncMode::Periodic(Duration::from_millis(0x32)));
         assert_eq!(updated.sync_mode, SyncMode::Periodic(Duration::from_millis(0x32)));
 
-        let with_interval = TurboCfg::manual("test_db_dir")
-            .with_sync_interval(Duration::from_millis(0x10));
+        let with_interval =
+            TurboCfg::manual("test_db_dir").with_sync_interval(Duration::from_millis(0x10));
         assert_eq!(with_interval.sync_mode, SyncMode::Periodic(Duration::from_millis(0x10)));
     }
 }

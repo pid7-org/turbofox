@@ -45,20 +45,26 @@
 //! db.delete().unwrap();
 //! ```
 
+use std::sync::Arc;
+
 mod adjarr;
 mod bucket;
 mod cfg;
 mod common;
 mod dbuf;
+mod engine;
 mod error;
 mod hash;
 mod list;
+mod meta;
 mod ticket;
 
 pub use cfg::TurboCfg;
 pub use error::{TurboError, TurboResult};
 pub use list::{TurboList, TurboListIter};
 pub use ticket::TurboTicket;
+
+use engine::Engine;
 
 /// TurboFox is an embedded key-value storage engine engineered for on-device persistence
 ///
@@ -80,7 +86,9 @@ pub use ticket::TurboTicket;
 /// db.delete().unwrap();
 /// ```
 #[derive(Debug, Clone)]
-pub struct TurboFox {}
+pub struct TurboFox {
+    engine: Arc<Engine>,
+}
 
 impl TurboFox {
     /// Creates and initializes a new [`TurboFox`] database instance on disk
@@ -103,8 +111,10 @@ impl TurboFox {
     /// assert_eq!(db.total_entries(), 0);
     /// db.delete().unwrap();
     /// ```
-    pub fn create(_cfg: TurboCfg) -> TurboResult<Self> {
-        todo!()
+    /// Ref: `DESIGN.md` §8.1
+    pub fn create(cfg: TurboCfg) -> TurboResult<Self> {
+        let engine = Engine::create(cfg)?;
+        Ok(Self { engine: Arc::new(engine) })
     }
 
     /// Opens an existing [`TurboFox`] database instance from disk;
@@ -133,8 +143,10 @@ impl TurboFox {
     /// assert_eq!(reopened.get(b"persisted").unwrap(), Some(b"true".to_vec()));
     /// reopened.delete().unwrap();
     /// ```
-    pub fn open(_cfg: TurboCfg) -> TurboResult<Self> {
-        todo!()
+    /// Ref: `DESIGN.md` §8.1
+    pub fn open(cfg: TurboCfg) -> TurboResult<Self> {
+        let engine = Engine::open(cfg)?;
+        Ok(Self { engine: Arc::new(engine) })
     }
 
     /// Inserts a new key-value pair or updates an existing entry
@@ -164,9 +176,10 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
+    /// Ref: `DESIGN.md` §7.2
     #[inline(always)]
-    pub fn set(&self, _key: &[u8], _val: &[u8]) -> TurboResult<TurboTicket> {
-        todo!()
+    pub fn set(&self, key: &[u8], val: &[u8]) -> TurboResult<TurboTicket> {
+        self.engine.set(key, val)
     }
 
     /// Retrieves the value payload for the specified key; returns `Ok(None)` if key does not exist
@@ -192,9 +205,10 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
+    /// Ref: `DESIGN.md` §7.1
     #[inline(always)]
-    pub fn get(&self, _key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
-        todo!()
+    pub fn get(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
+        self.engine.get(key)
     }
 
     /// Deletes an existing key-value or [`TurboList`] entry from the database; returns `Ok(true)`
@@ -220,9 +234,10 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
+    /// Ref: `DESIGN.md` §7.3
     #[inline(always)]
-    pub fn del(&self, _key: &[u8]) -> TurboResult<bool> {
-        todo!()
+    pub fn del(&self, key: &[u8]) -> TurboResult<bool> {
+        self.engine.del(key)
     }
 
     /// Accesses or creates a 1-to-N [`TurboList`] instance anchored at the given key; allows
@@ -249,9 +264,10 @@ impl TurboFox {
     /// drop(list);
     /// db.delete().unwrap();
     /// ```
+    /// Ref: `DESIGN.md` §7.4
     #[inline(always)]
-    pub fn list(&self, _key: &[u8]) -> TurboList {
-        todo!()
+    pub fn list(&self, key: &[u8]) -> TurboList {
+        TurboList::new(Arc::clone(&self.engine), key.to_vec())
     }
 
     /// Returns the total count of active key-value and list entries present in the database
@@ -276,84 +292,43 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
+    /// Ref: `DESIGN.md` §3.1
     #[inline]
     pub fn total_entries(&self) -> u64 {
-        todo!()
+        self.engine.total_entries()
     }
 
-    /// Returns the total number of physical OS pages currently allocated to the database file
+    /// Ref: `DESIGN.md` §3.1
     #[inline]
     pub fn total_pages(&self) -> TurboResult<u32> {
-        todo!()
+        self.engine.total_pages()
     }
 
-    /// Returns remaining physical OS pages that can be grown before reaching storage ceiling
+    /// Ref: `DESIGN.md` §9.1
     #[inline]
     pub fn remaining_pages(&self) -> TurboResult<u32> {
-        todo!()
+        self.engine.remaining_pages()
     }
 
-    /// Returns remaining storage capacity in bytes before reaching architectural address limit
+    /// Ref: `DESIGN.md` §9.1
     #[inline]
     pub fn remaining_bytes(&self) -> TurboResult<u64> {
-        todo!()
+        self.engine.remaining_bytes()
     }
 
-    /// Performs an explicit flush of dirty memory-mapped pages to durable storage, to ensure all
-    /// preceding writes are persisted across power-loss boundaries
-    ///
-    /// This call is optional if [`TurboCfg::sync_interval`] is configured, as background workers
-    /// flush dirty pages periodically
-    ///
-    /// ## Error
-    ///
-    /// Returns [`TurboError::Storage`] if low-level msync or metadata writeback fails
-    ///
-    /// ## Example
-    ///
-    /// ```no_run
-    /// use turbofox::{TurboCfg, TurboFox};
-    ///
-    /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("sync.db");
-    /// let cfg = TurboCfg::new(path);
-    /// let db = TurboFox::create(cfg).unwrap();
-    ///
-    /// let ticket = db.set(b"crucial", b"data").unwrap();
-    /// db.sync().unwrap();
-    /// assert!(ticket.is_durable());
-    ///
-    /// db.delete().unwrap();
-    /// ```
+    /// Ref: `DESIGN.md` §8.1
     #[inline]
     pub fn sync(&self) -> TurboResult<()> {
-        todo!()
+        self.engine.sync()
     }
 
-    /// Closes and permanently deletes the backing database files from the filesystem
-    ///
-    /// ## Errors
-    ///
-    /// Returns [`TurboError::ResourceBusy`] if other concurrent [`TurboFox`] clones exist;
-    /// returns [`TurboError::Storage`] if filesystem unlinking fails
-    ///
-    /// ## Example
-    ///
-    /// ```no_run
-    /// use turbofox::{TurboCfg, TurboError, TurboFox};
-    ///
-    /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("delete.db");
-    /// let cfg = TurboCfg::new(path);
-    /// let db = TurboFox::create(cfg).unwrap();
-    ///
-    /// let clone = db.clone();
-    /// assert!(matches!(db.delete(), Err(TurboError::ResourceBusy(_))));
-    ///
-    /// clone.delete().unwrap();
-    /// assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
-    /// ```
+    /// Ref: `DESIGN.md` §8.1
     pub fn delete(self) -> TurboResult<()> {
-        todo!()
+        match Arc::try_unwrap(self.engine) {
+            Ok(engine) => engine.delete(),
+            Err(_) => Err(TurboError::ResourceBusy(
+                "cannot delete database with active concurrent handles",
+            )),
+        }
     }
 }

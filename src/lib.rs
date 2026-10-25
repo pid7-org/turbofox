@@ -1,6 +1,7 @@
-//! TurboFox is an embedded key-value storage engine engineered for on-device persistence
+//! An embedded, memory-mapped key-value engine providing lock-free concurrency and explicit sync
+//! barriers
 //!
-//! ## Example (Key-Value)
+//! ## Key-Value Storage
 //!
 //! ```
 //! use turbofox::{TurboCfg, TurboFox};
@@ -22,7 +23,7 @@
 //! db.delete().unwrap();
 //! ```
 //!
-//! ## Example (`TurboList`)
+//! ## List Operations
 //!
 //! ```
 //! use turbofox::{TurboCfg, TurboFox};
@@ -45,8 +46,6 @@
 //! db.delete().unwrap();
 //! ```
 
-use std::sync::Arc;
-
 mod adjarr;
 mod bucket;
 mod cfg;
@@ -60,13 +59,19 @@ mod meta;
 mod ticket;
 
 pub use cfg::TurboCfg;
+pub use common::{MAX_KEY_LEN, MAX_VAL_LEN};
 pub use error::{TurboError, TurboResult};
 pub use list::{TurboList, TurboListIter};
 pub use ticket::TurboTicket;
 
 use engine::Engine;
+use std::sync::Arc;
 
-/// TurboFox is an embedded key-value storage engine engineered for on-device persistence
+/// An embedded, memory-mapped key-value engine providing lock-free concurrency and explicit sync
+/// barriers
+///
+/// Internally wraps an `Arc<Engine>`; cloning is cheap and shares the underlying memory mapping,
+/// hash table, and sync worker thread pool across threads
 ///
 /// ## Example
 ///
@@ -91,12 +96,12 @@ pub struct TurboFox {
 }
 
 impl TurboFox {
-    /// Creates and initializes a new [`TurboFox`] database instance on disk
+    /// Create and initialize a new [`TurboFox`] instance in the target directory
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`] if the target file already exists; or if filesystem
-    /// allocation fails
+    /// * [`TurboError::Storage`] if database files already exist in the target directory or if
+    ///   initial page allocation and mapping fail
     ///
     /// ## Example
     ///
@@ -111,18 +116,20 @@ impl TurboFox {
     /// assert_eq!(db.total_entries(), 0);
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §8.1
     pub fn create(cfg: TurboCfg) -> TurboResult<Self> {
         let engine = Engine::create(cfg)?;
+
         Ok(Self { engine: Arc::new(engine) })
     }
 
-    /// Opens an existing [`TurboFox`] database instance from disk;
+    /// Open an existing [`TurboFox`] instance from disk
+    ///
+    /// Internally verifies header magic, layout version, and host system page size constraints
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`] if the file does not exist or cannot be accessed; returns
-    /// [`TurboError::CorruptedHeader`] if header validation or layout checks fail
+    /// * [`TurboError::Storage`] if the database files do not exist or cannot be accessed
+    /// * [`TurboError::CorruptedHeader`] if header validation or layout checks fail
     ///
     /// ## Example
     ///
@@ -141,24 +148,40 @@ impl TurboFox {
     ///
     /// let reopened = TurboFox::open(cfg).unwrap();
     /// assert_eq!(reopened.get(b"persisted").unwrap(), Some(b"true".to_vec()));
+    ///
     /// reopened.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §8.1
     pub fn open(cfg: TurboCfg) -> TurboResult<Self> {
         let engine = Engine::open(cfg)?;
+
         Ok(Self { engine: Arc::new(engine) })
     }
 
-    /// Inserts a new key-value pair or updates an existing entry
+    /// Insert or update a key-value pair
     ///
-    /// ## [`TurboTicket`]
+    /// Internally commits bytes into memory-mapped data buffers and returns a [`TurboTicket`]
+    /// tracking background write durability
     ///
-    /// This call returns a [`TurboTicket`] representing write acknowledgement and durability state
+    /// Key length must not exceed [`crate::MAX_KEY_LEN`] bytes and value payload must not exceed
+    /// [`crate::MAX_VAL_LEN`] bytes
+    ///
+    /// ## Crash Safe Durability
+    ///
+    /// Returns a [`TurboTicket`] bound to this write's assigned commit epoch
+    ///
+    /// Internally write is commited to memory-mapped buffers immediately for lock-free read
+    /// availability, while the ticket allows callers to track when bytes are physically flushed for
+    /// crash safe durability
+    ///
+    /// Callers requiring durability guarantees can call [`TurboTicket::wait`] to block until
+    /// persisted, or [`TurboTicket::force`] to trigger an immediate flush
+    ///
+    /// Fire-and-forget callers can safely discard the ticket without blocking
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::PayloadTooLarge`] if key or value exceeds maximum payload limits; or
-    /// [`TurboError::Storage`] if physical storage expansion fails
+    /// * [`TurboError::Storage`] if physical storage expansion fails
+    /// * [`TurboError::PayloadTooLarge`] if key or value exceeds maximum payload limits
     ///
     /// ## Example
     ///
@@ -176,18 +199,22 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §7.2
     #[inline(always)]
     pub fn set(&self, key: &[u8], val: &[u8]) -> TurboResult<TurboTicket> {
         self.engine.set(key, val)
     }
 
-    /// Retrieves the value payload for the specified key; returns `Ok(None)` if key does not exist
-    /// or has been deleted
+    /// Retrieve value payload for the given key
+    ///
+    /// Internally copies bytes from memory-mapped storage into an owned `Vec<u8>` after verifying
+    /// payload CRC32 integrity
+    ///
+    /// Returns `Ok(None)` if key does not exist or has been deleted
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::CorruptedPayload`] if data buffer verification or CRC integrity fails
+    /// * [`TurboError::CorruptedPayload`] if payload CRC32 integrity check fails
+    /// * [`TurboError::InvalidType`] if the key points to a list structure
     ///
     /// ## Example
     ///
@@ -200,23 +227,56 @@ impl TurboFox {
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert_eq!(db.get(b"missing").unwrap(), None);
+    ///
     /// db.set(b"found", b"content").unwrap();
     /// assert_eq!(db.get(b"found").unwrap(), Some(b"content".to_vec()));
     ///
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §7.1
     #[inline(always)]
     pub fn get(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
         self.engine.get(key)
     }
 
-    /// Deletes an existing key-value or [`TurboList`] entry from the database; returns `Ok(true)`
-    /// if entry was found and removed or `Ok(false)` if entry did not exist
+    /// Check whether the specified key exists without allocating or copying its value payload
+    ///
+    /// Internally performs lock-free bucket probing directly in mapped hash tables; significantly
+    /// faster than [`TurboFox::get`] when checking for existence
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`] if metadata writeback fails during deletion
+    /// * [`TurboError::InvalidType`] if key exists as a list
+    /// * [`TurboError::Storage`] if reading memory-mapped pages fails
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::new(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// assert!(!db.contains_key(b"probe").unwrap());
+    ///
+    /// db.set(b"probe", b"data").unwrap();
+    /// assert!(db.contains_key(b"probe").unwrap());
+    ///
+    /// db.delete().unwrap();
+    /// ```
+    #[inline(always)]
+    pub fn contains_key(&self, key: &[u8]) -> TurboResult<bool> {
+        self.engine.contains_key(key)
+    }
+
+    /// Delete an existing key-value entry or [`TurboList`] entry from the [`TurboFox`]
+    ///
+    /// Returns `Ok(true)` if entry was found and removed, `Ok(false)` if absent
+    ///
+    /// ## Errors
+    ///
+    /// * [`TurboError::Storage`] if metadata writeback fails during deletion
     ///
     /// ## Example
     ///
@@ -234,16 +294,16 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §7.3
     #[inline(always)]
     pub fn del(&self, key: &[u8]) -> TurboResult<bool> {
         self.engine.del(key)
     }
 
-    /// Accesses or creates a 1-to-N [`TurboList`] instance anchored at the given key; allows
-    /// sequential append, pop, and index-based random access
+    /// Accesse or create a 1-to-N [`TurboList`] structure anchored at the given key
     ///
-    /// ## Examples
+    /// It allows sequential appends, pops, and index-based random access
+    ///
+    /// ## Example
     ///
     /// ```
     /// use turbofox::{TurboCfg, TurboFox};
@@ -264,13 +324,13 @@ impl TurboFox {
     /// drop(list);
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §7.4
     #[inline(always)]
     pub fn list(&self, key: &[u8]) -> TurboList {
         TurboList::new(Arc::clone(&self.engine), key.to_vec())
     }
 
-    /// Returns the total count of active key-value and list entries present in the database
+    /// Return the total count of active key-value and [`TurboList`] entries present in the
+    /// [`TurboFox`]
     ///
     /// ## Example
     ///
@@ -292,13 +352,35 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §3.1
     #[inline]
     pub fn total_entries(&self) -> u64 {
         self.engine.total_entries()
     }
 
-    /// Returns the in-memory DataBuf pool slot index currently hinted for allocation;
+    /// Return `true` if the database contains zero active key-value or [`TurboList`] entries
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::new(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// assert!(db.is_empty());
+    /// db.set(b"k", b"v").unwrap();
+    /// assert!(!db.is_empty());
+    ///
+    /// db.delete().unwrap();
+    /// ```
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.total_entries() == 0
+    }
+
+    /// Return the in-memory DataBuf pool slot index currently hinted for allocation
     ///
     /// ## Example
     ///
@@ -311,19 +393,19 @@ impl TurboFox {
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// assert_eq!(db.active_dbuf_hint(), 0x10);
+    ///
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §3.3
     #[inline]
     pub fn active_dbuf_hint(&self) -> u32 {
         self.engine.active_dbuf_hint()
     }
 
-    /// Returns the total number of physical pages currently allocated to the database
+    /// Return the total count of physical memory-mapped pages currently allocated to the database
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`] if reading metadata fails
+    /// * [`TurboError::Storage`] if reading metadata fails
     ///
     /// ## Example
     ///
@@ -339,17 +421,16 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §3.1
     #[inline]
     pub fn total_pages(&self) -> TurboResult<u32> {
         self.engine.total_pages()
     }
 
-    /// Returns the remaining physical pages available before reaching maximum database capacity
+    /// Return the remaining physical pages available before hitting maximum database capacity
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`] if querying database length fails
+    /// * [`TurboError::Storage`] if querying database mapping length fails
     ///
     /// ## Example
     ///
@@ -365,17 +446,16 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §9.1
     #[inline]
     pub fn remaining_pages(&self) -> TurboResult<u32> {
         self.engine.remaining_pages()
     }
 
-    /// Returns the remaining available storage capacity in bytes before reaching maximum limit
+    /// Return the remaining available storage capacity in bytes before reaching capacity limit
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`] if querying database length fails
+    /// * [`TurboError::Storage`] if querying database mapping length fails
     ///
     /// ## Example
     ///
@@ -391,17 +471,16 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §9.1
     #[inline]
     pub fn remaining_bytes(&self) -> TurboResult<u64> {
         self.engine.remaining_bytes()
     }
 
-    /// Flushes dirty pages and persists pending metadata and writes to storage
+    /// Perform an explicit flush for crash safe durability
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::Storage`] if synchronization or metadata writeback fails
+    /// * [`TurboError::Storage`] if synchronization or metadata writeback fails
     ///
     /// ## Example
     ///
@@ -418,18 +497,19 @@ impl TurboFox {
     ///
     /// db.delete().unwrap();
     /// ```
-    /// Ref: `DESIGN.md` §8.1
     #[inline]
     pub fn sync(&self) -> TurboResult<()> {
         self.engine.sync()
     }
 
-    /// Closes the database and deletes all backing files from disk; fails if other handles exist
+    /// Close the database and delete all backing files from disk
+    ///
+    /// The call requires that all clones and child [`TurboList`] handles have been dropped
     ///
     /// ## Errors
     ///
-    /// Returns [`TurboError::ResourceBusy`] if other references or active handles exist;
-    /// returns [`TurboError::Storage`] if filesystem deletion fails
+    /// * [`TurboError::ResourceBusy`] if other active references to this instance exist
+    /// * [`TurboError::Storage`] if filesystem file deletion fails
     ///
     /// ## Example
     ///
@@ -443,7 +523,6 @@ impl TurboFox {
     ///
     /// assert!(db.delete().is_ok());
     /// ```
-    /// Ref: `DESIGN.md` §8.1
     pub fn delete(self) -> TurboResult<()> {
         match Arc::try_unwrap(self.engine) {
             Ok(engine) => engine.delete(),

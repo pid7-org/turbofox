@@ -38,7 +38,6 @@ impl Default for Metadata {
 
 impl Metadata {
     pub(crate) const MAGIC: [u8; 4] = MAGIC;
-    pub(crate) const CURRENT_VERSION: u32 = LAYOUT_VERSION;
 
     /// Ref: `DESIGN.md` §3.1
     #[inline(always)]
@@ -79,11 +78,13 @@ impl Metadata {
         self.total_slots = (self.total_pages * self.page_size) / (SLOT_SIZE as u32);
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn as_slot(&self) -> &Slot {
         unsafe { &*(self as *const Self as *const Slot) }
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
         unsafe { &mut *(self as *mut Self as *mut Slot) }

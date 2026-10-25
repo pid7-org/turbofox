@@ -22,6 +22,7 @@ impl AdjArrayEntry {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) const fn new(dbuf_idx: u32) -> Self {
         Self { dbuf_idx }
     }
@@ -32,6 +33,7 @@ impl AdjArrayEntry {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn is_occupied(&self) -> bool {
         self.dbuf_idx != 0
     }
@@ -131,6 +133,7 @@ impl AdjArrayList {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn entry_mut(&mut self, idx: usize) -> Option<&mut AdjArrayEntry> {
         if idx < Self::ENTRY_COUNT { Some(&mut self.entries[idx]) } else { None }
     }
@@ -229,6 +232,7 @@ impl AdjArrayBlock {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn is_full(&self) -> bool {
         (self.bmap & ADJ_ARR_OCCUPIED_MASK) == ADJ_ARR_OCCUPIED_MASK
     }
@@ -294,6 +298,7 @@ impl AdjArrayBlock {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
         unsafe { &mut *(self as *mut Self as *mut Slot) }
     }

@@ -228,13 +228,10 @@ impl Engine {
 
         self.mmap.grow(growth_pages)?;
 
-        let new_len = curr_len + added_bytes;
-        let new_total_pages = (new_len / page_bytes) as u32;
-        let new_total_slots = (new_len / SLOT_SIZE) as u32;
-
+        let mut new_total_slots = 0u32;
         self.mmap.write_exact::<Metadata, _, _>(0, |m| {
-            m.total_pages = new_total_pages;
-            m.total_slots = new_total_slots;
+            m.record_growth(growth_pages as u32);
+            new_total_slots = m.total_slots;
         })?;
 
         self.total_slots.store(new_total_slots, Ordering::Release);
@@ -264,10 +261,13 @@ impl Engine {
     }
 
     /// Ref: `DESIGN.md` §5.3
+    #[allow(dead_code)]
     pub(crate) fn expand_databuf(&self, tail_slot: usize) -> TurboResult<u32> {
         let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
         let new_slot = self.expand_databuf_locked(tail_slot)?;
+
         self.active_dbuf_hint.store(new_slot, Ordering::Relaxed);
+
         Ok(new_slot)
     }
 
@@ -338,9 +338,9 @@ impl Engine {
 
         loop {
             if curr == exclude_slot {
-                let next = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
-                    d.next_dbuf_index() as usize
-                })?;
+                let next = self
+                    .mmap
+                    .read_exact::<DataBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
 
                 if next != 0 {
                     curr = next;
@@ -394,9 +394,9 @@ impl Engine {
 
         let mut actual_tail = tail_slot;
         loop {
-            let next = self.mmap.read_exact::<DataBuf, _, _>(actual_tail, |d| {
-                d.next_dbuf_index() as usize
-            })?;
+            let next = self
+                .mmap
+                .read_exact::<DataBuf, _, _>(actual_tail, |d| d.next_dbuf_index() as usize)?;
             if next == 0 {
                 break;
             }
@@ -412,12 +412,7 @@ impl Engine {
                 })?;
                 if let Some((local_idx, orig, mutated)) = alloc_opt {
                     self.active_dbuf_hint.store(actual_tail as u32, Ordering::Relaxed);
-                    return Ok(DbufAllocPlan {
-                        start_slot: actual_tail,
-                        local_idx,
-                        orig,
-                        mutated,
-                    });
+                    return Ok(DbufAllocPlan { start_slot: actual_tail, local_idx, orig, mutated });
                 }
             }
         }

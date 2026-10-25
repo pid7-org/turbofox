@@ -257,6 +257,7 @@ impl Bucket {
         BucketEntry { hash: self.hashes[idx], offset: self.offsets[idx] }
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn set_entry(&mut self, idx: usize, entry: BucketEntry) {
         // sanity check
@@ -292,6 +293,7 @@ impl Bucket {
         self.hashes[idx] = HASH_TOMBSTONE;
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn clear_entry(&mut self, idx: usize) {
         // sanity check
@@ -301,6 +303,7 @@ impl Bucket {
         self.offsets[idx] = 0;
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn next_bucket(&self, primary: usize) -> u32 {
         // sanity check
@@ -318,16 +321,19 @@ impl Bucket {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn occupied_count(&self) -> usize {
         self.hashes.iter().filter(|&&h| h >= MIN_VALID_HASH).count()
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn tombstone_count(&self) -> usize {
         self.hashes.iter().filter(|&&h| h == HASH_TOMBSTONE).count()
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub(crate) fn is_full(&self) -> bool {
         self.hashes.iter().all(|&h| h != HASH_EMPTY && h != HASH_TOMBSTONE)
     }
@@ -337,6 +343,7 @@ impl Bucket {
         unsafe { &*(self as *const Self as *const [Slot; BUCKET_SLOTS]) }
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn as_slots_mut(&mut self) -> &mut [Slot; BUCKET_SLOTS] {
         unsafe { &mut *(self as *mut Self as *mut [Slot; BUCKET_SLOTS]) }

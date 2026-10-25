@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use core::ops::{Deref, DerefMut};
 
 /// Ref: `DESIGN.md` §3.1

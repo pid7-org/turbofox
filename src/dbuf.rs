@@ -95,9 +95,7 @@ impl DataBuf {
         }
 
         let max_start = DATABUF_BUF_COUNT - count;
-        let test_mask = if count == 0x40 { u64::MAX } else { (1u64 << count) - 1 };
-
-        (0..=max_start).find(|&idx| (self.bitmap & (test_mask << (1 + idx))) == 0)
+        (0..=max_start).find(|&idx| self.is_range_free(idx, count))
     }
 
     pub(crate) fn alloc_contiguous(&mut self, count: usize) -> Option<usize> {
@@ -278,6 +276,7 @@ impl DataBuf {
     }
 
     /// Ref: `DESIGN.md` §3.3
+    #[allow(dead_code)]
     pub(crate) fn read_list_key_payload(
         &self,
         start_idx: usize,
@@ -400,6 +399,7 @@ impl DataBuf {
         unsafe { &*(self as *const Self as *const [Slot; DATABUF_SLOTS]) }
     }
 
+    #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn as_slots_mut(&mut self) -> &mut [Slot; DATABUF_SLOTS] {
         unsafe { &mut *(self as *mut Self as *mut [Slot; DATABUF_SLOTS]) }

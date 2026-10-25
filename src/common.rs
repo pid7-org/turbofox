@@ -111,8 +111,7 @@ pub(crate) const ALLOC_BYTE_QUANTUM: usize = 0x0400;
 pub(crate) const MAX_BUF_IDX: u32 = 0x7FFF_FFFF;
 pub(crate) const MAX_DBUF_SLOT: u32 = MAX_BUF_IDX / (DATABUF_BUF_COUNT as u32);
 pub(crate) const MAX_DATABUFS: u32 = MAX_DBUF_SLOT / (DATABUF_SLOTS as u32);
-pub(crate) const MAX_STORAGE_PAGES: u32 =
-    (MAX_DBUF_SLOT + (SLOTS_PER_4K_PAGE as u32) - 1) / (SLOTS_PER_4K_PAGE as u32);
+pub(crate) const MAX_STORAGE_PAGES: u32 = MAX_DBUF_SLOT.div_ceil(SLOTS_PER_4K_PAGE as u32);
 pub(crate) const MAX_SLOTS: u64 = 1 << 0x20;
 pub(crate) const MAX_STORAGE_PAGES_4K: u32 = 0x0800_0000;
 pub(crate) const MAX_DB_LEN: usize = 0x80_0000_0000;

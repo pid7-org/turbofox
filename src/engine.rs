@@ -218,8 +218,8 @@ impl Engine {
             PageSize::K16 | PageSize::K64 => 1,
         };
 
-        let needed_pages = ((needed_slots as usize * SLOT_SIZE) + page_bytes - 1) / page_bytes;
-        let growth_pages = ((needed_pages + quantum_pages - 1) / quantum_pages) * quantum_pages;
+        let needed_pages = (needed_slots as usize * SLOT_SIZE).div_ceil(page_bytes);
+        let growth_pages = needed_pages.div_ceil(quantum_pages) * quantum_pages;
         let added_bytes = growth_pages * page_bytes;
 
         if curr_len.saturating_add(added_bytes) > MAX_DB_LEN {
@@ -276,7 +276,7 @@ impl Engine {
         let new_slot = self.alloc_uniform_slots(ALLOC_SLOT_QUANTUM)?;
         for i in 0..ALLOC_SLOT_QUANTUM {
             let s = (new_slot + i) as usize;
-            let next = if i + 1 < ALLOC_SLOT_QUANTUM { (new_slot + i + 1) as u32 } else { 0 };
+            let next = if i + 1 < ALLOC_SLOT_QUANTUM { new_slot + i + 1 } else { 0 };
             let mut block = AdjArrayBlock::new();
             block.set_next_block(next);
             self.mmap.write_exact::<AdjArrayBlock, _, _>(s, |b| *b = block)?;
@@ -584,7 +584,7 @@ impl Engine {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 
-            let probe_info = loop {
+            let (target_bucket_slot, old_bucket, target_entry_idx, is_update) = loop {
                 let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
                 let probe_res = bucket.probe(hash, depth, |entry_idx| {
                     self.match_any_key(&bucket.entry(entry_idx), key)
@@ -592,15 +592,15 @@ impl Engine {
 
                 match probe_res {
                     ProbeResult::Found(entry_idx) => {
-                        break Ok((bucket_slot, bucket, entry_idx, true));
+                        break (bucket_slot, bucket, entry_idx, true);
                     }
                     ProbeResult::Vacant(entry_idx) => {
-                        break Ok((bucket_slot, bucket, entry_idx, false));
+                        break (bucket_slot, bucket, entry_idx, false);
                     }
                     ProbeResult::Overflow { primary, next_bucket, candidate_slot } => {
                         if next_bucket == 0 {
                             if let Some(tomb_idx) = candidate_slot {
-                                break Ok((bucket_slot, bucket, tomb_idx, false));
+                                break (bucket_slot, bucket, tomb_idx, false);
                             }
                             let new_bucket_slot = self.expand_bucket()?;
                             self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| {
@@ -614,11 +614,6 @@ impl Engine {
                         }
                     }
                 }
-            };
-
-            let (target_bucket_slot, old_bucket, target_entry_idx, is_update) = match probe_info {
-                Ok(info) => info,
-                Err(e) => return Err(e),
             };
 
             let mut touched_dbufs: Vec<(usize, DataBuf, DataBuf)> = Vec::with_capacity(2);
@@ -748,7 +743,7 @@ impl Engine {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 
-            let probe_res = loop {
+            let (target_bucket_slot, old_bucket, target_entry_idx) = loop {
                 let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
                 let res = bucket.probe(hash, depth, |entry_idx| {
                     self.match_any_key(&bucket.entry(entry_idx), key)
@@ -756,7 +751,7 @@ impl Engine {
 
                 match res {
                     ProbeResult::Found(entry_idx) => {
-                        break Ok((bucket_slot, bucket, entry_idx));
+                        break (bucket_slot, bucket, entry_idx);
                     }
                     ProbeResult::Vacant(_) => return Ok(false),
                     ProbeResult::Overflow { next_bucket, .. } => {
@@ -767,11 +762,6 @@ impl Engine {
                         depth = depth.wrapping_add(1);
                     }
                 }
-            };
-
-            let (target_bucket_slot, old_bucket, target_entry_idx) = match probe_res {
-                Ok(res) => res,
-                Err(e) => return Err(e),
             };
 
             let entry = old_bucket.entry(target_entry_idx);
@@ -869,7 +859,7 @@ impl Engine {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 
-            let probe_res = loop {
+            let (target_bucket_slot, old_bucket, target_entry_idx, exists) = loop {
                 let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
                 let res = bucket.probe(hash, depth, |entry_idx| {
                     self.match_any_key(&bucket.entry(entry_idx), key)
@@ -877,15 +867,15 @@ impl Engine {
 
                 match res {
                     ProbeResult::Found(entry_idx) => {
-                        break Ok((bucket_slot, bucket, entry_idx, true));
+                        break (bucket_slot, bucket, entry_idx, true);
                     }
                     ProbeResult::Vacant(entry_idx) => {
-                        break Ok((bucket_slot, bucket, entry_idx, false));
+                        break (bucket_slot, bucket, entry_idx, false);
                     }
                     ProbeResult::Overflow { primary, next_bucket, candidate_slot } => {
                         if next_bucket == 0 {
                             if let Some(tomb_idx) = candidate_slot {
-                                break Ok((bucket_slot, bucket, tomb_idx, false));
+                                break (bucket_slot, bucket, tomb_idx, false);
                             }
                             let new_bucket_slot = self.expand_bucket()?;
                             self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| {
@@ -899,11 +889,6 @@ impl Engine {
                         }
                     }
                 }
-            };
-
-            let (target_bucket_slot, old_bucket, target_entry_idx, exists) = match probe_res {
-                Ok(res) => res,
-                Err(e) => return Err(e),
             };
 
             if exists {
@@ -1127,7 +1112,7 @@ impl Engine {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 
-            let probe_res = loop {
+            let (_target_bucket_slot, old_bucket, target_entry_idx) = loop {
                 let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
                 let res = bucket.probe(hash, depth, |entry_idx| {
                     self.match_list_key(&bucket.entry(entry_idx), key)
@@ -1135,7 +1120,7 @@ impl Engine {
 
                 match res {
                     ProbeResult::Found(entry_idx) => {
-                        break Ok((bucket_slot, bucket, entry_idx));
+                        break (bucket_slot, bucket, entry_idx);
                     }
                     ProbeResult::Vacant(_) => return Ok(None),
                     ProbeResult::Overflow { next_bucket, .. } => {
@@ -1146,11 +1131,6 @@ impl Engine {
                         depth = depth.wrapping_add(1);
                     }
                 }
-            };
-
-            let (_target_bucket_slot, old_bucket, target_entry_idx) = match probe_res {
-                Ok(res) => res,
-                Err(e) => return Err(e),
             };
 
             let entry = old_bucket.entry(target_entry_idx);
@@ -1560,7 +1540,7 @@ impl Engine {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 
-            let probe_res = loop {
+            let (target_bucket_slot, old_bucket, target_entry_idx) = loop {
                 let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
                 let res = bucket.probe(hash, depth, |entry_idx| {
                     self.match_any_key(&bucket.entry(entry_idx), key)
@@ -1568,7 +1548,7 @@ impl Engine {
 
                 match res {
                     ProbeResult::Found(entry_idx) => {
-                        break Ok((bucket_slot, bucket, entry_idx));
+                        break (bucket_slot, bucket, entry_idx);
                     }
                     ProbeResult::Vacant(_) => return Ok(false),
                     ProbeResult::Overflow { next_bucket, .. } => {
@@ -1579,11 +1559,6 @@ impl Engine {
                         depth = depth.wrapping_add(1);
                     }
                 }
-            };
-
-            let (target_bucket_slot, old_bucket, target_entry_idx) = match probe_res {
-                Ok(res) => res,
-                Err(e) => return Err(e),
             };
 
             let entry = old_bucket.entry(target_entry_idx);

@@ -12,6 +12,7 @@ pub(crate) struct BucketEntry {
     offset: u64,
 }
 
+#[allow(dead_code)]
 impl BucketEntry {
     #[inline(always)]
     pub(crate) const fn empty() -> Self {
@@ -172,20 +173,22 @@ const _: () = assert!(!BucketEntry::empty().is_occupied());
 const _: () = assert!(BucketEntry::tombstone().is_tombstone());
 const _: () = assert!(!BucketEntry::tombstone().is_occupied());
 
-const KV_TEST: BucketEntry = BucketEntry::pack_kv(0x1234_5678, 0x0C, 0x0150, 0x0002_0000);
-const _: () = assert!(KV_TEST.is_kv());
-const _: () = assert!(!KV_TEST.is_list());
-const _: () = assert!(KV_TEST.is_occupied());
-const _: () = assert!(KV_TEST.klen() == 0x0C);
-const _: () = assert!(KV_TEST.vlen() == 0x0150);
-const _: () = assert!(KV_TEST.buf_idx() == 0x0002_0000);
+const _: () = {
+    let kv_test = BucketEntry::pack_kv(0x1234_5678, 0x0C, 0x0150, 0x0002_0000);
+    assert!(kv_test.is_kv());
+    assert!(!kv_test.is_list());
+    assert!(kv_test.is_occupied());
+    assert!(kv_test.klen() == 0x0C);
+    assert!(kv_test.vlen() == 0x0150);
+    assert!(kv_test.buf_idx() == 0x0002_0000);
 
-const LIST_TEST: BucketEntry = BucketEntry::pack_list(0x9ABC_DEF0, 0x002A, 0x0005);
-const _: () = assert!(!LIST_TEST.is_kv());
-const _: () = assert!(LIST_TEST.is_list());
-const _: () = assert!(LIST_TEST.is_occupied());
-const _: () = assert!(LIST_TEST.adjarr_idx() == 0x002A);
-const _: () = assert!(LIST_TEST.buf_idx() == 0x0005);
+    let list_test = BucketEntry::pack_list(0x9ABC_DEF0, 0x002A, 0x0005);
+    assert!(!list_test.is_kv());
+    assert!(list_test.is_list());
+    assert!(list_test.is_occupied());
+    assert!(list_test.adjarr_idx() == 0x002A);
+    assert!(list_test.buf_idx() == 0x0005);
+};
 
 impl Default for Bucket {
     #[inline(always)]

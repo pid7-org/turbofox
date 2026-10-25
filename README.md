@@ -48,7 +48,7 @@ turbofox = "0.0.11"
 use turbofox::{TurboCfg, TurboFox};
 
 let dir = tempfile::tempdir().unwrap();
-let path = dir.path().join("demo.db");
+let path = dir.path();
 let cfg = TurboCfg::new(path);
 let db = TurboFox::create(cfg).unwrap();
 

@@ -6,7 +6,7 @@
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
-//! let path = dir.path().join("module_kv.db");
+//! let path = dir.path();
 //! let cfg = TurboCfg::new(path);
 //! let db = TurboFox::create(cfg).unwrap();
 //!
@@ -28,7 +28,7 @@
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
-//! let path = dir.path().join("module_list.db");
+//! let path = dir.path();
 //! let cfg = TurboCfg::new(path);
 //! let db = TurboFox::create(cfg).unwrap();
 //!
@@ -74,7 +74,7 @@ use engine::Engine;
 /// use turbofox::{TurboCfg, TurboFox};
 ///
 /// let dir = tempfile::tempdir().unwrap();
-/// let path = dir.path().join("handle.db");
+/// let path = dir.path();
 /// let cfg = TurboCfg::new(path);
 /// let db = TurboFox::create(cfg).unwrap();
 ///
@@ -104,7 +104,7 @@ impl TurboFox {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("create.db");
+    /// let path = dir.path();
     /// let cfg = TurboCfg::new(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
@@ -130,7 +130,7 @@ impl TurboFox {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("open.db");
+    /// let path = dir.path();
     /// let cfg = TurboCfg::new(path);
     ///
     /// {
@@ -166,7 +166,7 @@ impl TurboFox {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("set.db");
+    /// let path = dir.path();
     /// let cfg = TurboCfg::new(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
@@ -195,7 +195,7 @@ impl TurboFox {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("get.db");
+    /// let path = dir.path();
     /// let cfg = TurboCfg::new(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
@@ -224,7 +224,7 @@ impl TurboFox {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("del.db");
+    /// let path = dir.path();
     /// let cfg = TurboCfg::new(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
@@ -249,7 +249,7 @@ impl TurboFox {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list.db");
+    /// let path = dir.path();
     /// let cfg = TurboCfg::new(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
@@ -278,7 +278,7 @@ impl TurboFox {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("total_entries.db");
+    /// let path = dir.path();
     /// let cfg = TurboCfg::new(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///

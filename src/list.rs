@@ -6,7 +6,7 @@
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
-//! let path = dir.path().join("list_mod.db");
+//! let path = dir.path();
 //! let db = TurboFox::create(TurboCfg::new(path)).unwrap();
 //! let list = db.list(b"queue");
 //!
@@ -38,7 +38,7 @@ use crate::ticket::TurboTicket;
 /// use turbofox::{TurboCfg, TurboFox};
 ///
 /// let dir = tempfile::tempdir().unwrap();
-/// let path = dir.path().join("list_struct.db");
+/// let path = dir.path();
 /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
 ///
 /// let list = db.list(b"tasks");
@@ -69,7 +69,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_key.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"device:events");
     ///
@@ -98,7 +98,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_append.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"log");
     ///
@@ -127,7 +127,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_pop.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"stack");
     ///
@@ -159,7 +159,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_first.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"items");
     ///
@@ -189,7 +189,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_last.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"items");
     ///
@@ -219,7 +219,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_get_at.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"indexed");
     ///
@@ -250,7 +250,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_len.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"counted");
     ///
@@ -278,7 +278,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_is_empty.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"check_empty");
     ///
@@ -306,7 +306,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_iter.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"iter_list");
     ///
@@ -338,7 +338,7 @@ impl TurboList {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("list_clear.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let list = db.list(b"to_clear");
     ///
@@ -363,7 +363,7 @@ impl TurboList {
 /// use turbofox::{TurboCfg, TurboFox};
 ///
 /// let dir = tempfile::tempdir().unwrap();
-/// let path = dir.path().join("iter_struct.db");
+/// let path = dir.path();
 /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
 /// let list = db.list(b"traverse");
 ///

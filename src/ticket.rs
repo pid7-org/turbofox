@@ -7,7 +7,7 @@
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
-//! let path = dir.path().join("ticket_mod.db");
+//! let path = dir.path();
 //! let db = TurboFox::create(TurboCfg::new(path)).unwrap();
 //! let ticket = db.set(b"key", b"value").unwrap();
 //! db.sync().unwrap();
@@ -29,7 +29,7 @@ use frozen_core::ack::AckTicket;
 /// use turbofox::{TurboCfg, TurboFox};
 ///
 /// let dir = tempfile::tempdir().unwrap();
-/// let path = dir.path().join("ticket_type.db");
+/// let path = dir.path();
 /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
 ///
 /// let ticket = db.set(b"key", b"value").unwrap();
@@ -58,7 +58,7 @@ impl TurboTicket {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("ticket_epoch.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let ticket = db.set(b"key", b"value").unwrap();
     /// assert!(ticket.epoch() > 0);
@@ -78,7 +78,7 @@ impl TurboTicket {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("ticket_durable.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let ticket = db.set(b"key", b"value").unwrap();
     /// let _ = ticket.is_durable();
@@ -103,7 +103,7 @@ impl TurboTicket {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("ticket_wait.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let ticket = db.set(b"key", b"value").unwrap();
     /// db.sync().unwrap();
@@ -129,7 +129,7 @@ impl TurboTicket {
     /// use turbofox::{TurboCfg, TurboFox};
     ///
     /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path().join("ticket_force.db");
+    /// let path = dir.path();
     /// let db = TurboFox::create(TurboCfg::new(path)).unwrap();
     /// let ticket = db.set(b"key", b"value").unwrap();
     /// assert!(ticket.force().is_ok());

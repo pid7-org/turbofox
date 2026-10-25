@@ -24,8 +24,6 @@
 //! db.delete().unwrap();
 //! ```
 
-#![allow(dead_code)]
-
 use crate::error::TurboResult;
 use crate::ticket::TurboTicket;
 

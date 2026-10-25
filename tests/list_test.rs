@@ -5,7 +5,7 @@ use turbofox::{TurboCfg, TurboError, TurboFox};
 #[test]
 fn ok_turbofox_list_append_pop_basic() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path()).with_version(2);
+    let cfg = TurboCfg::new(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let list = db.list(b"sensor_queue");
@@ -41,7 +41,7 @@ fn ok_turbofox_list_append_pop_basic() {
 #[test]
 fn ok_turbofox_list_multi_block_chaining() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path()).with_version(2);
+    let cfg = TurboCfg::new(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let list = db.list(b"chained_log");
@@ -78,7 +78,7 @@ fn ok_turbofox_list_multi_block_chaining() {
 #[test]
 fn ok_turbofox_list_clear_and_type_check() {
     let dir = tempdir().unwrap();
-    let cfg = TurboCfg::new(dir.path()).with_version(2);
+    let cfg = TurboCfg::new(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let list = db.list(b"my_list");
@@ -86,10 +86,7 @@ fn ok_turbofox_list_clear_and_type_check() {
     list.append(b"item_b").unwrap();
 
     assert!(matches!(db.get(b"my_list"), Err(TurboError::InvalidType(_))));
-    assert!(matches!(
-        db.set(b"my_list", b"val"),
-        Err(TurboError::InvalidType(_))
-    ));
+    assert!(matches!(db.set(b"my_list", b"val"), Err(TurboError::InvalidType(_))));
 
     assert!(list.clear().unwrap());
     assert_eq!(list.len().unwrap(), 0);
@@ -98,10 +95,7 @@ fn ok_turbofox_list_clear_and_type_check() {
     assert_eq!(db.get(b"my_list").unwrap(), Some(b"kv_value".to_vec()));
 
     let kv_as_list = db.list(b"my_list");
-    assert!(matches!(
-        kv_as_list.append(b"sub_item"),
-        Err(TurboError::InvalidType(_))
-    ));
+    assert!(matches!(kv_as_list.append(b"sub_item"), Err(TurboError::InvalidType(_))));
 
     drop(list);
     drop(kv_as_list);

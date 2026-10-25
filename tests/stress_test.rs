@@ -6,7 +6,7 @@ use turbofox::{TurboCfg, TurboFox};
 
 /// Ref: `DESIGN.md` §6
 #[test]
-fn ok_turbofox_concurrent_contention_and_backoff() {
+fn ok_stress_concurrent_occ_contention() {
     let dir = tempdir().unwrap();
     let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
@@ -69,7 +69,7 @@ fn ok_turbofox_concurrent_contention_and_backoff() {
 
 /// Ref: `DESIGN.md` §5.2, §6
 #[test]
-fn ok_turbofox_concurrent_reads_during_growth() {
+fn ok_stress_concurrent_reads_during_growth() {
     let dir = tempdir().unwrap();
     let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
@@ -115,5 +115,54 @@ fn ok_turbofox_concurrent_reads_during_growth() {
     }
 
     assert_eq!(db.total_entries(), (seed_count + 0x80) as u64);
+    db.delete().unwrap();
+}
+
+/// Ref: `DESIGN.md` §6, §7.2, §7.4
+#[test]
+fn ok_stress_interleaved_kv_and_list_pipeline() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::manual(dir.path());
+    let db = TurboFox::create(cfg).unwrap();
+
+    let mut handles = Vec::new();
+
+    // 0x02 KV workers
+    for t in 0..0x02 {
+        let db_clone = db.clone();
+        handles.push(thread::spawn(move || {
+            for i in 0..0x20 {
+                let k = format!("kv_pipe_{:02x}_{:04x}", t, i);
+                let v = format!("payload_{:04x}", i);
+                db_clone.set(k.as_bytes(), v.as_bytes()).unwrap();
+            }
+        }));
+    }
+
+    // 0x02 List queue workers
+    for t in 0..0x02 {
+        let db_clone = db.clone();
+        handles.push(thread::spawn(move || {
+            let list_name = format!("queue_worker_{:02x}", t);
+            let queue = db_clone.list(list_name.as_bytes());
+            for i in 0..0x18 {
+                let item = format!("item_{:04x}", i);
+                queue.append(item.as_bytes()).unwrap();
+            }
+            assert_eq!(queue.len().unwrap(), 0x18);
+            for _ in 0..0x08 {
+                assert!(queue.pop().unwrap().is_some());
+            }
+            assert_eq!(queue.len().unwrap(), 0x10);
+        }));
+    }
+
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    // 2 * 0x20 KV entries + 2 lists = 0x40 + 2 = 0x42 entries
+    assert_eq!(db.total_entries(), 0x42);
+
     db.delete().unwrap();
 }

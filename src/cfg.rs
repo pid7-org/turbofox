@@ -19,18 +19,10 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-#[allow(dead_code)]
-pub(crate) const MODULE_ID: u8 = 0x46;
-#[allow(dead_code)]
-pub(crate) const PAGE_SIZE: u32 = 0x1000;
-#[allow(dead_code)]
-pub(crate) const DEFAULT_VERSION: u32 = 1;
-#[allow(dead_code)]
-pub(crate) const MAX_BUF_IDX: u32 = 0x7FFF_FFFF;
-#[allow(dead_code)]
-pub(crate) const MAX_DBUF_SLOT: u32 = MAX_BUF_IDX / 0x3F;
-#[allow(dead_code)]
-pub(crate) const MAX_STORAGE_PAGES: u32 = MAX_DBUF_SLOT / 0x20;
+#[allow(unused_imports)]
+pub(crate) use crate::common::{
+    DEFAULT_VERSION, MAX_BUF_IDX, MAX_DBUF_SLOT, MAX_STORAGE_PAGES, MODULE_ID, PAGE_SIZE,
+};
 
 /// Configuration parameters for initializing or opening a [`crate::TurboFox`] instance
 ///

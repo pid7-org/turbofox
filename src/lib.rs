@@ -46,6 +46,7 @@
 //! ```
 
 mod cfg;
+mod common;
 mod error;
 mod hash;
 mod list;

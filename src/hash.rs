@@ -1,13 +1,9 @@
-#![allow(dead_code)]
-
 use core::hash::Hasher;
 use frozen_core::hints;
 use twox_hash::XxHash32;
 
-pub(crate) const SEED: u32 = 0x5442_4658;
-pub(crate) const HASH_EMPTY: u32 = 0;
-pub(crate) const HASH_TOMBSTONE: u32 = 1;
-pub(crate) const MIN_VALID_HASH: u32 = 2;
+#[allow(unused_imports)]
+pub(crate) use crate::common::{HASH_EMPTY, HASH_TOMBSTONE, MIN_VALID_HASH, SEED};
 
 #[inline(always)]
 pub(crate) fn hash_key(key: &[u8]) -> u32 {

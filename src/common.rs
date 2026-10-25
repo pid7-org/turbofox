@@ -13,7 +13,8 @@ pub(crate) const MODULE_ID: u8 = 0x46;
 pub(crate) const DB_NAME_TAG: [u8; 4] = *b"tbfx";
 
 /// Ref: `DESIGN.md` §8.2
-pub(crate) const DEFAULT_VERSION: u32 = 1;
+#[allow(dead_code)]
+pub(crate) const DEFAULT_VERSION: u32 = 2;
 
 /// Ref: `DESIGN.md` §3.1
 pub(crate) const LAYOUT_VERSION: u32 = 2;

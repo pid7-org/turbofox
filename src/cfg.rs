@@ -7,12 +7,10 @@
 //! use std::time::Duration;
 //! use turbofox::TurboCfg;
 //!
-//! let cfg = TurboCfg::new("storage.db")
-//!     .with_version(1)
+//! let cfg = TurboCfg::new("turbofox_data")
 //!     .with_sync_interval(Duration::from_millis(0x32));
 //!
-//! assert_eq!(cfg.path, PathBuf::from("storage.db"));
-//! assert_eq!(cfg.version, 1);
+//! assert_eq!(cfg.path, PathBuf::from("turbofox_data"));
 //! assert_eq!(cfg.sync_interval, Some(Duration::from_millis(0x32)));
 //! ```
 
@@ -26,64 +24,42 @@ pub(crate) use crate::common::{
 
 /// Configuration parameters for initializing or opening a [`crate::TurboFox`] instance
 ///
+/// Path must point strictly to an existing or target directory and not a file;
+/// engine backing files are managed internally within this directory
+///
 /// ## Example
 ///
 /// ```no_run
 /// use std::path::PathBuf;
 /// use turbofox::TurboCfg;
 ///
-/// let cfg = TurboCfg::new(PathBuf::from("node.db"));
-/// assert_eq!(cfg.version, 1);
+/// let cfg = TurboCfg::new(PathBuf::from("data_dir"));
 /// assert!(cfg.sync_interval.is_none());
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurboCfg {
-    /// Filesystem path to database storage file or parent directory
+    /// Filesystem directory path hosting database storage files; must be a directory and not a file
     pub path: PathBuf,
-
-    /// Format and backing file version
-    pub version: u32,
 
     /// Optional interval for background synchronization worker
     pub sync_interval: Option<Duration>,
 }
 
 impl TurboCfg {
-    /// Creates a configuration with default parameters for the specified target path
+    /// Creates a configuration with default parameters for the specified target directory;
+    /// path must strictly be a directory and not a file
     ///
     /// ## Example
     ///
     /// ```no_run
     /// use turbofox::TurboCfg;
     ///
-    /// let cfg = TurboCfg::new("default.db");
-    /// assert_eq!(cfg.version, 1);
+    /// let cfg = TurboCfg::new("data_dir");
     /// assert!(cfg.sync_interval.is_none());
     /// ```
     #[inline]
     pub fn new<P: Into<PathBuf>>(path: P) -> Self {
-        Self {
-            path: path.into(),
-            version: DEFAULT_VERSION,
-            sync_interval: None,
-        }
-    }
-
-    /// Configures layout and backing file version to enable schema migration or multi-version file
-    /// co-existence
-    ///
-    /// ## Example
-    ///
-    /// ```no_run
-    /// use turbofox::TurboCfg;
-    ///
-    /// let cfg = TurboCfg::new("versioned.db").with_version(2);
-    /// assert_eq!(cfg.version, 2);
-    /// ```
-    #[inline]
-    pub fn with_version(mut self, version: u32) -> Self {
-        self.version = version;
-        self
+        Self { path: path.into(), sync_interval: None }
     }
 
     /// Configures periodic background flush interval
@@ -94,7 +70,7 @@ impl TurboCfg {
     /// use std::time::Duration;
     /// use turbofox::TurboCfg;
     ///
-    /// let cfg = TurboCfg::new("periodic.db")
+    /// let cfg = TurboCfg::new("periodic_data")
     ///     .with_sync_interval(Duration::from_millis(0x64));
     /// assert_eq!(cfg.sync_interval, Some(Duration::from_millis(0x64)));
     /// ```
@@ -107,16 +83,22 @@ impl TurboCfg {
     /// Ref: `DESIGN.md` §8.2
     #[inline]
     pub(crate) fn resolve_dir(&self) -> PathBuf {
-        if self.path.is_dir() {
-            self.path.clone()
-        } else if let Some(parent) = self.path.parent() {
-            if parent.is_dir() {
-                parent.to_path_buf()
-            } else {
-                self.path.clone()
-            }
-        } else {
-            self.path.clone()
-        }
+        self.path.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ok_turbocfg_defaults_and_builder() {
+        let cfg = TurboCfg::new("test_db_dir");
+        assert_eq!(cfg.path, PathBuf::from("test_db_dir"));
+        assert_eq!(cfg.sync_interval, None);
+        assert_eq!(cfg.resolve_dir(), PathBuf::from("test_db_dir"));
+
+        let with_sync = cfg.with_sync_interval(Duration::from_millis(0x64));
+        assert_eq!(with_sync.sync_interval, Some(Duration::from_millis(0x64)));
     }
 }

@@ -4,8 +4,8 @@ use crate::cfg::TurboCfg;
 use crate::common::{
     ADJ_ARR_HEAD_SLOT, ADJ_ARRAY_ENTRIES, ALLOC_SLOT_QUANTUM, BUCKET_SLOTS, DATABUF_BUF_COUNT,
     DATABUF_HEAD_SLOT, DATABUF_SLOTS, DB_NAME_TAG, INITIAL_ADJ_ARR_BLOCKS,
-    INITIAL_FREE_SLOT_MARKER, MAGIC, MAX_DB_LEN, MAX_KEY_LEN, MAX_VAL_LEN, MODULE_ID,
-    ROOT_BUCKET_SLOT, SLOT_SIZE, Slot,
+    INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION, MAGIC, MAX_DB_LEN, MAX_KEY_LEN, MAX_VAL_LEN,
+    MODULE_ID, ROOT_BUCKET_SLOT, SLOT_SIZE, Slot,
 };
 use crate::dbuf::DataBuf;
 use crate::error::{TurboError, TurboResult};
@@ -50,7 +50,7 @@ impl Engine {
             module_id: MODULE_ID,
             path: dir_path,
             name: DB_NAME_TAG,
-            version: cfg.version,
+            version: LAYOUT_VERSION,
             initial_pages,
             max_len: MAX_DB_LEN,
             sync_interval: cfg.sync_interval,
@@ -70,7 +70,7 @@ impl Engine {
             sys_page_size: page_size,
         };
 
-        engine.format_initial_topography(cfg.version, initial_pages as u32)?;
+        engine.format_initial_topography(LAYOUT_VERSION, initial_pages as u32)?;
         engine.sync()?;
 
         Ok(engine)
@@ -89,7 +89,7 @@ impl Engine {
             module_id: MODULE_ID,
             path: dir_path,
             name: DB_NAME_TAG,
-            version: cfg.version,
+            version: LAYOUT_VERSION,
             initial_pages,
             max_len: MAX_DB_LEN,
             sync_interval: cfg.sync_interval,
@@ -112,15 +112,18 @@ impl Engine {
             return Err(TurboError::InvalidMagic);
         }
 
-        if meta.version != cfg.version {
-            return Err(TurboError::VersionMismatch { expected: cfg.version, found: meta.version });
+        if meta.version != LAYOUT_VERSION {
+            return Err(TurboError::VersionMismatch {
+                expected: LAYOUT_VERSION,
+                found: meta.version,
+            });
         }
 
         if meta.page_size != sys_page_size.as_u32() {
             return Err(TurboError::InvalidPageSize(meta.page_size));
         }
 
-        if !meta.validate(sys_page_size.as_u32(), cfg.version) {
+        if !meta.validate(sys_page_size.as_u32(), LAYOUT_VERSION) {
             return Err(TurboError::CorruptedHeader("metadata validation failed"));
         }
 

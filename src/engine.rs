@@ -503,6 +503,42 @@ impl Engine {
         }
     }
 
+    pub(crate) fn contains_key(&self, key: &[u8]) -> TurboResult<bool> {
+        if key.is_empty() || key.len() > MAX_KEY_LEN {
+            return Ok(false);
+        }
+
+        let hash = hash_key(key);
+        let mut bucket_slot = ROOT_BUCKET_SLOT;
+        let mut depth = 0u8;
+
+        loop {
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+            let probe_res = bucket
+                .probe(hash, depth, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
+
+            match probe_res {
+                ProbeResult::Found(entry_idx) => {
+                    let entry = bucket.entry(entry_idx);
+                    if entry.is_list() {
+                        return Err(TurboError::InvalidType("Key is a list"));
+                    }
+
+                    return Ok(true);
+                }
+                ProbeResult::Vacant(_) => return Ok(false),
+                ProbeResult::Overflow { next_bucket, .. } => {
+                    if next_bucket == 0 {
+                        return Ok(false);
+                    }
+
+                    bucket_slot = next_bucket;
+                    depth = depth.wrapping_add(1);
+                }
+            }
+        }
+    }
+
     fn match_any_key(&self, entry: &BucketEntry, key: &[u8]) -> bool {
         if entry.is_list() {
             self.match_list_key(entry, key)

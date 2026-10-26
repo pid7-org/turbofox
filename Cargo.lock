@@ -266,7 +266,7 @@ checksum = "8eb73ad0e04ede98cf0232ffd04ce8da7aa87618589cb1fd52c6cfa521d2f53e"
 
 [[package]]
 name = "turbofox"
-version = "0.0.11"
+version = "0.0.101"
 dependencies = [
  "frozen-core",
  "hdrhistogram",

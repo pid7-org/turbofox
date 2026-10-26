@@ -39,7 +39,7 @@ Add `turbofox` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-turbofox = "0.0.11"
+turbofox = "0.0.101"
 ```
 
 > [!NOTE]

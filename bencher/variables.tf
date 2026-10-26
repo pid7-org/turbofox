@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "instance_type" {
   description = "Compute-optimized x86_64 instance with dedicated NVMe"
   type        = string
-  default     = "c5d.large"
+  default     = "c7id.2xlarge"
 }
 
 variable "ops" {

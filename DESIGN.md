@@ -266,8 +266,10 @@ no rehashing occurs; buckets chain forever
 
 1. Compute primary slot index for current depth $D$:
    $$S = \left(\text{hash} \gg (6 \cdot (D \pmod{5}))\right) \mathbin{\\&} 0\text{x}3\text{F}$$
-2. Probe up to 4 consecutive slots linearly:
-   $$P_i = (S + i) \pmod{64} \quad \text{for } i \in [0, 3]$$
+2. Probe up to 16 consecutive slots using SIMD vector acceleration:
+   $$P_i = (S + i) \pmod{64} \quad \text{for } i \in [0, 15]$$
+   - 16 candidate `u32` hashes span exactly 64 bytes (0x40 B, 1 cache line);
+     scanned concurrently without scalar branch penalties
    - If `hashes[P_i] == hash`:
      Compare key bytes stored in DataBuf;
      if key matches, entry found (target slot is $P_i$)
@@ -277,7 +279,7 @@ no rehashing occurs; buckets chain forever
    - If `hashes[P_i] == 1`:
      Tombstone encountered;
      record first tombstone candidate and continue probe
-3. If all 4 open-addressing slots are occupied without match or empty slot:
+3. If all 16 open-addressing slots are occupied without match or empty slot:
    - Read `next_slot = next_bucket_indices[S]` attached to primary index $S$
    - If `next_slot == 0`:
      - Insertion: allocate new 8-slot Bucket;
@@ -287,6 +289,31 @@ no rehashing occurs; buckets chain forever
        terminate and return not found
    - If `next_slot > 0`:
      Advance $D \leftarrow D + 1$ and repeat at step 1 in Bucket at `next_slot`
+
+### 4.4 SIMD Probe Acceleration & Runtime ISA Dispatch
+
+Open addressing evaluates up to 16 (0x10) candidate slots (64 B, single cache line) concurrently
+using vectorized comparisons selected at runtime:
+
+- **ISA Detection via `frozen_core::isa`**:
+  Host CPU features are detected at runtime via `frozen_core::isa`;
+  dispatches lookup, insert, and delete probes to specialized vector kernels:
+  - `open_address_avx2`: x86_64 AVX2 256-bit SIMD path
+  - `open_address_sse2`: x86_64 SSE2 128-bit SIMD path
+  - `open_address_neon`: AArch64 NEON 128-bit vector path
+  - `open_address_scalar`: Portable scalar fallback path
+- **AVX2 Implementation (`open_address_avx2`)**:
+  Processes 16 `u32` hashes via two 256-bit `_mm256_cmpeq_epi32` comparisons;
+  extracts bitmasks with `_mm256_movemask_ps` to find matches in 1-2 CPU cycles
+- **SSE2 Implementation (`open_address_sse2`)**:
+  Processes 16 `u32` hashes via four 128-bit `_mm_cmpeq_epi32` comparisons;
+  extracts bitmasks with `_mm_movemask_ps`
+- **NEON Implementation (`open_address_neon`)**:
+  Processes 16 `u32` hashes via four 128-bit `vceqq_u32` vector comparisons;
+  narrows match masks to resolve slot hits without pipeline stalls
+- **Index Resolution**:
+  Bitmasks are resolved using count trailing zeros (`ctz` / `trailing_zeros`);
+  identifies target slot, first empty sentinel (`0x00`), or first tombstone (`0x01`) in constant time
 
 ## 5. Storage Growth & Allocation Protocols
 
@@ -403,7 +430,7 @@ Writer (Atomic Multi-Slot OCC):
 
 1. Compute `hash = hash_key(key)`; initialize `bucket_slot = ROOT_BUCKET_SLOT`, `depth = 0`
 2. Compute `S = (hash >> (6 * (depth % 5))) & 0x3F`
-3. Probe slots $P_i = (S + i) \pmod{64}$ for $i \in [0, 3]$:
+3. Probe up to 16 slots $P_i = (S + i) \pmod{64}$ for $i \in [0, 15]$ via ISA SIMD kernel:
    - If `hashes[P_i] == hash`:
      - Inspect `offsets[P_i]`:
        if byte 0 bit 7 is set (`offsets[P_i][0] & 0x80 != 0`):
@@ -424,7 +451,7 @@ Writer (Atomic Multi-Slot OCC):
 3. If entry exists and `new_len <= old_allocated`:
    Overwrite value in-place via OCC tx
 4. If insert or payload expansion:
-   - If 4 open-addressing slots full and `next_bucket_indices[S] == 0`:
+   - If 16 open-addressing slots full and `next_bucket_indices[S] == 0`:
      Allocate new Bucket from `free_slot_marker`, link to parent
    - Allocate contiguous 16 B buffers in active DataBuf chain
    - Build payload frame `[ CRC32 ][ Key ][ Val ][ Pad ]`

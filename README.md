@@ -199,9 +199,9 @@ Sustained key-value operations per second across single-thread and 4-thread work
 
 | Workload              | 1 Thread Throughput | 4 Thread Throughput | Scaling Ratio |
 |:----------------------|:--------------------|:--------------------|:--------------|
-| SET (Insert)          | 1.18 kops/s         | 963 ops/s           | 0.82x         |
-| GET (60/40 Hit/Miss)  | 1.95 kops/s         | 1.78 kops/s         | 0.91x         |
-| DEL (60/40 Hit/Miss)  | 1.95 kops/s         | 1.78 kops/s         | 0.91x         |
+| SET (Insert)          | 1.18 kops/s         | 971 ops/s           | 0.82x         |
+| GET (60/40 Hit/Miss)  | 1.89 kops/s         | 1.86 kops/s         | 0.98x         |
+| DEL (60/40 Hit/Miss)  | 1.89 kops/s         | 1.85 kops/s         | 0.98x         |
 
 > [!NOTE]
 > Evaluation executes on 2 vCPU hardware where 4 worker threads oversubscribe physical compute cores;
@@ -215,17 +215,17 @@ Percentile latency distributions (p50 to p99.9) comparing 1T baseline against 4T
 
 | Workload              | Threads | p50     | p90     | p99     | p99.9     |
 |:----------------------|:--------|:--------|:--------|:--------|:----------|
-| SET: Insert           | 1T      | 0.81 ms | 1.42 ms | 3.11 ms | 3.99 ms   |
-| SET: Insert           | 4T      | 0.96 ms | 1.94 ms | 4.57 ms | 422.58 ms |
-| GET: 60/40 Hit/Miss   | 1T      | 0.28 ms | 1.42 ms | 1.68 ms | 1.71 ms   |
-| GET: 60/40 Hit/Miss   | 4T      | 0.62 ms | 4.69 ms | 8.04 ms | 10.45 ms  |
-| DEL: 60/40 Hit/Miss   | 1T      | 0.29 ms | 1.42 ms | 1.68 ms | 1.71 ms   |
-| DEL: 60/40 Hit/Miss   | 4T      | 0.61 ms | 4.61 ms | 7.60 ms | 10.35 ms  |
+| SET: Insert           | 1T      | 0.80 ms | 1.41 ms | 3.11 ms | 4.06 ms   |
+| SET: Insert           | 4T      | 0.96 ms | 1.92 ms | 4.59 ms | 420.48 ms |
+| GET: 60/40 Hit/Miss   | 1T      | 0.29 ms | 1.47 ms | 1.72 ms | 1.75 ms   |
+| GET: 60/40 Hit/Miss   | 4T      | 0.64 ms | 4.28 ms | 7.24 ms | 7.39 ms   |
+| DEL: 60/40 Hit/Miss   | 1T      | 0.29 ms | 1.46 ms | 1.72 ms | 1.75 ms   |
+| DEL: 60/40 Hit/Miss   | 4T      | 0.64 ms | 4.18 ms | 7.24 ms | 7.38 ms   |
 
 > [!NOTE]
 > Sub-millisecond median latencies (p50 < 0.30 ms for reads and deletes) sustained under 1T baseline
 >
-> Read and delete tail latencies stay bounded under 10.5 ms at p99.9 under 4T concurrency while
+> Read and delete tail latencies stay bounded under 7.5 ms at p99.9 under 4T concurrency while
 > elevated 4T p99.9 write tail stems from OCC conflict retries and backing file growth serialization
 
 ## Contributions

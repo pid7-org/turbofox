@@ -52,17 +52,8 @@ def generate_svg(lookup, out_path):
     p_w = svg_w - 0x78
     p_h = svg_h - 0x85
 
-    # Find maximum latency across all measured percentiles
-    max_lat = 0.0
-    for bench, wl, title in WORKLOADS:
-        for thr in [1, 4]:
-            entry = lookup.get((bench, wl, thr), {})
-            lats = entry.get("latency_micros", {})
-            for p in PERCENTILES:
-                val = lats.get(p, 0.0)
-                max_lat = max(max_lat, val)
-
-    max_lat = max(max_lat * 1.25, 5.0)
+    # Limit y-axis to 10ms (10,000 µs) to prevent outliers from skewing chart
+    max_lat = 10000.0
 
     svg = []
     svg.append(
@@ -116,7 +107,7 @@ def generate_svg(lookup, out_path):
         )
         svg.append(
             f'<text x="{p_x - 10}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
-            f'font-size="10" text-anchor="end">{val:.1f}µs</text>'
+            f'font-size="10" text-anchor="end">{val / 1000.0:.1f}ms</text>'
         )
 
     # Layout: 3 workload blocks, each containing 4 percentile groups (p50, p90, p99, p999)
@@ -139,8 +130,8 @@ def generate_svg(lookup, out_path):
             v1 = e1.get(p_key, 0.0)
             v4 = e4.get(p_key, 0.0)
 
-            h1 = (v1 / max_lat) * p_h
-            h4 = (v4 / max_lat) * p_h
+            h1 = min((v1 / max_lat) * p_h, p_h)
+            h4 = min((v4 / max_lat) * p_h, p_h)
 
             y1 = p_y + p_h - h1
             y4 = p_y + p_h - h4
@@ -153,7 +144,7 @@ def generate_svg(lookup, out_path):
             if v1 > 0:
                 svg.append(
                     f'<text x="{b1_x + bar_w/2:.1f}" y="{y1 - 4:.1f}" fill="{COLOR_TEXT}" '
-                    f'font-size="9" text-anchor="middle">{v1:.1f}</text>'
+                    f'font-size="8.5" text-anchor="middle">{v1 / 1000.0:.2f}ms</text>'
                 )
 
             # 4T Bar
@@ -164,7 +155,7 @@ def generate_svg(lookup, out_path):
             if v4 > 0:
                 svg.append(
                     f'<text x="{b4_x + bar_w/2:.1f}" y="{y4 - 4:.1f}" fill="{COLOR_TEXT}" '
-                    f'font-size="9" text-anchor="middle">{v4:.1f}</text>'
+                    f'font-size="8.5" text-anchor="middle">{v4 / 1000.0:.2f}ms</text>'
                 )
 
             # Percentile label

@@ -513,27 +513,6 @@ impl TurboFox {
         self.total_entries() == 0
     }
 
-    /// Return the in-memory DataBuf pool slot index currently hinted for allocation
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// use turbofox::{TurboCfg, TurboFox};
-    ///
-    /// let dir = tempfile::tempdir().unwrap();
-    /// let path = dir.path();
-    /// let cfg = TurboCfg::manual(path);
-    /// let db = TurboFox::create(cfg).unwrap();
-    ///
-    /// assert_eq!(db.active_dbuf_hint(), 0x10);
-    ///
-    /// db.delete().unwrap();
-    /// ```
-    #[inline]
-    pub fn active_dbuf_hint(&self) -> u32 {
-        self.engine.active_dbuf_hint()
-    }
-
     /// Return the total count of physical memory-mapped pages currently allocated to the database
     ///
     /// ## Errors

@@ -1713,12 +1713,6 @@ impl Engine {
         Ok((MAX_DB_LEN.saturating_sub(curr_len)) as u64)
     }
 
-    /// Ref: `DESIGN.md` §3.3
-    #[inline(always)]
-    pub(crate) fn active_dbuf_hint(&self) -> u32 {
-        self.active_dbuf_hint.load(Ordering::Relaxed)
-    }
-
     /// Ref: `DESIGN.md` §8.1
     pub(crate) fn sync(&self) -> TurboResult<()> {
         let entries = self.total_entries.load(Ordering::Acquire);

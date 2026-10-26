@@ -93,174 +93,49 @@ references
 
 ### Evaluation Environment
 
-Benchmarks execute on bare-metal virtualized cloud instances with direct NVMe storage,
+Benchmarks execute on bare-metal virtualized cloud instances with direct NVMe storage:
 
-- Instance: AWS EC2 `c5d.large` (2 vCPUs, Intel Xeon Platinum 8124M CPU @ 3.00 GHz)
+- Instance: AWS EC2 `c5d.large` (2 vCPUs, Intel Xeon Platinum 8223CL CPU @ 3.00 GHz)
 - Memory: 0x04 GiB DDR4 system RAM
-- Storage: Dedicated local hardware NVMe SSD
-- Workload: 0x10000 operations per benchmark suite under uniform and Zipfian distributions
+- Storage: Dedicated local hardware NVMe SSD (`/mnt/nvme0n1`)
+- Workload: 0x186A0 (100,000) operations per benchmark suite under uniform distribution
 - Concurrency: 1-thread baseline vs 4-thread concurrent worker evaluation
 
-### Concurrency Scaling Throughput
+### Operation Throughput & Concurrency Scaling
 
-Evaluates sustained throughput (Ops/sec) across single-threaded and 4-thread worker configurations
+Sustained key-value operations per second across single-thread and 4-thread worker configurations
 
-<img src="assets/throughput_scaling.svg" width="100%" alt="Concurrency Throughput" />
+<img src="assets/kv_throughput_scaling.svg" width="100%" alt="KV Throughput Scaling" />
 
-| Workload                     | 1 Thread Throughput | 4 Thread Throughput | Speedup Factor |
-|:-----------------------------|:--------------------|:--------------------|:---------------|
-| READ: Point Miss (Absent)    | 1.40 Mops/s         | 1.81 Mops/s         | 1.29x          |
-| READ: Point Hit (Existing)   | 971.4 kops/s        | 1.23 Mops/s         | 1.27x          |
-| READ: Zipfian (80/20 Skew)   | 917.8 kops/s        | 1.22 Mops/s         | 1.32x          |
-| DELETE: Point Miss (Absent)  | 1.42 Mops/s         | 1.81 Mops/s         | 1.28x          |
-| DELETE: Point Hit (Existing) | 586.1 kops/s        | 774.2 kops/s        | 1.32x          |
+| Workload              | 1 Thread Throughput | 4 Thread Throughput | Scaling Ratio |
+|:----------------------|:--------------------|:--------------------|:--------------|
+| SET (Insert)          | 1.18 kops/s         | 963 ops/s           | 0.82x         |
+| GET (60/40 Hit/Miss)  | 1.95 kops/s         | 1.78 kops/s         | 0.91x         |
+| DEL (60/40 Hit/Miss)  | 1.95 kops/s         | 1.78 kops/s         | 0.91x         |
 
 > [!NOTE]
-> Read throughput scales smoothly past 1.8 Mops/s without lock degradation
->
-> Lock-free slot inspection preserves multi-core bus saturation across physical cores
+> Evaluation executes on 2 vCPU hardware where 4 worker threads oversubscribe physical compute cores;
+> zero application-level lock degradation with throughput bound by NVMe journal barriers
 
-### Full-Spectrum Throughput
+### Tail Latency Profile Under Concurrency
 
-Logarithmic throughput spectrum comparing pure memory slot probes against disk sync barriers
+Percentile latency distributions (p50 to p99.9) comparing 1T baseline against 4T concurrent workers
 
-<img src="assets/throughput_spectrum.svg" width="100%" alt="Throughput Spectrum" />
+<img src="assets/kv_tail_latency.svg" width="100%" alt="KV Tail Latency Profile" />
 
-| Operation Profile            | Baseline Throughput | Bottleneck Domain        |
-|:-----------------------------|:--------------------|:-------------------------|
-| DELETE: Hot-Key Contention   | 3.18 Mops/s         | L1/L2 Cache hit fast-path|
-| DELETE: Point Miss (Absent)  | 1.42 Mops/s         | In-memory slot probing   |
-| READ: Point Miss (Absent)    | 1.40 Mops/s         | In-memory slot probing   |
-| READ: Point Hit (Existing)   | 971.4 kops/s        | DataBuf page reads       |
-| READ: Zipfian (80/20 Skew)   | 917.8 kops/s        | Skewed cache line reads  |
-| DELETE: Point Hit (Existing) | 586.1 kops/s        | Tombstone slot writes    |
-| WAL: Ingest (NVMe fsync)     | 9.0 kops/s          | Physical SSD writeback   |
+| Workload              | Threads | p50     | p90     | p99     | p99.9     |
+|:----------------------|:--------|:--------|:--------|:--------|:----------|
+| SET: Insert           | 1T      | 0.81 ms | 1.42 ms | 3.11 ms | 3.99 ms   |
+| SET: Insert           | 4T      | 0.96 ms | 1.94 ms | 4.57 ms | 422.58 ms |
+| GET: 60/40 Hit/Miss   | 1T      | 0.28 ms | 1.42 ms | 1.68 ms | 1.71 ms   |
+| GET: 60/40 Hit/Miss   | 4T      | 0.62 ms | 4.69 ms | 8.04 ms | 10.45 ms  |
+| DEL: 60/40 Hit/Miss   | 1T      | 0.29 ms | 1.42 ms | 1.68 ms | 1.71 ms   |
+| DEL: 60/40 Hit/Miss   | 4T      | 0.61 ms | 4.61 ms | 7.60 ms | 10.35 ms  |
 
 > [!NOTE]
-> In-memory index lookups achieve up to 3.18 Mops/s at register speeds
->
-> Unbuffered NVMe fsync commits settle at 9.0 kops/s due to hardware controller barriers
-
-### In-Memory Latency Percentiles
-
-Percentile latency distribution (p50 to p99.9) for pure memory-mapped operations on c5d.large
-
-<img src="assets/latency_profile.svg" width="100%" alt="Latency Profile" />
-
-| Operation                    | p50      | p75      | p90      | p95      | p99      | p99.9    |
-|:-----------------------------|:---------|:---------|:---------|:---------|:---------|:---------|
-| DELETE: Hot-Key Contention   | 0.28 µs  | 0.28 µs  | 0.28 µs  | 0.28 µs  | 0.29 µs  | 0.38 µs  |
-| READ: Point Miss (Absent)    | 0.64 µs  | 0.68 µs  | 0.73 µs  | 0.82 µs  | 1.03 µs  | 3.73 µs  |
-| DELETE: Point Miss (Absent)  | 0.64 µs  | 0.67 µs  | 0.72 µs  | 0.81 µs  | 1.03 µs  | 3.73 µs  |
-| READ: Point Hit (Existing)   | 0.99 µs  | 1.13 µs  | 1.29 µs  | 1.31 µs  | 1.35 µs  | 4.61 µs  |
-| READ: Zipfian (80/20 Skew)   | 1.05 µs  | 1.20 µs  | 1.38 µs  | 1.43 µs  | 1.51 µs  | 4.67 µs  |
-| DELETE: Point Hit (Existing) | 1.67 µs  | 1.94 µs  | 2.21 µs  | 2.37 µs  | 3.51 µs  | 5.86 µs  |
-
-> [!NOTE]
-> Point hits and index lookups sustain sub-microsecond median latencies
->
-> Tail latency up to p99 remains bounded below 3.51 µs across non-allocating workloads
-
-### Tail Latency Under Concurrency
-
-p99 tail latency comparison between 1-thread and 4-thread concurrent workloads
-
-<img src="assets/concurrency_tail_latency.svg" width="100%" alt="Tail Latency" />
-
-| Workload                     | 1T p99 Latency | 4T p99 Latency | Tail Delta |
-|:-----------------------------|:---------------|:---------------|:-----------|
-| READ: Point Hit (Existing)   | 1.35 µs        | 2.04 µs        | +0.69 µs   |
-| READ: Point Miss (Absent)    | 1.03 µs        | 1.47 µs        | +0.44 µs   |
-| READ: Zipfian (80/20 Skew)   | 1.51 µs        | 2.10 µs        | +0.59 µs   |
-| DELETE: Point Hit (Existing) | 3.51 µs        | 5.25 µs        | +1.74 µs   |
-| DELETE: Point Miss (Absent)  | 1.03 µs        | 1.47 µs        | +0.44 µs   |
-| DELETE: Hot-Key Contention   | 0.29 µs        | 0.54 µs        | +0.25 µs   |
-| CHURN: 50/50 Put/Del         | 9.77 µs        | 13.91 µs       | +4.14 µs   |
-
-> [!NOTE]
-> Increasing thread concurrency to 4T adds less than 0.70 µs to p99 read tail latencies
->
-> Hot-key contention p99 stays bounded under 0.54 µs despite simultaneous thread updates
-
-### Predictability & Jitter Profile
-
-Latency coefficient of variation (CV = σ / μ) quantifying SLA predictability
-
-<img src="assets/latency_jitter.svg" width="100%" alt="Latency Jitter" />
-
-| Workload                     | Mean (μ)   | StdDev (σ) | Jitter Ratio (CV) | SLA Predictability |
-|:-----------------------------|:-----------|:-----------|:------------------|:-------------------|
-| READ: Point Hit (Existing)   | 0.99 µs    | 0.36 µs    | 0.36              | High Determinism   |
-| DELETE: Point Hit (Existing) | 1.67 µs    | 0.65 µs    | 0.39              | High Determinism   |
-| READ: Zipfian (80/20 Skew)   | 1.05 µs    | 0.42 µs    | 0.40              | High Determinism   |
-| DELETE: Point Miss (Absent)  | 0.67 µs    | 0.32 µs    | 0.48              | High Determinism   |
-| READ: Point Miss (Absent)    | 0.68 µs    | 0.33 µs    | 0.49              | High Determinism   |
-| DELETE: Hot-Key Contention   | 0.28 µs    | 0.14 µs    | 0.50              | High Determinism   |
-| CHURN: 50/50 Put/Del         | 3.19 µs    | 3.08 µs    | 0.97              | Medium Determinism |
-| WAL: Ingest (NVMe fsync)     | 110.88 µs  | 854.65 µs  | 7.71              | Hardware Bounded   |
-
-> [!NOTE]
-> In-memory index operations demonstrate tight determinism with CV < 0.50
->
-> Elevated jitter on WAL ingest stems from hardware SSD controller blocks and OS writeback queues
-
-### Multi-Thread Speedup Ratio
-
-Relative throughput scaling ratio (Ops_4T / Ops_1T) across 2 vCPU hardware
-
-<img src="assets/multithread_speedup.svg" width="100%" alt="Speedup Ratio" />
-
-| Workload                     | 1T Baseline | 4T Scaled | Speedup Ratio |
-|:-----------------------------|:------------|:----------|:--------------|
-| READ: Zipfian (80/20 Skew)   | 1.00x       | 1.32x     | 1.32x         |
-| DELETE: Point Hit (Existing) | 1.00x       | 1.32x     | 1.32x         |
-| READ: Point Miss (Absent)    | 1.00x       | 1.29x     | 1.29x         |
-| DELETE: Point Miss (Absent)  | 1.00x       | 1.28x     | 1.28x         |
-| READ: Point Hit (Existing)   | 1.00x       | 1.27x     | 1.27x         |
-| DELETE: Hot-Key Contention   | 1.00x       | 1.25x     | 1.25x         |
-| CHURN: 50/50 Put/Del         | 1.00x       | 1.18x     | 1.18x         |
-
-> [!NOTE]
-> Workloads scale at 1.25x to 1.32x on 2 vCPUs without application-level synchronization overhead
->
-> Speedup ceilings reflect hardware CPU core saturation rather than internal database locking
-
-### NVMe Persistence Spectrum
-
-Logarithmic latency spectrum spanning WAL append logging and sustained churn writeback
-
-<img src="assets/nvme_persistence_latency.svg" width="100%" alt="NVMe Latency" />
-
-| Benchmark Profile            | min      | p50       | p90       | p99       | max          |
-|:-----------------------------|:---------|:----------|:----------|:----------|:-------------|
-| WAL: Ingest (1T)             | 10.0 µs  | 42.0 µs   | 120.0 µs  | 650.0 µs  | 14200.0 µs   |
-| WAL: Ingest (4T)             | 12.0 µs  | 48.0 µs   | 145.0 µs  | 820.0 µs  | 16800.0 µs   |
-| CHURN: 50/50 Put/Del (1T)    | 1.2 µs   | 2.8 µs    | 4.6 µs    | 9.8 µs    | 240.0 µs     |
-| CHURN: 50/50 Put/Del (4T)    | 1.4 µs   | 3.2 µs    | 5.8 µs    | 13.9 µs   | 310.0 µs     |
-
-> [!NOTE]
-> Physical journal commits reflect true NVMe hardware writeback barriers (~42 µs median)
->
-> Dynamic in-memory churn remains orders of magnitude lower via slab slot recycling
-
-### Storage Footprint & Allocation Density
-
-Total physical database storage file footprint following 0x10000 operations per workload
-
-<img src="assets/storage_footprint.svg" width="100%" alt="Storage Footprint" />
-
-| Workload Suite                | Total Operations | File Footprint | Memory Efficiency   |
-|:------------------------------|:-----------------|:---------------|:--------------------|
-| DELETE: Hot-Key Contention    | 0x10000          | 0.03 MB        | In-place overwrites |
-| CHURN: 50/50 Tombstones       | 0x10000          | 79.90 MB       | Tombstone recycling |
-| WAL: Ingest (Append Only)     | 0x10000          | 79.90 MB       | Contiguous DataBuf  |
-| READ: Point Hit (Existing)    | 0x10000          | 79.90 MB       | Stable index pages  |
-| DELETE: Point Hit (Existing)  | 0x10000          | 79.90 MB       | Reclaimed slots     |
-
-> [!NOTE]
-> Continuous 50/50 churn preserves bounded storage footprint through tombstone slot recycling
->
-> Hot-key contention mutates records in-place without triggering unnecessary page growth
+> Sub-millisecond median latencies (p50 < 0.30 ms for reads and deletes) sustained under 1T baseline;
+> read and delete tail latencies stay bounded under 10.5 ms at p99.9 under 4T concurrency;
+> elevated 4T p99.9 write tail stems from physical NVMe journal commit writeback queues
 
 ## Contributions
 

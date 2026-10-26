@@ -3,7 +3,7 @@
 set -euo pipefail
 
 DEFAULT_OPS="0x186A0" # 100,000 ops
-DEFAULT_THREADS="1,8"
+DEFAULT_THREADS="1,4"
 DEFAULT_SCALES="1000,10000,100000,1000000"
 DEFAULT_OUT="tmp/results/turbofox_benchmark_results.json"
 TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/turbofox-target}"

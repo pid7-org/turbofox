@@ -75,7 +75,7 @@ pub(crate) const HASH_SLICE_MASK: u32 = 0x3F;
 pub(crate) const HASH_SLICES_PER_U32: u32 = 5;
 
 /// Ref: `DESIGN.md` §4.3
-pub(crate) const BUCKET_PROBE_LIMIT: usize = 4;
+pub(crate) const BUCKET_PROBE_LIMIT: usize = 0x10;
 
 /// Ref: `DESIGN.md` §1
 pub(crate) const PAGE_SIZE_4K: usize = 0x1000;

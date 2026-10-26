@@ -157,7 +157,7 @@ const _: () = assert!(HASH_TOMBSTONE == 1);
 const _: () = assert!(MIN_VALID_HASH == 2);
 const _: () = assert!(LIST_FLAG_MASK == 0x80);
 const _: () = assert!(BUCKET_ENTRIES == 0x40);
-const _: () = assert!(BUCKET_PROBE_LIMIT == 4);
+const _: () = assert!(BUCKET_PROBE_LIMIT == 0x10);
 const _: () = assert!(LIST_FLAG_BE == 0x8000_0000);
 const _: () = assert!(BUCKET_SIZE % Slot::SIZE == 0);
 const _: () = assert!(ADJ_ARR_IDX_MASK == 0x7FFF_FFFF);
@@ -216,40 +216,88 @@ impl Bucket {
 
     /// Ref: `DESIGN.md` §4.3
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn probe_indices(hash: u32, depth: u8) -> [usize; BUCKET_PROBE_LIMIT] {
         let s = Self::primary_slot(hash, depth);
-        [s, (s + 1) & 0x3F, (s + 2) & 0x3F, (s + 3) & 0x3F]
+
+        let mut i = 0x00;
+        let mut indices = [0usize; BUCKET_PROBE_LIMIT];
+
+        while i < BUCKET_PROBE_LIMIT {
+            indices[i] = (s + i) & (BUCKET_ENTRIES - 0x01);
+            i += 0x01;
+        }
+
+        indices
     }
 
-    /// Ref: `DESIGN.md` §4.3
+    #[inline(always)]
+    pub(crate) fn load_16_hashes(&self, primary: usize) -> [u32; BUCKET_PROBE_LIMIT] {
+        let mut buf = [0u32; BUCKET_PROBE_LIMIT];
+
+        if primary + BUCKET_PROBE_LIMIT <= BUCKET_ENTRIES {
+            buf.copy_from_slice(&self.hashes[primary..primary + BUCKET_PROBE_LIMIT]);
+        } else {
+            let head = BUCKET_ENTRIES - primary;
+
+            buf[..head].copy_from_slice(&self.hashes[primary..BUCKET_ENTRIES]);
+            buf[head..].copy_from_slice(&self.hashes[..BUCKET_PROBE_LIMIT - head]);
+        }
+
+        buf
+    }
+
+    /// Ref: `DESIGN.md` §4.3, §4.4
     pub(crate) fn probe<F>(&self, hash: u32, depth: u8, mut key_match: F) -> ProbeResult
     where
         F: FnMut(usize) -> bool,
     {
-        let mut first_tombstone = None;
         let primary = Self::primary_slot(hash, depth);
+        let kernel = crate::probe::probe_kernel();
 
-        for slot in Self::probe_indices(hash, depth) {
-            let h = self.hashes[slot];
-            if h == HASH_EMPTY {
-                return ProbeResult::Vacant(first_tombstone.unwrap_or(slot));
-            }
+        let candidate_hashes = self.load_16_hashes(primary);
+        let mask = unsafe { kernel(&candidate_hashes, hash) };
 
-            if h == HASH_TOMBSTONE {
-                if first_tombstone.is_none() {
-                    first_tombstone = Some(slot);
-                }
+        let first_empty_offset = if mask.empty_mask != 0x00 {
+            mask.empty_mask.trailing_zeros() as usize
+        } else {
+            BUCKET_PROBE_LIMIT
+        };
 
-                continue;
-            }
+        let first_tomb_offset = if mask.tomb_mask != 0x00 {
+            let off = mask.tomb_mask.trailing_zeros() as usize;
+            if off < first_empty_offset { Some(off) } else { None }
+        } else {
+            None
+        };
 
-            if h == hash && key_match(slot) {
+        let valid_match_mask = if first_empty_offset < BUCKET_PROBE_LIMIT {
+            mask.match_mask & ((1 << first_empty_offset) - 1)
+        } else {
+            mask.match_mask
+        };
+
+        let mut matches = valid_match_mask;
+        while matches != 0x00 {
+            let off = matches.trailing_zeros() as usize;
+            let slot = (primary + off) & (BUCKET_ENTRIES - 0x01);
+
+            if key_match(slot) {
                 return ProbeResult::Found(slot);
             }
+
+            matches &= matches - 1;
+        }
+
+        let candidate_slot = first_tomb_offset.map(|off| (primary + off) & (BUCKET_ENTRIES - 0x01));
+        if first_empty_offset < BUCKET_PROBE_LIMIT {
+            let empty_slot = (primary + first_empty_offset) & (BUCKET_ENTRIES - 0x01);
+
+            return ProbeResult::Vacant(candidate_slot.unwrap_or(empty_slot));
         }
 
         let next_bucket = self.next_bucket_indices[primary];
-        ProbeResult::Overflow { primary, next_bucket, candidate_slot: first_tombstone }
+        ProbeResult::Overflow { primary, next_bucket, candidate_slot }
     }
 
     #[inline(always)]
@@ -400,10 +448,10 @@ mod tests {
         assert_eq!(Bucket::primary_slot(hash, 5), 0);
 
         let indices = Bucket::probe_indices(hash, 0);
-        assert_eq!(indices, [0, 1, 2, 3]);
+        assert_eq!(indices, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]);
 
         let wrapped = Bucket::probe_indices(0x3F, 0);
-        assert_eq!(wrapped, [0x3F, 0, 1, 2]);
+        assert_eq!(wrapped, [0x3F, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E]);
     }
 
     #[test]
@@ -441,6 +489,7 @@ mod tests {
 
         b.mark_tombstone(indices[1]);
         let res_tomb = b.probe(hash, 0, |_| false);
+
         assert_eq!(
             res_tomb,
             ProbeResult::Overflow { primary, next_bucket: 0x48, candidate_slot: Some(indices[1]) }
@@ -448,9 +497,73 @@ mod tests {
     }
 
     #[test]
+    fn ok_bucket_probe_boundary_wrap_match() {
+        let mut b = Bucket::new();
+        let primary = 0x3C;
+
+        let target_hash = 0x7777_883C;
+        let match_slot = 0x05;
+
+        for i in 0x00..0x10 {
+            let slot = (primary + i) & 0x3F;
+
+            if slot == match_slot {
+                b.set_kv(slot, target_hash, 4, 4, slot as u32);
+            } else {
+                b.set_kv(slot, 0x1000 + slot as u32, 4, 4, slot as u32);
+            }
+        }
+
+        let res = b.probe(target_hash, 0, |s| s == match_slot);
+        assert_eq!(res, ProbeResult::Found(match_slot));
+    }
+
+    #[test]
+    fn ok_bucket_probe_stops_at_first_empty() {
+        let mut b = Bucket::new();
+        let target_hash = 0x4444_5540;
+
+        b.set_kv(0, 0x1000, 4, 4, 0);
+        b.set_kv(1, 0x1001, 4, 4, 1);
+        b.set_kv(4, target_hash, 4, 4, 4);
+
+        let res = b.probe(target_hash, 0, |s| s == 4);
+        assert_eq!(res, ProbeResult::Vacant(2));
+    }
+
+    #[test]
+    fn ok_bucket_probe_tombstone_reclaim_over_later_empty() {
+        let mut b = Bucket::new();
+        let target_hash = 0x6666_7740;
+
+        b.set_kv(0, 0x1000, 4, 4, 0);
+        b.mark_tombstone(1);
+        b.set_kv(2, 0x1002, 4, 4, 2);
+
+        let res = b.probe(target_hash, 0, |_| false);
+        assert_eq!(res, ProbeResult::Vacant(1));
+    }
+
+    #[test]
+    fn ok_bucket_probe_match_at_slot_15() {
+        let mut b = Bucket::new();
+        let target_hash = 0x8888_9940;
+
+        for i in 0x00..0x0F {
+            b.set_kv(i, (0x2000 + i) as u32, 4, 4, i as u32);
+        }
+
+        b.set_kv(0x0F, target_hash, 4, 4, 0x0F);
+        let res = b.probe(target_hash, 0, |s| s == 0x0F);
+
+        assert_eq!(res, ProbeResult::Found(0x0F));
+    }
+
+    #[test]
     fn ok_bucket_as_slots() {
         let mut b = Bucket::new();
         b.set_kv(0, 0x5000, 4, 4, 1);
+
         let slots = b.as_slots();
         assert_eq!(slots.len(), 8);
         assert_eq!(b.as_slots_mut().len(), 8);

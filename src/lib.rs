@@ -179,6 +179,8 @@
 //! concurrency while elevated 4T p99.9 write tail stems from OCC conflict retries and backing
 //! file growth serialization
 
+#![allow(unsafe_op_in_unsafe_fn)]
+
 mod adjarr;
 mod bucket;
 mod cfg;
@@ -189,6 +191,7 @@ mod error;
 mod hash;
 mod list;
 mod meta;
+mod probe;
 mod ticket;
 
 pub use cfg::{SyncMode, TurboCfg};

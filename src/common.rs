@@ -66,7 +66,9 @@ pub(crate) const MIN_VALID_HASH: u32 = 2;
 pub(crate) const LIST_FLAG_MASK: u8 = 0x80;
 pub(crate) const LIST_FLAG_BE: u32 = 0x8000_0000;
 pub(crate) const ADJ_ARR_IDX_MASK: u32 = 0x7FFF_FFFF;
+/// Maximum key length in bytes
 pub const MAX_KEY_LEN: usize = 0xFF;
+/// Maximum value length in bytes
 pub const MAX_VAL_LEN: usize = 0xFFFF;
 
 /// Ref: `DESIGN.md` §4.2

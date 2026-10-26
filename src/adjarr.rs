@@ -294,13 +294,13 @@ impl AdjArrayBlock {
 
     #[inline(always)]
     pub(crate) fn as_slot(&self) -> &Slot {
-        unsafe { &*(self as *const Self as *const Slot) }
+        unsafe { &*core::ptr::from_ref(self).cast() }
     }
 
     #[inline(always)]
     #[allow(dead_code)]
     pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
-        unsafe { &mut *(self as *mut Self as *mut Slot) }
+        unsafe { &mut *core::ptr::from_mut(self).cast() }
     }
 }
 
@@ -410,7 +410,7 @@ mod tests {
         assert!(block.is_full());
         assert_eq!(block.alloc_array(), None);
 
-        block.array_mut(2).push(0x000A);
+        let _ = block.array_mut(2).push(0x000A);
         assert_eq!(block.array(2).len(), 1);
         block.free_array(2);
         assert!(!block.is_full());
@@ -426,7 +426,7 @@ mod tests {
         let mut block = AdjArrayBlock::new();
         block.set_next_block(0x0007);
         block.set_array_occupied(0, true);
-        block.array_mut(0).push(0x0ABC_DEF0);
+        let _ = block.array_mut(0).push(0x0ABC_DEF0);
 
         let slot = block.as_slot();
         assert_eq!(slot.0.len(), 0x80);

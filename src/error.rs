@@ -57,7 +57,12 @@ pub type TurboResult<T> = Result<T, TurboError>;
 #[derive(Debug)]
 pub enum TurboError {
     /// Low-level memory mapping, paging, or synchronization failures
-    Storage { code: u32, context: Box<str> },
+    Storage {
+        /// System error code
+        code: u32,
+        /// Context description
+        context: Box<str>,
+    },
 
     /// Operating system file descriptor IO failures
     Io(std::io::Error),
@@ -69,13 +74,23 @@ pub enum TurboError {
     InvalidMagic,
 
     /// Database format layout version mismatch
-    VersionMismatch { expected: u32, found: u32 },
+    VersionMismatch {
+        /// Expected layout version
+        expected: u32,
+        /// Actual layout version found
+        found: u32,
+    },
 
     /// Host page size violates power-of-two or minimum size constraints
     InvalidPageSize(u32),
 
     /// File length is not an exact multiple of the physical page size
-    InvalidSize { expected: usize, found: usize },
+    InvalidSize {
+        /// Expected size in bytes
+        expected: usize,
+        /// Actual size found in bytes
+        found: usize,
+    },
 
     /// Root node virtual page failed type discriminator check
     InvalidRootNode,

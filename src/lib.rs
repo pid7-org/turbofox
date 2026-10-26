@@ -180,6 +180,14 @@
 //! file growth serialization
 
 #![allow(unsafe_op_in_unsafe_fn)]
+#![deny(
+    missing_docs,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_extern_crates,
+    unused_import_braces,
+    unused_results
+)]
 
 mod adjarr;
 mod bucket;

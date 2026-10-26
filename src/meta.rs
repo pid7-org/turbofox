@@ -81,13 +81,13 @@ impl Metadata {
     #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn as_slot(&self) -> &Slot {
-        unsafe { &*(self as *const Self as *const Slot) }
+        unsafe { &*core::ptr::from_ref(self).cast() }
     }
 
     #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
-        unsafe { &mut *(self as *mut Self as *mut Slot) }
+        unsafe { &mut *core::ptr::from_mut(self).cast() }
     }
 }
 

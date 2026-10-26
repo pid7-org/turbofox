@@ -155,27 +155,33 @@ impl Engine {
     /// Ref: `DESIGN.md` §2
     fn format_initial_topography(&self, version: u32, initial_pages: u32) -> TurboResult<()> {
         let meta = Metadata::new(self.sys_page_size.as_u32(), version, initial_pages);
-        self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
+        let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
 
         for slot in 1..INITIAL_ADJ_ARR_BLOCKS {
             let mut block = AdjArrayBlock::new();
             block.set_next_block((slot + 1) as u32);
-            self.mmap.write_exact::<AdjArrayBlock, _, _>(slot, |b| *b = block)?;
+            let _ = self.mmap.write_exact::<AdjArrayBlock, _, _>(slot, |b| *b = block)?;
         }
 
         let block_tail = AdjArrayBlock::new();
-        self.mmap
+        let _ = self
+            .mmap
             .write_exact::<AdjArrayBlock, _, _>(INITIAL_ADJ_ARR_BLOCKS, |b| *b = block_tail)?;
 
         let root_bucket = Bucket::new();
-        self.mmap.write_exact::<Bucket, _, _>(ROOT_BUCKET_SLOT as usize, |b| *b = root_bucket)?;
+        let _ = self
+            .mmap
+            .write_exact::<Bucket, _, _>(ROOT_BUCKET_SLOT as usize, |b| *b = root_bucket)?;
 
         let mut dbuf0 = DataBuf::new();
         dbuf0.set_next_dbuf_index(DATABUF_HEAD_SLOT + (DATABUF_SLOTS as u32));
-        self.mmap.write_exact::<DataBuf, _, _>(DATABUF_HEAD_SLOT as usize, |d| *d = dbuf0)?;
+        let _ = self
+            .mmap
+            .write_exact::<DataBuf, _, _>(DATABUF_HEAD_SLOT as usize, |d| *d = dbuf0)?;
 
         let dbuf1 = DataBuf::new();
-        self.mmap
+        let _ = self
+            .mmap
             .write_exact::<DataBuf, _, _>((DATABUF_HEAD_SLOT as usize) + DATABUF_SLOTS, |d| {
                 *d = dbuf1
             })?;
@@ -195,7 +201,7 @@ impl Engine {
         let next_free = current_free + count;
 
         self.free_slot_marker.store(next_free, Ordering::Release);
-        self.mmap.write_exact::<Metadata, _, _>(0, |m| {
+        let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| {
             m.free_slot_marker = next_free;
         })?;
 
@@ -229,7 +235,7 @@ impl Engine {
         self.mmap.grow(growth_pages)?;
 
         let mut new_total_slots = 0u32;
-        self.mmap.write_exact::<Metadata, _, _>(0, |m| {
+        let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| {
             m.record_growth(growth_pages as u32);
             new_total_slots = m.total_slots;
         })?;
@@ -243,7 +249,7 @@ impl Engine {
         let new_slot = self.alloc_uniform_slots(BUCKET_SLOTS as u32)?;
         let new_bucket = Bucket::new();
 
-        self.mmap.write_exact::<Bucket, _, _>(new_slot as usize, |b| *b = new_bucket)?;
+        let _ = self.mmap.write_exact::<Bucket, _, _>(new_slot as usize, |b| *b = new_bucket)?;
 
         Ok(new_slot)
     }
@@ -252,8 +258,8 @@ impl Engine {
         let new_slot = self.alloc_uniform_slots_locked(DATABUF_SLOTS as u32)?;
         let new_dbuf = DataBuf::new();
 
-        self.mmap.write_exact::<DataBuf, _, _>(new_slot as usize, |d| *d = new_dbuf)?;
-        self.mmap.write_exact::<DataBuf, _, _>(tail_slot, |d| {
+        let _ = self.mmap.write_exact::<DataBuf, _, _>(new_slot as usize, |d| *d = new_dbuf)?;
+        let _ = self.mmap.write_exact::<DataBuf, _, _>(tail_slot, |d| {
             d.set_next_dbuf_index(new_slot);
         })?;
 
@@ -279,10 +285,10 @@ impl Engine {
             let next = if i + 1 < ALLOC_SLOT_QUANTUM { new_slot + i + 1 } else { 0 };
             let mut block = AdjArrayBlock::new();
             block.set_next_block(next);
-            self.mmap.write_exact::<AdjArrayBlock, _, _>(s, |b| *b = block)?;
+            let _ = self.mmap.write_exact::<AdjArrayBlock, _, _>(s, |b| *b = block)?;
         }
 
-        self.mmap.write_exact::<AdjArrayBlock, _, _>(tail_slot, |b| {
+        let _ = self.mmap.write_exact::<AdjArrayBlock, _, _>(tail_slot, |b| {
             b.set_next_block(new_slot);
         })?;
 
@@ -603,7 +609,7 @@ impl Engine {
                                 break (bucket_slot, bucket, tomb_idx, false);
                             }
                             let new_bucket_slot = self.expand_bucket()?;
-                            self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| {
+                            let _ = self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| {
                                 b.set_next_bucket(primary, new_bucket_slot);
                             })?;
                             bucket_slot = new_bucket_slot;
@@ -717,7 +723,7 @@ impl Engine {
             match tx.commit() {
                 Ok(ticket) => {
                     if !is_update {
-                        self.total_entries.fetch_add(1, Ordering::Relaxed);
+                        let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
                     }
                     return Ok(TurboTicket::new(ticket));
                 }
@@ -809,7 +815,7 @@ impl Engine {
 
             match tx.commit() {
                 Ok(_) => {
-                    self.total_entries.fetch_sub(1, Ordering::Relaxed);
+                    let _ = self.total_entries.fetch_sub(1, Ordering::Relaxed);
                     return Ok(true);
                 }
                 Err(_) => {
@@ -878,7 +884,7 @@ impl Engine {
                                 break (bucket_slot, bucket, tomb_idx, false);
                             }
                             let new_bucket_slot = self.expand_bucket()?;
-                            self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| {
+                            let _ = self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| {
                                 b.set_next_bucket(primary, new_bucket_slot);
                             })?;
                             bucket_slot = new_bucket_slot;
@@ -922,20 +928,20 @@ impl Engine {
 
                 if !last_orig_block.array(last_local_array).is_full() {
                     let mut mutated_block = last_orig_block;
-                    mutated_block.array_mut(last_local_array).push(item_buf_idx);
+                    let _ = mutated_block.array_mut(last_local_array).push(item_buf_idx);
                     touched_blocks.push((last_block_slot, last_orig_block, mutated_block));
                 } else {
                     let (new_arr_idx, new_block_slot, new_orig_block, mut new_mut_block) =
                         self.find_free_adjarr_array(last_block_slot)?;
 
                     let (_, new_local_arr) = decompose_relative_array_idx(new_arr_idx);
-                    new_mut_block.array_mut(new_local_arr).push(item_buf_idx);
+                    let _ = new_mut_block.array_mut(new_local_arr).push(item_buf_idx);
 
                     let mut mutated_last_block = last_orig_block;
                     mutated_last_block.array_mut(last_local_array).set_next_array(new_arr_idx);
 
                     if last_block_slot == new_block_slot {
-                        mutated_last_block.array_mut(new_local_arr).push(item_buf_idx);
+                        let _ = mutated_last_block.array_mut(new_local_arr).push(item_buf_idx);
                         mutated_last_block.set_array_occupied(new_local_arr, true);
                         touched_blocks.push((last_block_slot, last_orig_block, mutated_last_block));
                     } else {
@@ -997,7 +1003,7 @@ impl Engine {
                 let (arr_idx, block_slot, orig_block, mut mut_block) =
                     self.find_free_adjarr_array(0)?;
                 let (_, local_arr) = decompose_relative_array_idx(arr_idx);
-                mut_block.array_mut(local_arr).push(item_buf_idx);
+                let _ = mut_block.array_mut(local_arr).push(item_buf_idx);
 
                 let mut new_bucket = old_bucket;
                 new_bucket.set_list(target_entry_idx, hash, arr_idx, key_buf_idx);
@@ -1048,7 +1054,7 @@ impl Engine {
 
                 match tx.commit() {
                     Ok(ticket) => {
-                        self.total_entries.fetch_add(1, Ordering::Relaxed);
+                        let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
                         return Ok(TurboTicket::new(ticket));
                     }
                     Err(_) => {
@@ -1605,14 +1611,14 @@ impl Engine {
                             ]) as usize;
                             let req = DataBuf::required_list_val_buffers(vlen);
                             mut_d.free_contiguous(item_local_idx, req);
-                            dbuf_diffs.insert(item_dbuf_slot, (orig_d, mut_d));
+                            let _ = dbuf_diffs.insert(item_dbuf_slot, (orig_d, mut_d));
                         }
                     }
                 }
 
                 let next = mut_block.array(local_arr).next_array();
                 mut_block.free_array(local_arr);
-                block_diffs.insert(block_slot, (orig_block, mut_block));
+                let _ = block_diffs.insert(block_slot, (orig_block, mut_block));
                 curr_arr_idx = next;
             }
 
@@ -1628,7 +1634,7 @@ impl Engine {
                 }
             };
             mut_kd.free_contiguous(k_local_idx, req_k);
-            dbuf_diffs.insert(k_dbuf_slot, (orig_kd, mut_kd));
+            let _ = dbuf_diffs.insert(k_dbuf_slot, (orig_kd, mut_kd));
 
             let mut new_bucket = old_bucket;
             new_bucket.mark_tombstone(target_entry_idx);
@@ -1670,7 +1676,7 @@ impl Engine {
 
             match tx.commit() {
                 Ok(_) => {
-                    self.total_entries.fetch_sub(1, Ordering::Relaxed);
+                    let _ = self.total_entries.fetch_sub(1, Ordering::Relaxed);
                     return Ok(true);
                 }
                 Err(_) => {
@@ -1716,7 +1722,7 @@ impl Engine {
     /// Ref: `DESIGN.md` §8.1
     pub(crate) fn sync(&self) -> TurboResult<()> {
         let entries = self.total_entries.load(Ordering::Acquire);
-        self.mmap.write_exact::<Metadata, _, _>(0, |m| {
+        let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| {
             m.total_entries = entries;
         })?;
 

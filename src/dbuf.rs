@@ -396,13 +396,13 @@ impl DataBuf {
 
     #[inline(always)]
     pub(crate) fn as_slots(&self) -> &[Slot; DATABUF_SLOTS] {
-        unsafe { &*(self as *const Self as *const [Slot; DATABUF_SLOTS]) }
+        unsafe { &*core::ptr::from_ref(self).cast() }
     }
 
     #[allow(dead_code)]
     #[inline(always)]
     pub(crate) fn as_slots_mut(&mut self) -> &mut [Slot; DATABUF_SLOTS] {
-        unsafe { &mut *(self as *mut Self as *mut [Slot; DATABUF_SLOTS]) }
+        unsafe { &mut *core::ptr::from_mut(self).cast() }
     }
 }
 

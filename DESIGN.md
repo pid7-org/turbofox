@@ -193,8 +193,8 @@ enables exact multi-buffer traversal without reading redundant trailing buffers:
 
 Global buffer address translation;
 for global buffer index $B$:
-$$\text{dbuf\_slot} = \text{DATABUF\_HEAD\_SLOT} + \dots$$
-$$\text{local\_buf} = B \pmod{63}$$
+$$\text{dbuf\\_slot} = \text{DATABUF\\_HEAD\\_SLOT} + \dots$$
+$$\text{local\\_buf} = B \pmod{63}$$
 
 ### 3.4 Adjacent Array Block (128 Bytes, 1 Slot, `align(8)`)
 
@@ -222,8 +222,8 @@ Offset    Type                 Field            Description
 #### Global Relative Array Indexing
 
 For relative array index $A$:
-$$\text{block\_hop} = \lfloor A / 6 \rfloor$$
-$$\text{local\_array} = A \pmod{6}$$
+$$\text{block\\_hop} = \lfloor A / 6 \rfloor$$
+$$\text{local\\_array} = A \pmod{6}$$
 
 Traverse `next_adjarr_idx` block chain by `block_hop` steps;
 index into `arrays[local_array]`
@@ -265,7 +265,7 @@ Every lookup, insert, and delete follows identical traversal rules;
 no rehashing occurs; buckets chain forever
 
 1. Compute primary slot index for current depth $D$:
-   $$S = \left(\text{hash} \gg (6 \cdot (D \pmod{5}))\right) \ \& \ 0\text{x}3\text{F}$$
+   $$S = \left(\text{hash} \gg (6 \cdot (D \pmod{5}))\right) \mathbin{\\&} 0\text{x}3\text{F}$$
 2. Probe up to 4 consecutive slots linearly:
    $$P_i = (S + i) \pmod{64} \quad \text{for } i \in [0, 3]$$
    - If `hashes[P_i] == hash`:
@@ -549,12 +549,12 @@ formatted as `{dir_path}/{name}_{version}` without file extension:
 The primary architectural ceiling stems from 32-bit slot addressing (`u32`):
 
 - 32 bits address up to $2^{32} = 4{,}294{,}967{,}296$ slots (`0..=0xFFFF_FFFF`)
-- At 128 bytes per slot, maximum addressable backing database file size is strictly:
-  $$\text{bytes} = 2^{32} \times 128 = 2^{39} \text{ B} = 549{,}755{,}813{,}888 \text{ B} \quad (512 \text{ GiB} = 0\text{x}80\_0000\_0000)$$
+- At 128 bytes per slot, maximum addressable database file size is 512 GiB (`0x80_0000_0000`):
+  $$\text{bytes} = 2^{32} \times 128 = 2^{39} \text{ B} = 549{,}755{,}813{,}888 \text{ B}$$
 - Quantized to physical OS pages:
-  - 4 KiB pages: $2^{39} / 4096 = 2^{27} = 134{,}217{,}728$ pages ($0\text{x}0800\_0000$)
-  - 16 KiB pages: $2^{39} / 16384 = 2^{25} = 33{,}554{,}432$ pages ($0\text{x}0200\_0000$)
-  - 64 KiB pages: $2^{39} / 65536 = 2^{23} = 8{,}388{,}608$ pages ($0\text{x}0080\_0000$)
+  - 4 KiB pages: $2^{39} / 4096 = 2^{27} = 134{,}217{,}728$ pages (`0x0800_0000`)
+  - 16 KiB pages: $2^{39} / 16384 = 2^{25} = 33{,}554{,}432$ pages (`0x0200_0000`)
+  - 64 KiB pages: $2^{39} / 65536 = 2^{23} = 8{,}388{,}608$ pages (`0x0080_0000`)
 
 ### 9.2 Capacity Bounds for Common Payload Formats
 

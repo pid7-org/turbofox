@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-#
-# TurboFox Benchmark Suite Runner
-# Executes init_perf, set_perf, get_perf, and del_perf workloads across 1T and 4T
-# Aggregates structured JSON outputs for plotting and documentation
 
 set -euo pipefail
 
@@ -62,11 +58,9 @@ CARGO_TARGET_DIR="${TARGET_DIR}" cargo bench --no-run
 
 DEPS_DIR="${TARGET_DIR}/release/deps"
 INIT_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "init_perf-*" -executable -type f | head -n 1)
-SET_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "set_perf-*" -executable -type f | head -n 1)
-GET_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "get_perf-*" -executable -type f | head -n 1)
-DEL_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "del_perf-*" -executable -type f | head -n 1)
+KV_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "kv_perf-*" -executable -type f | head -n 1)
 
-if [[ -z "${INIT_BIN}" || -z "${SET_BIN}" || -z "${GET_BIN}" || -z "${DEL_BIN}" ]]; then
+if [[ -z "${INIT_BIN}" || -z "${KV_BIN}" ]]; then
   echo "Error: Failed to locate benchmark binaries in ${DEPS_DIR}" >&2
   exit 1
 fi
@@ -103,7 +97,7 @@ for N in "${SCALES_ARRAY[@]}"; do
   append_result "${json_out}"
 done
 
-# 2. Run Core KV Benchmarks across thread configurations
+# 2. Run Unified Core KV Benchmarks across thread configurations
 IFS=',' read -ra THREAD_ARRAY <<< "${THREADS_LIST}"
 for T in "${THREAD_ARRAY[@]}"; do
   taskset_cmd=""
@@ -111,30 +105,11 @@ for T in "${THREAD_ARRAY[@]}"; do
     taskset_cmd="taskset -c 0"
   fi
 
-  # SET Workload
-  echo "Running set_perf [insert] (threads=${T})..." >&2
+  echo "Running kv_perf [set -> get -> del] (threads=${T})..." >&2
   drop_page_cache
-  db_path="${BENCH_DIR}/set_t${T}_$$.db"
+  db_path="${BENCH_DIR}/kv_t${T}_$$.db"
   rm -rf "${db_path}"*
-  json_out=$(${taskset_cmd} "${SET_BIN}" --ops "${OPS}" --threads "${T}" --db-path "${db_path}")
-  rm -rf "${db_path}"*
-  append_result "${json_out}"
-
-  # GET Workload (60/40 Hit/Miss)
-  echo "Running get_perf [mixed_60_40] (threads=${T})..." >&2
-  drop_page_cache
-  db_path="${BENCH_DIR}/get_t${T}_$$.db"
-  rm -rf "${db_path}"*
-  json_out=$(${taskset_cmd} "${GET_BIN}" --ops "${OPS}" --threads "${T}" --db-path "${db_path}")
-  rm -rf "${db_path}"*
-  append_result "${json_out}"
-
-  # DEL Workload (60/40 Hit/Miss)
-  echo "Running del_perf [mixed_60_40] (threads=${T})..." >&2
-  drop_page_cache
-  db_path="${BENCH_DIR}/del_t${T}_$$.db"
-  rm -rf "${db_path}"*
-  json_out=$(${taskset_cmd} "${DEL_BIN}" --ops "${OPS}" --threads "${T}" --db-path "${db_path}")
+  json_out=$(${taskset_cmd} "${KV_BIN}" --ops "${OPS}" --threads "${T}" --db-path "${db_path}")
   rm -rf "${db_path}"*
   append_result "${json_out}"
 done

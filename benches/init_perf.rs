@@ -1,7 +1,3 @@
-//! TurboFox Initialization Latency Benchmark
-//!
-//! Evaluates `TurboFox::open()` latency scaling across database entry count N
-
 mod common;
 
 use common::{
@@ -13,7 +9,9 @@ use turbofox::{TurboCfg, TurboFox};
 
 fn main() {
     let cfg = BenchConfig::parse();
-    let scales = if !cfg.scales.is_empty() && cfg.ops == 0x0001_86A0 {
+    let scales = if std::env::args().any(|a| a == "--ops") {
+        vec![cfg.ops]
+    } else if !cfg.scales.is_empty() {
         cfg.scales.clone()
     } else {
         vec![cfg.ops]
@@ -48,6 +46,7 @@ fn main() {
             let t0 = Instant::now();
             let opened_db = TurboFox::open(turbo_cfg.clone()).expect("open failed");
             let elapsed_ns = t0.elapsed().as_nanos() as u64;
+
             hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
             drop(opened_db);
         }

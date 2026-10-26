@@ -31,15 +31,7 @@ name = "init_perf"
 harness = false
 
 [[bench]]
-name = "set_perf"
-harness = false
-
-[[bench]]
-name = "get_perf"
-harness = false
-
-[[bench]]
-name = "del_perf"
+name = "kv_perf"
 harness = false
 
 [package.metadata.docs.rs]

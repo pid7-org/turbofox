@@ -52,8 +52,8 @@ def generate_svg(lookup, out_path):
     p_w = svg_w - 0x78
     p_h = svg_h - 0x85
 
-    # Limit y-axis to 10ms (10,000 µs) to prevent outliers from skewing chart
-    max_lat = 10000.0
+    # Limit y-axis to 5ms (5,000 µs) to prevent outliers from skewing chart
+    max_lat = 5000.0
 
     svg = []
     svg.append(
@@ -97,9 +97,9 @@ def generate_svg(lookup, out_path):
         f'fill="{COLOR_SURFACE}" rx="6"/>'
     )
 
-    # Grid lines
-    for i in range(5):
-        val = (max_lat / 4.0) * i
+    # Grid lines (0 to 5000 µs in 1000 µs intervals)
+    for i in range(6):
+        val = (max_lat / 5.0) * i
         y_pos = p_y + p_h - (val / max_lat) * p_h
         svg.append(
             f'<line x1="{p_x}" y1="{y_pos:.1f}" x2="{p_x + p_w}" y2="{y_pos:.1f}" '
@@ -107,16 +107,17 @@ def generate_svg(lookup, out_path):
         )
         svg.append(
             f'<text x="{p_x - 10}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
-            f'font-size="10" text-anchor="end">{val / 1000.0:.1f}ms</text>'
+            f'font-size="10" text-anchor="end">{val:.0f}µs</text>'
         )
 
-    # Layout: 3 workload blocks, each containing 4 percentile groups (p50, p90, p99, p999)
-    block_w = p_w / len(WORKLOADS)
-    bar_w = 0x14 # 20px
+    # Layout: 3 workload blocks with increased spacing between adjacent graphs
+    graph_spacing = 24.0
+    block_w = (p_w - (len(WORKLOADS) - 1) * graph_spacing) / len(WORKLOADS)
+    bar_w = 0x12 # 18px
     bar_spacing = 0x04
 
     for w_idx, (bench, wl, title) in enumerate(WORKLOADS):
-        block_left = p_x + w_idx * block_w
+        block_left = p_x + w_idx * (block_w + graph_spacing)
         e1 = lookup.get((bench, wl, 1), {}).get("latency_micros", {})
         e4 = lookup.get((bench, wl, 4), {}).get("latency_micros", {})
 
@@ -144,7 +145,7 @@ def generate_svg(lookup, out_path):
             if v1 > 0:
                 svg.append(
                     f'<text x="{b1_x + bar_w/2:.1f}" y="{y1 - 4:.1f}" fill="{COLOR_TEXT}" '
-                    f'font-size="8.5" text-anchor="middle">{v1 / 1000.0:.2f}ms</text>'
+                    f'font-size="8.5" text-anchor="middle">{v1:.0f}µs</text>'
                 )
 
             # 4T Bar
@@ -155,7 +156,7 @@ def generate_svg(lookup, out_path):
             if v4 > 0:
                 svg.append(
                     f'<text x="{b4_x + bar_w/2:.1f}" y="{y4 - 4:.1f}" fill="{COLOR_TEXT}" '
-                    f'font-size="8.5" text-anchor="middle">{v4 / 1000.0:.2f}ms</text>'
+                    f'font-size="8.5" text-anchor="middle">{v4:.0f}µs</text>'
                 )
 
             # Percentile label
@@ -166,8 +167,9 @@ def generate_svg(lookup, out_path):
 
         # Workload block separator & title
         if w_idx > 0:
+            sep_x = block_left - (graph_spacing / 2)
             svg.append(
-                f'<line x1="{block_left}" y1="{p_y}" x2="{block_left}" y2="{p_y + p_h}" '
+                f'<line x1="{sep_x:.1f}" y1="{p_y}" x2="{sep_x:.1f}" y2="{p_y + p_h}" '
                 f'stroke="{COLOR_LINE}" stroke-width="1.5"/>'
             )
         svg.append(

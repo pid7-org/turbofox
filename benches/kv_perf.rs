@@ -10,8 +10,7 @@ use std::time::Instant;
 use turbofox::{TurboCfg, TurboFox};
 
 const TOTAL_OPS: usize = 0x0004_0000;
-const THREAD_COUNT: usize = 0x02;
-const OPS_PER_THREAD: usize = TOTAL_OPS / THREAD_COUNT;
+const THREAD_CONFIGS: [usize; 0x02] = [0x01, 0x02];
 
 fn generate_set_60_40_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]> {
     let new_target = (count * 0x3C) / 0x64;
@@ -41,22 +40,24 @@ fn generate_set_60_40_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]
     keys
 }
 
-fn main() {
+fn run_tier(thread_count: usize, is_first: &mut bool) {
     let (bench_dir, db_path) = BenchDir::new(None, "kv_perf");
 
     let turbo_cfg = TurboCfg::manual(&db_path);
     let db = Arc::new(TurboFox::create(turbo_cfg).expect("failed to create db"));
 
+    let ops_per_thread = TOTAL_OPS / thread_count;
+
     // -------------------------------------------------------------
     // Phase 1: SET (60/40 New/Update)
     // -------------------------------------------------------------
-    let mut set_keys = Vec::with_capacity(THREAD_COUNT);
-    for tid in 0x00..THREAD_COUNT {
-        set_keys.push(generate_set_60_40_keys(tid, OPS_PER_THREAD));
+    let mut set_keys = Vec::with_capacity(thread_count);
+    for tid in 0x00..thread_count {
+        set_keys.push(generate_set_60_40_keys(tid, ops_per_thread));
     }
 
-    let barrier_set = Arc::new(Barrier::new(THREAD_COUNT));
-    let mut handles_set = Vec::with_capacity(THREAD_COUNT);
+    let barrier_set = Arc::new(Barrier::new(thread_count));
+    let mut handles_set = Vec::with_capacity(thread_count);
     let start_set = Instant::now();
 
     for (tid, keys) in set_keys.into_iter().enumerate() {
@@ -108,14 +109,14 @@ fn main() {
     // -------------------------------------------------------------
     // Phase 2: GET (Mixed 60/40 Hit/Miss)
     // -------------------------------------------------------------
-    let hit_pool_size = (OPS_PER_THREAD * 0x3C) / 0x64;
-    let mut get_probes = Vec::with_capacity(THREAD_COUNT);
-    for tid in 0x00..THREAD_COUNT {
-        get_probes.push(generate_60_40_probe_keys(tid, OPS_PER_THREAD, hit_pool_size));
+    let hit_pool_size = (ops_per_thread * 0x3C) / 0x64;
+    let mut get_probes = Vec::with_capacity(thread_count);
+    for tid in 0x00..thread_count {
+        get_probes.push(generate_60_40_probe_keys(tid, ops_per_thread, hit_pool_size));
     }
 
-    let barrier_get = Arc::new(Barrier::new(THREAD_COUNT));
-    let mut handles_get = Vec::with_capacity(THREAD_COUNT);
+    let barrier_get = Arc::new(Barrier::new(thread_count));
+    let mut handles_get = Vec::with_capacity(thread_count);
     let start_get = Instant::now();
 
     for probes in get_probes {
@@ -151,14 +152,14 @@ fn main() {
     // -------------------------------------------------------------
     // Phase 3: DEL (Mixed 60/40 Hit/Miss)
     // -------------------------------------------------------------
-    let mut del_keys = Vec::with_capacity(THREAD_COUNT);
-    for tid in 0x00..THREAD_COUNT {
-        let (keys, _) = generate_del_60_40_keys(tid, OPS_PER_THREAD);
+    let mut del_keys = Vec::with_capacity(thread_count);
+    for tid in 0x00..thread_count {
+        let (keys, _) = generate_del_60_40_keys(tid, ops_per_thread);
         del_keys.push(keys);
     }
 
-    let barrier_del = Arc::new(Barrier::new(THREAD_COUNT));
-    let mut handles_del = Vec::with_capacity(THREAD_COUNT);
+    let barrier_del = Arc::new(Barrier::new(thread_count));
+    let mut handles_del = Vec::with_capacity(thread_count);
     let start_del = Instant::now();
 
     for keys in del_keys {
@@ -211,34 +212,45 @@ fn main() {
         benchmark: "set_perf",
         workload: "mixed_60_40_new_update",
         total_ops: TOTAL_OPS,
-        threads: THREAD_COUNT,
+        threads: thread_count,
         total_elapsed: elapsed_set,
         hist: &set_hist,
         db_size_bytes: db_size_set,
     };
+    if !*is_first {
+        println!(",");
+    }
+    *is_first = false;
     print_json_summary(&summary_set);
-    println!(",");
 
+    println!(",");
     let summary_get = BenchSummary {
         benchmark: "get_perf",
         workload: "mixed_60_40",
         total_ops: TOTAL_OPS,
-        threads: THREAD_COUNT,
+        threads: thread_count,
         total_elapsed: elapsed_get,
         hist: &get_hist,
         db_size_bytes: db_size_get,
     };
     print_json_summary(&summary_get);
-    println!(",");
 
+    println!(",");
     let summary_del = BenchSummary {
         benchmark: "del_perf",
         workload: "mixed_60_40",
         total_ops: TOTAL_OPS,
-        threads: THREAD_COUNT,
+        threads: thread_count,
         total_elapsed: elapsed_del,
         hist: &del_hist,
         db_size_bytes: db_size_del,
     };
     print_json_summary(&summary_del);
+}
+
+fn main() {
+    let mut is_first = true;
+    for &threads in &THREAD_CONFIGS {
+        run_tier(threads, &mut is_first);
+    }
 }

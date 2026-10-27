@@ -4,7 +4,7 @@ use common::{BenchDir, BenchSummary, KEY_SIZE, VAL_SIZE, new_histogram, print_js
 use std::time::Instant;
 use turbofox::{TurboCfg, TurboFox};
 
-const OPS: usize = 0x000F_4240;
+const OPS: usize = 0x186A0;
 const SAMPLES: usize = 0x0100;
 
 fn main() {

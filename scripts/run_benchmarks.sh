@@ -152,24 +152,17 @@ if [[ ${RUN_INIT} -eq 1 ]]; then
   done
 fi
 
-# 2. Run Unified Core KV Benchmarks across thread configurations
+# 2. Run Unified Core KV Benchmark (fixed 2 threads, 256K ops, 60/40 SET)
 if [[ ${RUN_KV} -eq 1 ]]; then
-  IFS=',' read -ra THREAD_ARRAY <<< "${THREADS_LIST}"
-  for T in "${THREAD_ARRAY[@]}"; do
-    taskset_cmd=""
-    if command -v taskset >/dev/null 2>&1; then
-      end_cpu=$((T - 1))
-      taskset_cmd="taskset -c 0-${end_cpu}"
-    fi
+  taskset_cmd=""
+  if command -v taskset >/dev/null 2>&1; then
+    taskset_cmd="taskset -c 0-1"
+  fi
 
-    echo "Running kv_perf [set -> get -> del] (threads=${T})..." >&2
-    drop_page_cache
-    db_path="${BENCH_DIR}/kv_t${T}_$$.db"
-    rm -rf "${db_path}"*
-    json_out=$(${taskset_cmd} "${KV_BIN}" --ops "${OPS}" --threads "${T}" --db-path "${db_path}")
-    rm -rf "${db_path}"*
-    append_result "${json_out}"
-  done
+  echo "Running kv_perf [60/40 set] (threads=2, N=256K)..." >&2
+  drop_page_cache
+  json_out=$(${taskset_cmd} "${KV_BIN}")
+  append_result "${json_out}"
 fi
 
 echo "]" >> "${TMP_RESULTS}"

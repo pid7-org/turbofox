@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Catppuccin Latte KV tail latency profile SVG (1T vs 4T)"""
+"""Generate Catppuccin Latte KV tail latency benchmark SVG"""
 
 import json
 import os
@@ -21,7 +21,8 @@ FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
 )
 
-WORKLOADS = [
+CANDIDATE_WORKLOADS = [
+    ("set_perf", "mixed_60_40_new_update", "SET: 60/40 New/Update"),
     ("set_perf", "insert", "SET: Insert"),
     ("get_perf", "mixed_60_40", "GET: 60/40 Hit/Miss"),
     ("del_perf", "mixed_60_40", "DEL: 60/40 Hit/Miss"),
@@ -52,6 +53,20 @@ def generate_svg(lookup, out_path):
     p_w = svg_w - 0x78
     p_h = svg_h - 0x85
 
+    workloads = [
+        wl for wl in CANDIDATE_WORKLOADS
+        if any(k[0] == wl[0] and k[1] == wl[1] for k in lookup)
+    ]
+    if not workloads:
+        workloads = [CANDIDATE_WORKLOADS[0]]
+
+    active_threads = sorted({
+        k[2] for k in lookup
+        if any(k[0] == wl[0] and k[1] == wl[1] for wl in workloads) and k[2] is not None
+    })
+    if not active_threads:
+        active_threads = [2]
+
     # Limit y-axis to 5ms (5,000 µs) to prevent outliers from skewing chart
     max_lat = 5000.0
 
@@ -67,29 +82,34 @@ def generate_svg(lookup, out_path):
     )
 
     # Title & Subtitle
+    if len(active_threads) == 1:
+        thr_label = f"{active_threads[0]} Threads"
+        sub_label = (
+            f"Tail latencies in microseconds across percentiles ({active_threads[0]} worker threads)"
+        )
+    else:
+        thr_label = " vs ".join(f"{t}T" for t in active_threads)
+        sub_label = "Tail latencies in microseconds across p50, p90, p99, and p99.9"
+
     svg.append(
         f'<text x="32" y="32" fill="{COLOR_TEXT}" font-size="16" font-weight="bold">'
-        f'TurboFox Tail Latency Profile (1T Baseline vs 4T Concurrent Workers)</text>'
+        f'TurboFox Operation Tail Latency ({thr_label})</text>'
     )
     svg.append(
-        f'<text x="32" y="48" fill="{COLOR_SUBTLE}" font-size="11">'
-        f'Sub-microsecond median and bounded p99.9 tail latencies (Catppuccin Latte theme)</text>'
+        f'<text x="32" y="48" fill="{COLOR_SUBTLE}" font-size="11">{sub_label}</text>'
     )
 
     # Legend
-    leg_x = svg_w - 0x0110
-    svg.append(
-        f'<rect x="{leg_x}" y="24" width="12" height="12" rx="2" fill="{COLOR_1T}"/>'
-    )
-    svg.append(
-        f'<text x="{leg_x + 18}" y="34" fill="{COLOR_TEXT}" font-size="11">1 Thread</text>'
-    )
-    svg.append(
-        f'<rect x="{leg_x + 85}" y="24" width="12" height="12" rx="2" fill="{COLOR_4T}"/>'
-    )
-    svg.append(
-        f'<text x="{leg_x + 103}" y="34" fill="{COLOR_TEXT}" font-size="11">4 Threads</text>'
-    )
+    leg_x = svg_w - 0x0100
+    colors = [COLOR_1T, COLOR_4T]
+    for idx, thr in enumerate(active_threads):
+        c = colors[idx % len(colors)]
+        x_offset = leg_x + idx * 80
+        svg.append(f'<rect x="{x_offset}" y="24" width="12" height="12" rx="2" fill="{c}"/>')
+        svg.append(
+            f'<text x="{x_offset + 18}" y="34" fill="{COLOR_TEXT}" font-size="11">'
+            f'{thr} Thread{"s" if thr > 1 else ""}</text>'
+        )
 
     # Plot panel
     svg.append(
@@ -110,70 +130,84 @@ def generate_svg(lookup, out_path):
             f'font-size="10" text-anchor="end">{val:.0f}µs</text>'
         )
 
-    # Layout: 3 workload blocks with increased spacing between adjacent graphs
+    # Layout: workload blocks
     graph_spacing = 24.0
-    block_w = (p_w - (len(WORKLOADS) - 1) * graph_spacing) / len(WORKLOADS)
+    block_w = (p_w - (len(workloads) - 1) * graph_spacing) / len(workloads)
     bar_w = 0x12 # 18px
     bar_spacing = 0x04
 
-    for w_idx, (bench, wl, title) in enumerate(WORKLOADS):
+    for w_idx, (bench, wl, title) in enumerate(workloads):
         block_left = p_x + w_idx * (block_w + graph_spacing)
-        e1 = lookup.get((bench, wl, 1), {}).get("latency_micros", {})
-        e4 = lookup.get((bench, wl, 4), {}).get("latency_micros", {})
 
-        # Sub-divide block for the 4 percentiles
         p_sub_w = block_w / len(PERCENTILES)
         for p_idx, p_key in enumerate(PERCENTILES):
             center = block_left + p_sub_w * (p_idx + 0.5)
-            b1_x = center - bar_w - (bar_spacing / 2)
-            b4_x = center + (bar_spacing / 2)
 
-            v1 = e1.get(p_key, 0.0)
-            v4 = e4.get(p_key, 0.0)
+            if len(active_threads) == 1:
+                thr = active_threads[0]
+                e = lookup.get((bench, wl, thr), {}).get("latency_micros", {})
+                v = e.get(p_key, 0.0)
+                h = min((v / max_lat) * p_h, p_h)
+                y = p_y + p_h - h
+                bx = center - bar_w / 2
 
-            h1 = min((v1 / max_lat) * p_h, p_h)
-            h4 = min((v4 / max_lat) * p_h, p_h)
-
-            y1 = p_y + p_h - h1
-            y4 = p_y + p_h - h4
-
-            # 1T Bar
-            svg.append(
-                f'<rect x="{b1_x:.1f}" y="{y1:.1f}" width="{bar_w}" height="{h1:.1f}" '
-                f'rx="3" fill="{COLOR_1T}"/>'
-            )
-            if v1 > 0:
                 svg.append(
-                    f'<text x="{b1_x + bar_w/2:.1f}" y="{y1 - 4:.1f}" fill="{COLOR_TEXT}" '
-                    f'font-size="8.5" text-anchor="middle">{v1:.0f}µs</text>'
+                    f'<rect x="{bx:.1f}" y="{y:.1f}" width="{bar_w}" height="{h:.1f}" '
+                    f'rx="3" fill="{COLOR_1T}"/>'
+                )
+                txt_y = y - 4 if h < p_h - 20 else y + 12
+                txt_color = COLOR_TEXT if h < p_h - 20 else COLOR_BASE
+                svg.append(
+                    f'<text x="{center:.1f}" y="{txt_y:.1f}" fill="{txt_color}" '
+                    f'font-size="9" font-weight="bold" text-anchor="middle">{v:.0f}µs</text>'
+                )
+            else:
+                t1, t2 = active_threads[0], active_threads[1]
+                e1 = lookup.get((bench, wl, t1), {}).get("latency_micros", {})
+                e4 = lookup.get((bench, wl, t2), {}).get("latency_micros", {})
+
+                b1_x = center - bar_w - (bar_spacing / 2)
+                b4_x = center + (bar_spacing / 2)
+
+                v1 = e1.get(p_key, 0.0)
+                v4 = e4.get(p_key, 0.0)
+
+                h1 = min((v1 / max_lat) * p_h, p_h)
+                h4 = min((v4 / max_lat) * p_h, p_h)
+
+                y1 = p_y + p_h - h1
+                y4 = p_y + p_h - h4
+
+                svg.append(
+                    f'<rect x="{b1_x:.1f}" y="{y1:.1f}" width="{bar_w}" height="{h1:.1f}" '
+                    f'rx="3" fill="{COLOR_1T}"/>'
+                )
+                svg.append(
+                    f'<rect x="{b4_x:.1f}" y="{y4:.1f}" width="{bar_w}" height="{h4:.1f}" '
+                    f'rx="3" fill="{COLOR_4T}"/>'
                 )
 
-            # 4T Bar
-            svg.append(
-                f'<rect x="{b4_x:.1f}" y="{y4:.1f}" width="{bar_w}" height="{h4:.1f}" '
-                f'rx="3" fill="{COLOR_4T}"/>'
-            )
-            if v4 > 0:
+                txt1_y = y1 - 4 if h1 < p_h - 20 else y1 + 12
+                txt1_c = COLOR_TEXT if h1 < p_h - 20 else COLOR_BASE
                 svg.append(
-                    f'<text x="{b4_x + bar_w/2:.1f}" y="{y4 - 4:.1f}" fill="{COLOR_TEXT}" '
-                    f'font-size="8.5" text-anchor="middle">{v4:.0f}µs</text>'
+                    f'<text x="{b1_x + bar_w/2:.1f}" y="{txt1_y:.1f}" fill="{txt1_c}" '
+                    f'font-size="8" text-anchor="middle">{v1:.0f}µs</text>'
                 )
 
-            # Percentile label
+                txt4_y = y4 - 4 if h4 < p_h - 20 else y4 + 12
+                txt4_c = COLOR_TEXT if h4 < p_h - 20 else COLOR_BASE
+                svg.append(
+                    f'<text x="{b4_x + bar_w/2:.1f}" y="{txt4_y:.1f}" fill="{txt4_c}" '
+                    f'font-size="8" text-anchor="middle">{v4:.0f}µs</text>'
+                )
+
             svg.append(
-                f'<text x="{center:.1f}" y="{p_y + p_h + 16:.1f}" fill="{COLOR_SUBTLE}" '
+                f'<text x="{center:.1f}" y="{p_y + p_h + 16}" fill="{COLOR_SUBTLE}" '
                 f'font-size="10" text-anchor="middle">{PERCENTILE_LABELS[p_key]}</text>'
             )
 
-        # Workload block separator & title
-        if w_idx > 0:
-            sep_x = block_left - (graph_spacing / 2)
-            svg.append(
-                f'<line x1="{sep_x:.1f}" y1="{p_y}" x2="{sep_x:.1f}" y2="{p_y + p_h}" '
-                f'stroke="{COLOR_LINE}" stroke-width="1.5"/>'
-            )
         svg.append(
-            f'<text x="{block_left + block_w/2:.1f}" y="{p_y + p_h + 36:.1f}" '
+            f'<text x="{block_left + block_w / 2:.1f}" y="{p_y + p_h + 34}" '
             f'fill="{COLOR_TEXT}" font-size="12" font-weight="bold" text-anchor="middle">'
             f'{title}</text>'
         )

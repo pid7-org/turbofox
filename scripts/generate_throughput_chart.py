@@ -21,7 +21,8 @@ FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
 )
 
-OPERATIONS = [
+CANDIDATE_OPERATIONS = [
+    ("set_perf", "mixed_60_40_new_update", "SET", "SET (60/40 New/Update)"),
     ("set_perf", "insert", "SET", "SET (Insert)"),
     ("get_perf", "mixed_60_40", "GET", "GET (60/40 Hit/Miss)"),
     ("del_perf", "mixed_60_40", "DEL", "DEL (60/40 Hit/Miss)"),
@@ -58,14 +59,26 @@ def generate_svg(lookup, out_path):
     p_w = svg_w - 0x78
     p_h = svg_h - 0x85
 
+    operations = [
+        op for op in CANDIDATE_OPERATIONS
+        if any(k[0] == op[0] and k[1] == op[1] for k in lookup)
+    ]
+    if not operations:
+        operations = [CANDIDATE_OPERATIONS[0]]
+
+    active_threads = sorted({
+        k[2] for k in lookup
+        if any(k[0] == op[0] and k[1] == op[1] for op in operations) and k[2] is not None
+    })
+    if not active_threads:
+        active_threads = [2]
+
     # Find max throughput to scale Y axis
     max_tp = 0.0
-    for b, wl, tag, title in OPERATIONS:
-        e1 = lookup.get((b, wl, 1), {})
-        e4 = lookup.get((b, wl, 4), {})
-        tp1 = e1.get("throughput_ops_sec", 0.0)
-        tp4 = e4.get("throughput_ops_sec", 0.0)
-        max_tp = max(max_tp, tp1, tp4)
+    for b, wl, tag, title in operations:
+        for thr in active_threads:
+            e = lookup.get((b, wl, thr), {})
+            max_tp = max(max_tp, e.get("throughput_ops_sec", 0.0))
 
     max_tp = max(max_tp * 1.25, 10000.0)
 
@@ -81,29 +94,34 @@ def generate_svg(lookup, out_path):
     )
 
     # Title & Subtitle
+    if len(active_threads) == 1:
+        thr_label = f"{active_threads[0]} Threads"
+        sub_label = (
+            f"Sustained operations per second ({active_threads[0]} worker threads)"
+        )
+    else:
+        thr_label = " vs ".join(f"{t}T" for t in active_threads)
+        sub_label = "Sustained operations per second across concurrent worker threads"
+
     svg.append(
         f'<text x="32" y="32" fill="{COLOR_TEXT}" font-size="16" font-weight="bold">'
-        f'TurboFox Operation Throughput &amp; Concurrency Scaling (1T vs 4T)</text>'
+        f'TurboFox Operation Throughput ({thr_label})</text>'
     )
     svg.append(
-        f'<text x="32" y="48" fill="{COLOR_SUBTLE}" font-size="11">'
-        f'Sustained operations per second across single-thread and 4-thread workers</text>'
+        f'<text x="32" y="48" fill="{COLOR_SUBTLE}" font-size="11">{sub_label}</text>'
     )
 
     # Legend
     leg_x = svg_w - 0x0100
-    svg.append(
-        f'<rect x="{leg_x}" y="24" width="12" height="12" rx="2" fill="{COLOR_1T}"/>'
-    )
-    svg.append(
-        f'<text x="{leg_x + 18}" y="34" fill="{COLOR_TEXT}" font-size="11">1 Thread</text>'
-    )
-    svg.append(
-        f'<rect x="{leg_x + 80}" y="24" width="12" height="12" rx="2" fill="{COLOR_4T}"/>'
-    )
-    svg.append(
-        f'<text x="{leg_x + 98}" y="34" fill="{COLOR_TEXT}" font-size="11">4 Threads</text>'
-    )
+    colors = [COLOR_1T, COLOR_4T]
+    for idx, thr in enumerate(active_threads):
+        c = colors[idx % len(colors)]
+        x_offset = leg_x + idx * 80
+        svg.append(f'<rect x="{x_offset}" y="24" width="12" height="12" rx="2" fill="{c}"/>')
+        svg.append(
+            f'<text x="{x_offset + 18}" y="34" fill="{COLOR_TEXT}" font-size="11">'
+            f'{thr} Thread{"s" if thr > 1 else ""}</text>'
+        )
 
     # Plot panel
     svg.append(
@@ -125,58 +143,79 @@ def generate_svg(lookup, out_path):
         )
 
     # Grouped bars for each operation
-    group_width = p_w / len(OPERATIONS)
+    group_width = p_w / len(operations)
     bar_w = 0x38 # 56px per bar
     spacing = 0x0C
 
-    for idx, (bench, wl, tag, title) in enumerate(OPERATIONS):
+    for idx, (bench, wl, tag, title) in enumerate(operations):
         group_center = p_x + group_width * (idx + 0.5)
-        b1_x = group_center - bar_w - (spacing / 2)
-        b4_x = group_center + (spacing / 2)
 
-        e1 = lookup.get((bench, wl, 1), {})
-        e4 = lookup.get((bench, wl, 4), {})
-        tp1 = e1.get("throughput_ops_sec", 0.0)
-        tp4 = e4.get("throughput_ops_sec", 0.0)
+        if len(active_threads) == 1:
+            thr = active_threads[0]
+            e = lookup.get((bench, wl, thr), {})
+            tp = e.get("throughput_ops_sec", 0.0)
+            h = (tp / max_tp) * p_h
+            y = p_y + p_h - h
+            bx = group_center - (bar_w / 2)
 
-        h1 = (tp1 / max_tp) * p_h
-        h4 = (tp4 / max_tp) * p_h
+            svg.append(
+                f'<rect x="{bx:.1f}" y="{y:.1f}" width="{bar_w}" height="{h:.1f}" '
+                f'rx="4" fill="{COLOR_1T}"/>'
+            )
+            svg.append(
+                f'<text x="{bx + bar_w/2:.1f}" y="{y - 6:.1f}" fill="{COLOR_TEXT}" '
+                f'font-size="10" font-weight="bold" text-anchor="middle">'
+                f'{format_throughput(tp)}</text>'
+            )
+            svg.append(
+                f'<text x="{group_center:.1f}" y="{p_y + p_h + 20:.1f}" fill="{COLOR_TEXT}" '
+                f'font-size="12" font-weight="bold" text-anchor="middle">{title}</text>'
+            )
+        else:
+            b1_x = group_center - bar_w - (spacing / 2)
+            b4_x = group_center + (spacing / 2)
 
-        y1 = p_y + p_h - h1
-        y4 = p_y + p_h - h4
+            t1, t2 = active_threads[0], active_threads[1]
+            e1 = lookup.get((bench, wl, t1), {})
+            e4 = lookup.get((bench, wl, t2), {})
+            tp1 = e1.get("throughput_ops_sec", 0.0)
+            tp4 = e4.get("throughput_ops_sec", 0.0)
 
-        # 1T Bar
-        svg.append(
-            f'<rect x="{b1_x:.1f}" y="{y1:.1f}" width="{bar_w}" height="{h1:.1f}" '
-            f'rx="4" fill="{COLOR_1T}"/>'
-        )
-        svg.append(
-            f'<text x="{b1_x + bar_w/2:.1f}" y="{y1 - 6:.1f}" fill="{COLOR_TEXT}" '
-            f'font-size="10" font-weight="bold" text-anchor="middle">'
-            f'{format_throughput(tp1)}</text>'
-        )
+            h1 = (tp1 / max_tp) * p_h
+            h4 = (tp4 / max_tp) * p_h
 
-        # 4T Bar
-        svg.append(
-            f'<rect x="{b4_x:.1f}" y="{y4:.1f}" width="{bar_w}" height="{h4:.1f}" '
-            f'rx="4" fill="{COLOR_4T}"/>'
-        )
-        svg.append(
-            f'<text x="{b4_x + bar_w/2:.1f}" y="{y4 - 6:.1f}" fill="{COLOR_TEXT}" '
-            f'font-size="10" font-weight="bold" text-anchor="middle">'
-            f'{format_throughput(tp4)}</text>'
-        )
+            y1 = p_y + p_h - h1
+            y4 = p_y + p_h - h4
 
-        # Group label & Speedup
-        speedup = (tp4 / tp1) if tp1 > 0 else 1.0
-        svg.append(
-            f'<text x="{group_center:.1f}" y="{p_y + p_h + 20:.1f}" fill="{COLOR_TEXT}" '
-            f'font-size="12" font-weight="bold" text-anchor="middle">{title}</text>'
-        )
-        svg.append(
-            f'<text x="{group_center:.1f}" y="{p_y + p_h + 36:.1f}" fill="{COLOR_SUBTLE}" '
-            f'font-size="11" text-anchor="middle">Speedup: {speedup:.2f}x</text>'
-        )
+            svg.append(
+                f'<rect x="{b1_x:.1f}" y="{y1:.1f}" width="{bar_w}" height="{h1:.1f}" '
+                f'rx="4" fill="{COLOR_1T}"/>'
+            )
+            svg.append(
+                f'<text x="{b1_x + bar_w/2:.1f}" y="{y1 - 6:.1f}" fill="{COLOR_TEXT}" '
+                f'font-size="10" font-weight="bold" text-anchor="middle">'
+                f'{format_throughput(tp1)}</text>'
+            )
+
+            svg.append(
+                f'<rect x="{b4_x:.1f}" y="{y4:.1f}" width="{bar_w}" height="{h4:.1f}" '
+                f'rx="4" fill="{COLOR_4T}"/>'
+            )
+            svg.append(
+                f'<text x="{b4_x + bar_w/2:.1f}" y="{y4 - 6:.1f}" fill="{COLOR_TEXT}" '
+                f'font-size="10" font-weight="bold" text-anchor="middle">'
+                f'{format_throughput(tp4)}</text>'
+            )
+
+            speedup = (tp4 / tp1) if tp1 > 0 else 1.0
+            svg.append(
+                f'<text x="{group_center:.1f}" y="{p_y + p_h + 20:.1f}" fill="{COLOR_TEXT}" '
+                f'font-size="12" font-weight="bold" text-anchor="middle">{title}</text>'
+            )
+            svg.append(
+                f'<text x="{group_center:.1f}" y="{p_y + p_h + 36:.1f}" fill="{COLOR_SUBTLE}" '
+                f'font-size="11" text-anchor="middle">Speedup: {speedup:.2f}x</text>'
+            )
 
     svg.append('</svg>')
 

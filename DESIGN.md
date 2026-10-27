@@ -22,8 +22,8 @@ Following invariants must be preserved;
 - All disk structures are strictly `#[repr(C)]`, integer multiples of `Slot` (128 B), and 8B aligned
 - File growth is strictly quantized to physical OS pages (4 KiB, 16 KiB, or 64 KiB)
 - Slot (128 B) is the atomic transaction boundary;
-  concurrency uses Optimistic Concurrency Control (OCC) with per-slot reader spinlocks;
-  ordered multi-slot CAS commit guarantees deadlock-free transactions
+  concurrency uses Optimistic Concurrency Control (OCC);
+  ordered multi-slot lock acquisition and validation guarantee deadlock-free transactions
 - No virtual page layer exists; all component addressing resolves to absolute slot indices
 - Memory allocation inside the mapped file is strictly monotonic bump-pointer allocation;
   components never shrink or relocate in-place
@@ -206,7 +206,7 @@ Offset    Type                 Field            Description
 --------+--------------------+----------------+---------------------------------------
 0..119    [AdjArrayList; 6]    arrays           6 list arrays (20 B each = 120 B)
 120..123  u32                  next_adjarr_idx  Slot index of next AdjArr block in chain
-124..125  u16                  bmap             Bits 0..5: array occupancy; Bit 0: entire full check
+124..125  u16                  bmap             Bits 0..5: array occupancy mask (0x3F)
 126..127  [u8; 2]              padding          Zero alignment padding to 128 B
 ```
 
@@ -304,16 +304,82 @@ using vectorized comparisons selected at runtime:
   - `open_address_scalar`: Portable scalar fallback path
 - **AVX2 Implementation (`open_address_avx2`)**:
   Processes 16 `u32` hashes via two 256-bit `_mm256_cmpeq_epi32` comparisons;
-  extracts bitmasks with `_mm256_movemask_ps` to find matches in 1-2 CPU cycles
+  extracts bitmasks with `_mm256_movemask_ps` for parallel match extraction
 - **SSE2 Implementation (`open_address_sse2`)**:
   Processes 16 `u32` hashes via four 128-bit `_mm_cmpeq_epi32` comparisons;
   extracts bitmasks with `_mm_movemask_ps`
 - **NEON Implementation (`open_address_neon`)**:
   Processes 16 `u32` hashes via four 128-bit `vceqq_u32` vector comparisons;
-  narrows match masks to resolve slot hits without pipeline stalls
+  narrows match masks to resolve slot hits across candidate lanes
 - **Index Resolution**:
   Bitmasks are resolved using count trailing zeros (`ctz` / `trailing_zeros`);
-  identifies target slot, first empty sentinel (`0x00`), or first tombstone (`0x01`) in constant time
+  identifies target slot, first empty sentinel (`0x00`), or first tombstone (`0x01`)
+
+### 4.5 Optional In-Memory Fingerprint Index (`FpIndex`)
+
+#### 4.5.1 Architecture & Objectives
+
+To bypass persistent, memory-mapped bucket-chain traversal on hot read/write paths,
+TurboFox provides an optional SIMD-accelerated in-memory index (`FpIndex`), enabled via
+`TurboCfg::with_mem_index(true)`:
+
+- **32-Way Concurrent Sharding**:
+  Hash space partitioned across 32 independent shards (`FpIndexShard`), each protected
+  by `std::sync::RwLock`; allows non-blocking concurrent reads across multi-core workloads
+- **Zero Bucket Reads on Hit**:
+  Caches persistent slot locations and DataBuf routing directly in RAM;
+  KV read hits read directly from the resolved physical DataBuf page in mmap,
+  bypassing 1024 B `Bucket` read copies and linked-list pointer chasing
+- **Negative Rejection (Definite Miss)**:
+  Non-existent keys resolve during in-memory probe upon encountering empty sentinels (`0x0000`),
+  executing 0 mmap reads and avoiding backing file lookups
+- **Fast-Path Mutations**:
+  Overwrites and absent deletions resolve immediately through `FpIndex` routing,
+  avoiding variable-depth persistent hash-trie traversal
+
+#### 4.5.2 `IndexRef` Memory Layout (24 Bytes, `align(8)`)
+
+```
+Offset   Type      Field        Description
+-------+---------+------------+--------------------------------------------------
+0..3     u32       hash         Full 32-bit normalized key hash
+4..7     u32       bucket_slot  Persistent bucket slot index for OCC commit
+8..11    u32       dbuf_slot    Physical DataBuf slot index (bypasses pointer chasing)
+12       u8        entry_idx    Bucket entry index (0..63)
+13..15   [u8; 3]   _pad         Zero alignment padding to 8 B
+16..23   u64       offset       Packed entry metadata (flags, klen, vlen, buf_idx)
+```
+
+- Direct discriminator check: `(offset & 0x80) != 0` identifies list heads directly from metadata
+- Length resolution: `klen` (Byte 1) and `vlen` (Bytes 2..3) decoded via bit shifts from `offset`
+
+#### 4.5.3 16-Bit Fingerprints & SIMD Probing
+
+Each shard stores parallel arrays of 16-bit fingerprints (`fingerprints: Vec<u16>`)
+and entries (`refs: Vec<IndexRef>`):
+
+- **Fingerprint Calculation**:
+  Upper 16 bits of 32-bit key hash (`hash >> 16`), mapped to valid range (`>= 2`)
+- **Sentinels**:
+  `0x0000` (Empty slot), `0x0001` (Tombstone)
+- **16-Probe Window**:
+  Probes 16 consecutive fingerprint slots (32 bytes = half cache line)
+- **Vector Kernels (`index_probe.rs`)**:
+  - AVX2: 256-bit `_mm256_cmpeq_epi16` + `_mm256_packs_epi16` + `_mm256_movemask_epi8`
+  - SSE2: Two 128-bit `_mm_cmpeq_epi16` + `_mm_packs_epi16` + `_mm_movemask_epi8`
+  - NEON: Two 128-bit `vceqq_u16` with bit shifts and narrowing
+  - Scalar: 16-iteration loop fallback
+- **Bitmask Extraction (`FpProbeMask`)**:
+  Simultaneously evaluates `match_mask`, `empty_mask`, and `tomb_mask`;
+  if `empty_mask` reveals an empty slot prior to match, terminates with `LookupResult::DefiniteMiss`
+
+#### 4.5.4 Shard Resizing & Pre-Population
+
+- Shards dynamically double capacity when load factor reaches 70%:
+  `(count + tombstones) * 10 >= cap * 7`
+- Pre-population during `open()` executes a BFS traversal across persistent Bucket chains;
+  pre-caches databuf hop-to-slot indices in $O(B)$ for $B$ chained buckets, enabling $O(1)$ routing
+  per entry without redundant mmap linked-list traversals
 
 ## 5. Storage Growth & Allocation Protocols
 
@@ -408,7 +474,7 @@ Concurrency executes at Slot granularity (128 B) using Optimistic Concurrency Co
 
 ```
 Reader:
-  1. Read Slot via mmap.read(slot_idx) under per-slot read spinlock (torn-read immune)
+  1. Read Slot via mmap.read_exact(slot_idx) with torn-read protection
   2. Non-blocking relative to other readers
 
 Writer (Atomic Multi-Slot OCC):
@@ -418,16 +484,26 @@ Writer (Atomic Multi-Slot OCC):
   4. Register expected vs new slot values: tx.write(&expected, &new_slot, slot_idx)
   5. Commit:
      a. Sort target slot indices ascending (Deadlock prevention)
-     b. Acquire per-slot spinlocks in strictly ascending order
-     c. CAS verification: for all slots, assert *slot_ptr == expected
-     d. If CAS holds: memcpy new slots, advance write epoch, release locks -> Ok(AckTicket)
-     e. If CAS fails: release locks, abort -> backoff (50 us..10 ms, +/-25% jitter), retry
+     b. Acquire per-slot locks in strictly ascending order
+     c. Slot validation: assert mapped slots match expected state
+     d. If valid: copy new slots, advance epoch, release locks -> Ok(AckTicket)
+     e. If conflict: release locks, abort -> backoff (50 us..10 ms, +/-25% jitter), retry
 ```
 
 ## 7. Operational Workflows
 
 ### 7.1 `get(key: &[u8]) -> Result<Option<Vec<u8>>>`
 
+When `cfg.mem_index` is enabled, lookups probe `FpIndex` before touching mmap:
+1. Probe `fp_index.lookup(hash, verify)`:
+   - On `DefiniteMiss`: key is absent; return `Ok(None)` immediately with 0 mmap reads
+   - On `Hit(r)`: verify list discriminator bit (`r.offset & 0x80`);
+     if set, return `Err(TurboError::InvalidType("Key is a list"))`;
+     read payload directly from physical page `r.dbuf_slot`, validating key equality;
+     bypasses persistent `Bucket` read copies and linked-list traversal
+   - On `Overflow`: fall back to persistent bucket walk below
+
+Persistent Bucket Traversal:
 1. Compute `hash = hash_key(key)`; initialize `bucket_slot = ROOT_BUCKET_SLOT`, `depth = 0`
 2. Compute `S = (hash >> (6 * (depth % 5))) & 0x3F`
 3. Probe up to 16 slots $P_i = (S + i) \pmod{64}$ for $i \in [0, 15]$ via ISA SIMD kernel:
@@ -447,27 +523,37 @@ Writer (Atomic Multi-Slot OCC):
 ### 7.2 `set(key: &[u8], val: &[u8]) -> Result<TurboTicket>`
 
 1. Validate `key.len() <= 255` and `val.len() <= 65535`
-2. Traverse to target Bucket and slot following Section 4.3
-3. If entry exists and `new_len <= old_allocated`:
+2. If `cfg.mem_index` is enabled, probe `fp_index`:
+   if key exists, invoke fast-path `set_overwrite` directly targeting resolved bucket and databuf
+   slots without depth traversal; commit via OCC transaction and update `FpIndex`
+3. For new insertions, traverse to target Bucket and slot following Section 4.3
+4. If entry exists and `new_len <= old_allocated`:
    Overwrite value in-place via OCC tx
-4. If insert or payload expansion:
+5. If insert or payload expansion:
    - If 16 open-addressing slots full and `next_bucket_indices[S] == 0`:
      Allocate new Bucket from `free_slot_marker`, link to parent
    - Allocate contiguous 16 B buffers in active DataBuf chain
    - Build payload frame `[ CRC32 ][ Key ][ Val ][ Pad ]`
    - Atomic OCC commit:
-     Update DataBuf bitmap, DataBuf buffer slots, Bucket hash, Bucket offset
+     Update DataBuf bitmap, DataBuf buffer slots, Bucket hash, Bucket offset;
+     if `cfg.mem_index` enabled, insert/update entry in `fp_index`
 
 ### 7.3 `del(key: &[u8]) -> Result<bool>`
 
-1. Locate Bucket entry slot $P_i$;
+1. If `cfg.mem_index` is enabled, query `fp_index`:
+   - If `DefiniteMiss`: key absent; return `Ok(false)` with 0 mmap reads
+   - If `Hit(r)`: invoke fast-path `del_target` directly targeting `(r.bucket_slot, r.entry_idx)`
+     and `r.dbuf_slot`; commit tombstone via OCC transaction, remove entry from `fp_index`,
+     and return `Ok(true)`
+2. For persistent traversal fallback, locate Bucket entry slot $P_i$;
    if missing, return `Ok(false)`
-2. Atomic OCC commit:
+3. Atomic OCC commit:
    - Set `hashes[P_i] = 1` (tombstone)
    - Preserve `next_bucket_indices` intact to maintain overflow connectivity
    - Clear occupied bits in DataBuf bitmap
    - Decrement `Metadata.total_entries`
-3. Return `Ok(true)`
+   - If `cfg.mem_index` enabled, remove entry from `fp_index`
+4. Return `Ok(true)`
 
 ### 7.4 List Operations (`TurboList`)
 
@@ -500,7 +586,7 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 128]`):
    - `PageSize::K4` (4096 B): `initial_pages = 4` (16 KiB = 0x80 slots)
    - `PageSize::K16` (16384 B): `initial_pages = 1` (16 KiB = 0x80 slots)
    - `PageSize::K64` (65536 B): `initial_pages = 1` (64 KiB = 0x0200 slots)
-3. Construct `MemMapCfg` using `cfg.dir_path`, `DB_NAME_TAG`, and `MAX_DB_LEN`
+3. Construct `MemMapCfg` using `cfg.path`, `DB_NAME_TAG`, and `MAX_DB_LEN`
 4. Call `mmap = MemMap::<Slot>::new(memmap_cfg)?`:
    - Fails if backing file already exists (`err::EXS`) or directory is invalid (`err::DIR`)
    - Acquires exclusive filesystem advisory lock on file descriptor
@@ -512,7 +598,8 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 128]`):
    - Slots 8..0x0F: Root Bucket (zeroed hashes, offsets, and chained bucket pointers)
    - Slots 0x10..0x1F: 2x DataBuf pools (zeroed bitmaps, buffers, and next pointers)
 6. Flush initial state via `mmap.sync()?` to guarantee disk persistence
-7. Construct and return `TurboFox` engine handle
+7. If `cfg.mem_index` is enabled, initialize in-memory `FpIndex` with base capacity `MIN_CAPACITY`
+8. Construct and return `TurboFox` engine handle
 
 #### `open(cfg: TurboCfg) -> TurboResult<TurboFox>`
 
@@ -529,7 +616,9 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 128]`):
    - Assert `meta.total_slots == (mmap.length() / 128) as u32`; error if corrupt
    - Assert `meta.total_pages == (mmap.length() / sys_page_size.as_usize()) as u32`
    - Assert `meta.free_slot_marker <= meta.total_slots`; error if corrupt
-5. Construct and return `TurboFox` engine handle
+5. If `cfg.mem_index` is enabled, allocate `FpIndex` sized to expected entries;
+   execute BFS traversal across persistent Bucket chains to pre-populate index routing
+6. Construct and return `TurboFox` engine handle
 
 ### 8.2 Engine Configuration & `MemMapCfg` Translation
 
@@ -549,9 +638,10 @@ pub const MAX_DB_LEN: usize = 0x80_0000_0000; // 549,755,813,888 B (512 GiB)
 ```
 TurboCfg Field  Type             MemMapCfg Target        Resolution Logic
 --------------+----------------+-----------------------+--------------------------------------
-dir_path      PathBuf          path                    Forwarded directly; MemMap checks dir
-version       u32              version                 Forwarded directly (default 2)
-sync_mode     SyncMode         sync_interval           Mapped to Some(Duration) or None
+path          PathBuf          path                    Forwarded directly; MemMap checks dir
+version       u32              version                 Compiled constant (LAYOUT_VERSION = 2)
+sync_mode     SyncMode         sync_interval           Mapped to Periodic(Duration) or Manual
+mem_index     bool             (internal engine)       Enables optional in-memory FpIndex
 (constant)    [u8; 4]          name                    DB_NAME_TAG (*b"tbfx")
 (constant)    u8               module_id               MODULE_ID (0x46)
 (constant)    usize            max_len                 MAX_DB_LEN (0x80_0000_0000)
@@ -563,9 +653,9 @@ sync_mode     SyncMode         sync_interval           Mapped to Some(Duration) 
 #### Backing File Path Resolution
 
 The backing file path is managed by `MemMapCfg::versioned_path()`;
-formatted as `{dir_path}/{name}_{version}` without file extension:
+formatted as `{path}/{name}_{version}` without file extension:
 
-- `dir_path` must resolve to an existing directory (validated by `MemMap`)
+- `path` must resolve to an existing directory (validated by `MemMap`)
 - Separate schema versions co-exist without naming collisions;
   e.g. `tbfx_1` and `tbfx_2` reside independently within the same directory path
 
@@ -595,15 +685,6 @@ The primary architectural ceiling stems from 32-bit slot addressing (`u32`):
   - Each DataBuf fits $63 / 3 = 21$ item payloads (0 slack buffers)
   - Chained list item capacity: bounded by `next_arr_idx: u32` ($2^{32} - 1 \times 4$ items)
 
-### 9.3 Verification Proof
+### 9.3 Capacity Derivation
 
-```python
-MAX_SLOTS = 1 << 32
-SLOT_SIZE = 128
-MAX_DB_LEN = MAX_SLOTS * SLOT_SIZE
-
-assert MAX_SLOTS == 4294967296
-assert SLOT_SIZE == 128
-assert MAX_DB_LEN == 549755813888
-assert MAX_DB_LEN == 0x80_0000_0000
-```
+$$\text{Capacity} = 2^{32} \text{ slots} \times 128 \text{ B} = 549{,}755{,}813{,}888 \text{ B} = 512 \text{ GiB} = 0\text{x}80\_0000\_0000 \text{ B}$$

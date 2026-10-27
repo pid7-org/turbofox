@@ -15,7 +15,7 @@ use crate::meta::Metadata;
 use crate::ticket::TurboTicket;
 use frozen_core::memmap::{MemMap, MemMapCfg, PageSize};
 use std::sync::{
-    Mutex, RwLock,
+    Mutex,
     atomic::{AtomicU32, AtomicU64, Ordering},
 };
 
@@ -37,7 +37,6 @@ pub(crate) struct Engine {
     active_dbuf_hint: AtomicU32,
     sys_page_size: PageSize,
     fp_index: Option<FpIndex>,
-    dbuf_slot_cache: Option<RwLock<Vec<u32>>>,
 }
 
 impl Engine {
@@ -66,12 +65,6 @@ impl Engine {
         let initial_slots = (initial_pages * page_size.as_usize()) / SLOT_SIZE;
         let fp_index = if cfg.mem_index { Some(FpIndex::new(MIN_CAPACITY)) } else { None };
 
-        let dbuf_slot_cache = if cfg.mem_index {
-            Some(RwLock::new(vec![DATABUF_HEAD_SLOT, DATABUF_HEAD_SLOT + (DATABUF_SLOTS as u32)]))
-        } else {
-            None
-        };
-
         let engine = Self {
             mmap,
             growth_mutex: Mutex::new(()),
@@ -81,7 +74,6 @@ impl Engine {
             active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
             sys_page_size: page_size,
             fp_index,
-            dbuf_slot_cache,
         };
 
         engine.format_initial_topography(LAYOUT_VERSION, initial_pages as u32)?;
@@ -157,22 +149,6 @@ impl Engine {
             None
         };
 
-        let dbuf_slot_cache = if cfg.mem_index {
-            let mut hop_to_slot = Vec::new();
-            let mut curr_dbuf = DATABUF_HEAD_SLOT;
-
-            while curr_dbuf != 0 {
-                hop_to_slot.push(curr_dbuf);
-                curr_dbuf = mmap
-                    .read_exact::<DataBuf, _, _>(curr_dbuf as usize, |d| d.next_dbuf_index())
-                    .unwrap_or(0);
-            }
-
-            Some(RwLock::new(hop_to_slot))
-        } else {
-            None
-        };
-
         let engine = Self {
             mmap,
             growth_mutex: Mutex::new(()),
@@ -182,7 +158,6 @@ impl Engine {
             active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
             sys_page_size,
             fp_index,
-            dbuf_slot_cache,
         };
 
         if cfg.mem_index {
@@ -198,18 +173,14 @@ impl Engine {
         };
 
         let mut hop_to_slot = Vec::new();
-        if let Some(ref cache) = self.dbuf_slot_cache {
-            hop_to_slot = cache.read().unwrap().clone();
-        } else {
-            let mut curr_dbuf = DATABUF_HEAD_SLOT;
+        let mut curr_dbuf = DATABUF_HEAD_SLOT;
 
-            while curr_dbuf != 0 {
-                hop_to_slot.push(curr_dbuf);
-                curr_dbuf = self
-                    .mmap
-                    .read_exact::<DataBuf, _, _>(curr_dbuf as usize, |d| d.next_dbuf_index())
-                    .unwrap_or(0);
-            }
+        while curr_dbuf != 0 {
+            hop_to_slot.push(curr_dbuf);
+            curr_dbuf = self
+                .mmap
+                .read_exact::<DataBuf, _, _>(curr_dbuf as usize, |d| d.next_dbuf_index())
+                .unwrap_or(0);
         }
 
         let mut queue = std::collections::VecDeque::new();
@@ -362,10 +333,6 @@ impl Engine {
             d.set_next_dbuf_index(new_slot);
         })?;
 
-        if let Some(ref cache) = self.dbuf_slot_cache {
-            cache.write().unwrap().push(new_slot);
-        }
-
         Ok(new_slot)
     }
 
@@ -400,12 +367,6 @@ impl Engine {
 
     /// Ref: `DESIGN.md` §3.3
     pub(crate) fn locate_databuf_slot(&self, pool_hop: u32) -> TurboResult<u32> {
-        if let Some(ref cache) = self.dbuf_slot_cache {
-            if let Some(&slot) = cache.read().unwrap().get(pool_hop as usize) {
-                return Ok(slot);
-            }
-        }
-
         let mut curr = DATABUF_HEAD_SLOT;
         for _ in 0..pool_hop {
             let next =
@@ -544,12 +505,6 @@ impl Engine {
 
     /// Ref: `DESIGN.md` §3.3
     pub(crate) fn databuf_slot_to_hop(&self, slot: u32) -> TurboResult<u32> {
-        if let Some(ref cache) = self.dbuf_slot_cache {
-            if let Some(hop) = cache.read().unwrap().iter().position(|&s| s == slot) {
-                return Ok(hop as u32);
-            }
-        }
-
         let mut curr = DATABUF_HEAD_SLOT;
         let mut hop = 0;
 
@@ -565,18 +520,41 @@ impl Engine {
         Err(TurboError::CorruptedHeader("databuf slot not found in allocation chain"))
     }
 
+    #[inline(always)]
+    fn fast_jitter(attempt: u32) -> u64 {
+        thread_local! {
+            static SEED: std::cell::Cell<u64> = const {
+                std::cell::Cell::new(0x8888_4444_2222_1111)
+            };
+        }
+        SEED.with(|s| {
+            let mut x = s.get().wrapping_add(attempt as u64);
+            x ^= x << 0x0D;
+            x ^= x >> 0x07;
+            x ^= x << 0x11;
+            s.set(x);
+            0x4B + (x % 0x33)
+        })
+    }
+
     /// Ref: `DESIGN.md` §6
     fn occ_backoff(attempt: u32) {
-        let base_us = 0x32u64.saturating_mul(1u64 << attempt.min(8)).min(0x2710);
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0);
+        if attempt < 0x04 {
+            let spins = 0x08u32 << attempt;
+            for _ in 0..spins {
+                std::hint::spin_loop();
+            }
+            return;
+        }
 
-        let jitter_pct = 0x4B + (nanos % 0x33);
-        let wait_us = (base_us * jitter_pct) / 0x64;
+        if attempt < 0x08 {
+            std::thread::yield_now();
+            return;
+        }
 
-        std::thread::sleep(std::time::Duration::from_micros(wait_us));
+        let base_us = 0x14u64.saturating_mul(1u64 << (attempt - 0x08).min(0x03)).min(0x64);
+        let wait_us = (base_us * Self::fast_jitter(attempt)) / 0x64;
+        std::thread::sleep(std::time::Duration::from_micros(wait_us.max(0x01)));
     }
 
     /// Ref: `DESIGN.md` §7.1

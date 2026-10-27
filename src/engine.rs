@@ -2241,3 +2241,453 @@ impl Engine {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::OpenOptions;
+    use std::io::{Seek, SeekFrom, Write};
+    use tempfile::tempdir;
+
+    #[test]
+    fn ok_engine_create_and_reopen() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path()).with_mem_index(true);
+
+        let engine = Engine::create(cfg.clone()).unwrap();
+        assert_eq!(engine.total_entries(), 0);
+        assert!(engine.total_pages().unwrap() > 0);
+
+        let _ = engine.set(b"reopen_k", b"reopen_v").unwrap();
+        assert_eq!(engine.total_entries(), 1);
+        engine.sync().unwrap();
+        drop(engine);
+
+        let reopened = Engine::open(cfg).unwrap();
+        assert_eq!(reopened.total_entries(), 1);
+        assert_eq!(reopened.get(b"reopen_k").unwrap(), Some(b"reopen_v".to_vec()));
+        assert!(reopened.contains_key(b"reopen_k").unwrap());
+        reopened.delete().unwrap();
+    }
+
+    #[test]
+    fn err_engine_open_validation_matrix() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+
+        // 1: Missing backing directory
+        let missing_dir = tempdir().unwrap();
+        let missing_cfg = TurboCfg::manual(missing_dir.path());
+        assert!(Engine::open(missing_cfg).is_err());
+
+        // 2: Magic mismatch
+        let engine = Engine::create(cfg.clone()).unwrap();
+        engine.sync().unwrap();
+        drop(engine);
+
+        let db_file =
+            std::fs::read_dir(dir.path()).unwrap().filter_map(|e| e.ok()).next().unwrap().path();
+
+        {
+            let mut file = OpenOptions::new().write(true).open(&db_file).unwrap();
+            let _ = file.seek(SeekFrom::Start(0)).unwrap();
+            file.write_all(&[0x00, 0x00, 0x00, 0x00]).unwrap();
+            drop(file);
+
+            assert!(matches!(Engine::open(cfg.clone()), Err(TurboError::InvalidMagic)));
+        }
+
+        // 3: Version mismatch
+        {
+            let mut file = OpenOptions::new().write(true).open(&db_file).unwrap();
+            let _ = file.seek(SeekFrom::Start(0)).unwrap();
+            file.write_all(&MAGIC).unwrap();
+            let _ = file.seek(SeekFrom::Start(4)).unwrap();
+            file.write_all(&0xFFu32.to_le_bytes()).unwrap();
+            drop(file);
+
+            assert!(matches!(
+                Engine::open(cfg.clone()),
+                Err(TurboError::VersionMismatch { expected: LAYOUT_VERSION, found: 0xFF })
+            ));
+        }
+
+        // 4: Invalid page size
+        {
+            let mut file = OpenOptions::new().write(true).open(&db_file).unwrap();
+            let _ = file.seek(SeekFrom::Start(4)).unwrap();
+            file.write_all(&LAYOUT_VERSION.to_le_bytes()).unwrap();
+            let _ = file.seek(SeekFrom::Start(8)).unwrap();
+            file.write_all(&0x01u32.to_le_bytes()).unwrap();
+            drop(file);
+
+            assert!(matches!(Engine::open(cfg.clone()), Err(TurboError::InvalidPageSize(1))));
+        }
+
+        // 5: Total slots divergence
+        {
+            let mut file = OpenOptions::new().write(true).open(&db_file).unwrap();
+            let page_size = MemMap::<Slot>::page_size().unwrap().as_u32();
+            let _ = file.seek(SeekFrom::Start(8)).unwrap();
+            file.write_all(&page_size.to_le_bytes()).unwrap();
+            let _ = file.seek(SeekFrom::Start(0x10)).unwrap();
+            file.write_all(&0x1234u32.to_le_bytes()).unwrap();
+            drop(file);
+
+            assert!(matches!(Engine::open(cfg.clone()), Err(TurboError::CorruptedHeader(_))));
+        }
+
+        // 6: Truncated file length
+        {
+            let file = OpenOptions::new().write(true).open(&db_file).unwrap();
+            let len = file.metadata().unwrap().len();
+            file.set_len(len - (SLOT_SIZE as u64)).unwrap();
+            drop(file);
+
+            assert!(matches!(Engine::open(cfg), Err(TurboError::Storage { .. })));
+        }
+    }
+
+    #[test]
+    fn ok_engine_uniform_slot_allocation_and_growth() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        let initial_free = engine.free_slot_marker.load(Ordering::Acquire);
+        let alloc_s = engine.alloc_uniform_slots(0x20).unwrap();
+        assert_eq!(alloc_s, initial_free);
+        assert_eq!(engine.free_slot_marker.load(Ordering::Acquire), initial_free + 0x20);
+
+        let initial_pages = engine.total_pages().unwrap();
+        let initial_slots = engine.total_slots.load(Ordering::Acquire);
+        let huge_alloc = engine.alloc_uniform_slots(initial_slots + 0x40).unwrap();
+        assert!(huge_alloc >= initial_free + 0x20);
+        assert!(engine.total_pages().unwrap() > initial_pages);
+        assert!(engine.total_slots.load(Ordering::Acquire) > initial_slots);
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_databuf_allocation_and_chaining() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        assert_eq!(engine.databuf_slot_to_hop(DATABUF_HEAD_SLOT).unwrap(), 0);
+        assert_eq!(engine.locate_databuf_slot(0).unwrap(), DATABUF_HEAD_SLOT);
+
+        let second_slot = DATABUF_HEAD_SLOT + (DATABUF_SLOTS as u32);
+        assert_eq!(engine.locate_databuf_slot(1).unwrap(), second_slot);
+        assert_eq!(engine.databuf_slot_to_hop(second_slot).unwrap(), 1);
+
+        let third_slot = engine.expand_databuf(second_slot as usize).unwrap();
+        assert_eq!(engine.locate_databuf_slot(2).unwrap(), third_slot);
+        assert_eq!(engine.databuf_slot_to_hop(third_slot).unwrap(), 2);
+
+        let plan = engine.find_free_databuf(0x04, 0).unwrap();
+        assert_eq!(plan.start_slot, third_slot as usize);
+        assert_eq!(plan.local_idx, 0);
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn err_engine_broken_chain_detection() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        // 1: Sever databuf chain
+        let _ = engine.mmap.write_exact::<DataBuf, _, _>(DATABUF_HEAD_SLOT as usize, |d| {
+            d.set_next_dbuf_index(0);
+        });
+        assert!(matches!(
+            engine.locate_databuf_slot(1),
+            Err(TurboError::CorruptedHeader("broken databuf chain"))
+        ));
+
+        // 2: Non-existent slot hop lookup
+        assert!(matches!(
+            engine.databuf_slot_to_hop(0x9999),
+            Err(TurboError::CorruptedHeader("databuf slot not found in allocation chain"))
+        ));
+
+        // 3: Sever adjarr chain
+        let _ = engine.mmap.write_exact::<AdjArrayBlock, _, _>(ADJ_ARR_HEAD_SLOT as usize, |b| {
+            b.set_next_block(0);
+        });
+        assert!(matches!(
+            engine.locate_adjarr_block_slot(1),
+            Err(TurboError::CorruptedHeader("broken adjarr block chain"))
+        ));
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_adjarr_allocation_and_chaining() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        assert_eq!(engine.locate_adjarr_block_slot(0).unwrap(), ADJ_ARR_HEAD_SLOT);
+
+        let (rel_idx, block_slot, _orig, _mutated) = engine.find_free_adjarr_array(0).unwrap();
+        assert_eq!(block_slot, ADJ_ARR_HEAD_SLOT as usize);
+        let (hop, local) = decompose_relative_array_idx(rel_idx);
+        assert_eq!(hop, 0);
+        assert_eq!(local, 0);
+
+        let new_block_slot = engine.expand_adjarr(INITIAL_ADJ_ARR_BLOCKS).unwrap();
+        assert!(new_block_slot > 0);
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_kv_crud_lifecycle() {
+        for mem_index in [false, true] {
+            let dir = tempdir().unwrap();
+            let cfg = TurboCfg::manual(dir.path()).with_mem_index(mem_index);
+            let engine = Engine::create(cfg).unwrap();
+
+            assert!(!engine.contains_key(b"key_alpha").unwrap());
+            assert_eq!(engine.get(b"key_alpha").unwrap(), None);
+
+            // 1: Insert new KV
+            let ticket = engine.set(b"key_alpha", b"val_init").unwrap();
+            assert!(ticket.epoch() > 0);
+            assert_eq!(engine.total_entries(), 1);
+            assert!(engine.contains_key(b"key_alpha").unwrap());
+            assert_eq!(engine.get(b"key_alpha").unwrap(), Some(b"val_init".to_vec()));
+
+            // 2: In-place overwrite (smaller or equal payload)
+            let _ = engine.set(b"key_alpha", b"v2").unwrap();
+            assert_eq!(engine.total_entries(), 1);
+            assert_eq!(engine.get(b"key_alpha").unwrap(), Some(b"v2".to_vec()));
+
+            // 3: Growth overwrite (larger payload requiring buffer reallocation)
+            let large_val = vec![0x5A; 0x0120];
+            let _ = engine.set(b"key_alpha", &large_val).unwrap();
+            assert_eq!(engine.total_entries(), 1);
+            assert_eq!(engine.get(b"key_alpha").unwrap(), Some(large_val));
+
+            // 4: Delete key
+            assert!(engine.del(b"key_alpha").unwrap());
+            assert_eq!(engine.total_entries(), 0);
+            assert!(!engine.contains_key(b"key_alpha").unwrap());
+            assert_eq!(engine.get(b"key_alpha").unwrap(), None);
+            assert!(!engine.del(b"key_alpha").unwrap());
+
+            // 5: Re-insert after tombstone
+            let _ = engine.set(b"key_alpha", b"revived").unwrap();
+            assert_eq!(engine.total_entries(), 1);
+            assert_eq!(engine.get(b"key_alpha").unwrap(), Some(b"revived".to_vec()));
+
+            engine.delete().unwrap();
+        }
+    }
+
+    #[test]
+    fn err_engine_kv_boundaries_and_type_mismatch() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        // 1: Empty key boundary
+        assert_eq!(engine.get(b"").unwrap(), None);
+        assert!(!engine.contains_key(b"").unwrap());
+        assert!(!engine.del(b"").unwrap());
+        assert!(matches!(engine.set(b"", b"val"), Err(TurboError::PayloadTooLarge)));
+
+        // 2: Oversized key
+        let long_key = vec![0x41; MAX_KEY_LEN + 1];
+        assert_eq!(engine.get(&long_key).unwrap(), None);
+        assert!(!engine.contains_key(&long_key).unwrap());
+        assert!(!engine.del(&long_key).unwrap());
+        assert!(matches!(engine.set(&long_key, b"val"), Err(TurboError::PayloadTooLarge)));
+
+        // 3: Oversized value
+        let long_val = vec![0x42; MAX_VAL_LEN + 1];
+        assert!(matches!(engine.set(b"k", &long_val), Err(TurboError::PayloadTooLarge)));
+
+        // 4: Type mismatch on list entry
+        let _ = engine.list_append(b"list_item_k", b"elem").unwrap();
+        assert!(matches!(engine.get(b"list_item_k"), Err(TurboError::InvalidType(_))));
+        assert!(matches!(engine.contains_key(b"list_item_k"), Err(TurboError::InvalidType(_))));
+        assert!(matches!(engine.set(b"list_item_k", b"val"), Err(TurboError::InvalidType(_))));
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_list_append_pop_and_indexing() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        // 1: Empty list queries
+        assert_eq!(engine.list_len(b"target_list").unwrap(), 0);
+        assert_eq!(engine.list_first(b"target_list").unwrap(), None);
+        assert_eq!(engine.list_last(b"target_list").unwrap(), None);
+        assert_eq!(engine.list_get_at(b"target_list", 0).unwrap(), None);
+        assert!(engine.list_items(b"target_list").unwrap().is_empty());
+        assert_eq!(engine.list_pop(b"target_list").unwrap(), None);
+
+        // 2: Sequential append
+        let _ = engine.list_append(b"target_list", b"elem_0").unwrap();
+        let _ = engine.list_append(b"target_list", b"elem_1").unwrap();
+        let _ = engine.list_append(b"target_list", b"elem_2").unwrap();
+
+        assert_eq!(engine.list_len(b"target_list").unwrap(), 3);
+        assert_eq!(engine.list_first(b"target_list").unwrap(), Some(b"elem_0".to_vec()));
+        assert_eq!(engine.list_last(b"target_list").unwrap(), Some(b"elem_2".to_vec()));
+        assert_eq!(engine.list_get_at(b"target_list", 0).unwrap(), Some(b"elem_0".to_vec()));
+        assert_eq!(engine.list_get_at(b"target_list", 1).unwrap(), Some(b"elem_1".to_vec()));
+        assert_eq!(engine.list_get_at(b"target_list", 2).unwrap(), Some(b"elem_2".to_vec()));
+        assert_eq!(engine.list_get_at(b"target_list", 3).unwrap(), None);
+
+        assert_eq!(
+            engine.list_items(b"target_list").unwrap(),
+            vec![b"elem_0".to_vec(), b"elem_1".to_vec(), b"elem_2".to_vec()]
+        );
+
+        // 3: Pop stack order
+        assert_eq!(engine.list_pop(b"target_list").unwrap(), Some(b"elem_2".to_vec()));
+        assert_eq!(engine.list_len(b"target_list").unwrap(), 2);
+        assert_eq!(engine.list_pop(b"target_list").unwrap(), Some(b"elem_1".to_vec()));
+        assert_eq!(engine.list_len(b"target_list").unwrap(), 1);
+        assert_eq!(engine.list_pop(b"target_list").unwrap(), Some(b"elem_0".to_vec()));
+        assert_eq!(engine.list_len(b"target_list").unwrap(), 0);
+        assert_eq!(engine.list_pop(b"target_list").unwrap(), None);
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_list_array_chaining_overflow() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        // Exceed single array capacity (0x0E entries) by appending 0x14 items
+        for i in 0..0x14 {
+            let item_payload = format!("chained_elem_{i}");
+            let _ = engine.list_append(b"chain_lst", item_payload.as_bytes()).unwrap();
+        }
+
+        assert_eq!(engine.list_len(b"chain_lst").unwrap(), 0x14);
+        assert_eq!(engine.list_first(b"chain_lst").unwrap(), Some(b"chained_elem_0".to_vec()));
+        assert_eq!(engine.list_last(b"chain_lst").unwrap(), Some(b"chained_elem_19".to_vec()));
+
+        assert_eq!(
+            engine.list_get_at(b"chain_lst", 0x0D).unwrap(),
+            Some(b"chained_elem_13".to_vec())
+        );
+        assert_eq!(
+            engine.list_get_at(b"chain_lst", 0x0E).unwrap(),
+            Some(b"chained_elem_14".to_vec())
+        );
+        assert_eq!(engine.list_get_at(b"chain_lst", 0x14).unwrap(), None);
+
+        for i in (0..0x14).rev() {
+            let expected = format!("chained_elem_{i}").into_bytes();
+            assert_eq!(engine.list_pop(b"chain_lst").unwrap(), Some(expected));
+        }
+
+        assert_eq!(engine.list_len(b"chain_lst").unwrap(), 0);
+        assert_eq!(engine.list_pop(b"chain_lst").unwrap(), None);
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_list_deletion_cleanup() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        for i in 0..5 {
+            let _ = engine.list_append(b"clean_lst", format!("item_{i}").as_bytes()).unwrap();
+        }
+
+        assert!(engine.list_del(b"clean_lst").unwrap());
+        assert_eq!(engine.list_len(b"clean_lst").unwrap(), 0);
+        assert!(engine.list_items(b"clean_lst").unwrap().is_empty());
+        assert!(!engine.list_del(b"clean_lst").unwrap());
+
+        // Del delegation via engine.del
+        let _ = engine.list_append(b"clean_lst2", b"v").unwrap();
+        assert!(engine.del(b"clean_lst2").unwrap());
+        assert_eq!(engine.list_len(b"clean_lst2").unwrap(), 0);
+        assert!(!engine.del(b"clean_lst2").unwrap());
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn err_engine_list_boundaries_and_type_mismatch() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        // 1: Empty key rejects append; read operations return vacant/zero
+        assert!(matches!(engine.list_append(b"", b"item"), Err(TurboError::PayloadTooLarge)));
+        assert_eq!(engine.list_pop(b"").unwrap(), None);
+        assert_eq!(engine.list_first(b"").unwrap(), None);
+        assert_eq!(engine.list_last(b"").unwrap(), None);
+        assert_eq!(engine.list_get_at(b"", 0).unwrap(), None);
+        assert_eq!(engine.list_len(b"").unwrap(), 0);
+        assert!(engine.list_items(b"").unwrap().is_empty());
+        assert!(!engine.list_del(b"").unwrap());
+
+        // 2: Oversized key and item payloads
+        let long_key = vec![0x41; MAX_KEY_LEN + 1];
+        assert!(matches!(engine.list_append(&long_key, b"item"), Err(TurboError::PayloadTooLarge)));
+        let long_val = vec![0x42; MAX_VAL_LEN + 1];
+        assert!(matches!(engine.list_append(b"k", &long_val), Err(TurboError::PayloadTooLarge)));
+
+        // 3: Conflict with KV key
+        let _ = engine.set(b"kv_entry_key", b"scalar_val").unwrap();
+        assert!(matches!(
+            engine.list_append(b"kv_entry_key", b"item"),
+            Err(TurboError::InvalidType(_))
+        ));
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_metrics_and_sync() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        assert_eq!(engine.total_entries(), 0);
+        assert!(engine.total_pages().unwrap() >= 1);
+        assert!(engine.remaining_pages().unwrap() > 0);
+        assert!(engine.remaining_bytes().unwrap() > 0);
+
+        let _ = engine.set(b"k1", b"v1").unwrap();
+        let _ = engine.set(b"k2", b"v2").unwrap();
+        assert_eq!(engine.total_entries(), 2);
+
+        engine.sync().unwrap();
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_jitter_and_occ_backoff() {
+        for attempt in 0..0x10 {
+            let j = Engine::fast_jitter(attempt);
+            assert!((0x4B..=0x7E).contains(&j));
+        }
+
+        // Exercise spin, yield, and sleep branches
+        Engine::occ_backoff(0);
+        Engine::occ_backoff(4);
+        Engine::occ_backoff(8);
+    }
+}

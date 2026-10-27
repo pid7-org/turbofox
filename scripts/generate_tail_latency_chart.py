@@ -28,8 +28,8 @@ CANDIDATE_WORKLOADS = [
     ("del_perf", "mixed_60_40", "DEL: 60/40 Hit/Miss"),
 ]
 
-PERCENTILES = ["p50", "p90", "p99", "p999"]
-PERCENTILE_LABELS = {"p50": "p50", "p90": "p90", "p99": "p99", "p999": "p99.9"}
+PERCENTILES = ["p50", "p90", "p99"]
+PERCENTILE_LABELS = {"p50": "p50", "p90": "p90", "p99": "p99"}
 
 
 def load_results(path):
@@ -67,8 +67,8 @@ def generate_svg(lookup, out_path):
     if not active_threads:
         active_threads = [2]
 
-    # Limit y-axis to 5ms (5,000 µs) to prevent outliers from skewing chart
-    max_lat = 5000.0
+    # Limit y-axis to 2ms (2,000 µs) to prevent outliers from skewing chart
+    max_lat = 2000.0
 
     svg = []
     svg.append(
@@ -89,7 +89,7 @@ def generate_svg(lookup, out_path):
         )
     else:
         thr_label = " vs ".join(f"{t}T" for t in active_threads)
-        sub_label = "Tail latencies in microseconds across p50, p90, p99, and p99.9"
+        sub_label = "Tail latencies in microseconds across p50, p90, and p99"
 
     svg.append(
         f'<text x="32" y="32" fill="{COLOR_TEXT}" font-size="16" font-weight="bold">'
@@ -117,9 +117,9 @@ def generate_svg(lookup, out_path):
         f'fill="{COLOR_SURFACE}" rx="6"/>'
     )
 
-    # Grid lines (0 to 5000 µs in 1000 µs intervals)
-    for i in range(6):
-        val = (max_lat / 5.0) * i
+    # Grid lines (0 to 2000 µs in 500 µs intervals)
+    for i in range(5):
+        val = (max_lat / 4.0) * i
         y_pos = p_y + p_h - (val / max_lat) * p_h
         svg.append(
             f'<line x1="{p_x}" y1="{y_pos:.1f}" x2="{p_x + p_w}" y2="{y_pos:.1f}" '
@@ -156,7 +156,7 @@ def generate_svg(lookup, out_path):
                     f'rx="3" fill="{COLOR_1T}"/>'
                 )
                 txt_y = y - 4 if h < p_h - 20 else y + 12
-                txt_color = COLOR_TEXT if h < p_h - 20 else COLOR_BASE
+                txt_color = COLOR_TEXT
                 svg.append(
                     f'<text x="{center:.1f}" y="{txt_y:.1f}" fill="{txt_color}" '
                     f'font-size="9" font-weight="bold" text-anchor="middle">{v:.0f}µs</text>'
@@ -188,14 +188,14 @@ def generate_svg(lookup, out_path):
                 )
 
                 txt1_y = y1 - 4 if h1 < p_h - 20 else y1 + 12
-                txt1_c = COLOR_TEXT if h1 < p_h - 20 else COLOR_BASE
+                txt1_c = COLOR_TEXT
                 svg.append(
                     f'<text x="{b1_x + bar_w/2:.1f}" y="{txt1_y:.1f}" fill="{txt1_c}" '
                     f'font-size="8" text-anchor="middle">{v1:.0f}µs</text>'
                 )
 
                 txt4_y = y4 - 4 if h4 < p_h - 20 else y4 + 12
-                txt4_c = COLOR_TEXT if h4 < p_h - 20 else COLOR_BASE
+                txt4_c = COLOR_TEXT
                 svg.append(
                     f'<text x="{b4_x + bar_w/2:.1f}" y="{txt4_y:.1f}" fill="{txt4_c}" '
                     f'font-size="8" text-anchor="middle">{v4:.0f}µs</text>'

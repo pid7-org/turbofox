@@ -32,7 +32,7 @@ impl BenchConfig {
         let mut threads = 0x04;
         let mut warmup_ops = 0x00;
         let mut samples = 0x32; // 50 samples
-        let mut scales = vec![0x03E8, 0x2710, 0x0001_86A0, 0x000F_4240]; // 1K, 10K, 100K, 1M
+        let mut scales = vec![0x03E8, 0x2710, 0x0001_86A0]; // 1K, 10K, 100K
         let mut db_path = None;
         let mut mem_index = false;
 

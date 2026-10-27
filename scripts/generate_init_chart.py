@@ -23,6 +23,8 @@ FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
 )
 
+DEFAULT_SCALES = [1000, 10000, 100000]
+
 
 def load_init_results(path):
     with open(path, "r", encoding="utf-8") as handle:

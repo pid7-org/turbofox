@@ -132,39 +132,39 @@
 //! - Instance: AWS EC2 `c5d.large` (2 vCPUs, Intel Xeon Platinum 8223CL CPU @ 3.00 GHz)
 //! - Memory: 0x04 GiB DDR4 system RAM
 //! - Storage: Dedicated local hardware NVMe SSD (`/mnt/nvme0n1`)
-//! - Workload: 0x186A0 (100,000) operations per benchmark suite under uniform distribution
-//! - Concurrency: 1-thread baseline vs 4-thread concurrent worker evaluation
+//! - Workload: 0x0004_0000 (262,144) operations per benchmark suite under uniform distribution
+//! - Concurrency: 1-thread baseline vs 2-thread concurrent worker evaluation
 //!
 //! ### Operation Throughput & Concurrency Scaling
 //!
-//! Sustained key-value operations per second across 1-thread and 4-thread worker configurations
+//! Sustained key-value operations per second across 1-thread and 2-thread worker configurations
 //!
-//! | Workload              | 1 Thread Throughput | 4 Thread Throughput | Scaling Ratio |
-//! |:----------------------|:--------------------|:--------------------|:--------------|
-//! | SET (Insert)          | 7.76 kops/s         | 4.40 kops/s         | 0.57x         |
-//! | GET (60/40 Hit/Miss)  | 11.84 kops/s        | 12.88 kops/s        | 1.09x         |
-//! | DEL (60/40 Hit/Miss)  | 11.77 kops/s        | 12.83 kops/s        | 1.09x         |
+//! | Workload               | 1 Thread Throughput | 2 Thread Throughput | Scaling Ratio |
+//! |:-----------------------|:--------------------|:--------------------|:--------------|
+//! | SET (60/40 New/Update) | 4.21 kops/s         | 3.69 kops/s         | 0.88x         |
+//! | GET (60/40 Hit/Miss)   | 4.47 kops/s         | 4.91 kops/s         | 1.10x         |
+//! | DEL (60/40 Hit/Miss)   | 4.46 kops/s         | 4.93 kops/s         | 1.11x         |
 //!
-//! Note: Evaluation executes on 2 vCPU hardware where 4 worker threads oversubscribe physical
-//! compute cores; throughput scaling reflects compute core oversubscription and OCC slot contention
+//! Note: Evaluation executes on 2 vCPU hardware (c5d.large); throughput scaling reflects
+//! OCC conflict resolution and backing storage synchronization across concurrent threads
 //!
 //! ### Tail Latency Profile Under Concurrency
 //!
-//! Percentile latency distributions (p50 to p99.9) comparing 1T baseline against 4T concurrent
+//! Percentile latency distributions (p50 to p99.9) comparing 1T baseline against 2T concurrent
 //! workers
 //!
-//! | Workload              | Threads | p50     | p90     | p99      | p99.9    |
-//! |:----------------------|:--------|:--------|:--------|:---------|:---------|
-//! | SET: Insert           | 1T      | 0.13 ms | 0.22 ms | 0.29 ms  | 1.10 ms  |
-//! | SET: Insert           | 4T      | 0.22 ms | 0.43 ms | 11.56 ms | 65.60 ms |
-//! | GET: 60/40 Hit/Miss   | 1T      | 0.05 ms | 0.23 ms | 0.27 ms  | 0.28 ms  |
-//! | GET: 60/40 Hit/Miss   | 4T      | 0.09 ms | 0.48 ms | 2.47 ms  | 3.31 ms  |
-//! | DEL: 60/40 Hit/Miss   | 1T      | 0.05 ms | 0.23 ms | 0.28 ms  | 0.28 ms  |
-//! | DEL: 60/40 Hit/Miss   | 4T      | 0.09 ms | 0.48 ms | 2.47 ms  | 4.07 ms  |
+//! | Workload              | Threads | p50     | p90     | p99     | p99.9    |
+//! |:----------------------|:--------|:--------|:--------|:--------|:---------|
+//! | SET: 60/40 New/Update | 1T      | 0.21 ms | 0.38 ms | 0.49 ms | 5.48 ms  |
+//! | SET: 60/40 New/Update | 2T      | 0.44 ms | 0.97 ms | 1.84 ms | 20.27 ms |
+//! | GET: 60/40 Hit/Miss   | 1T      | 0.12 ms | 0.62 ms | 0.75 ms | 0.76 ms  |
+//! | GET: 60/40 Hit/Miss   | 2T      | 0.22 ms | 1.13 ms | 1.33 ms | 1.35 ms  |
+//! | DEL: 60/40 Hit/Miss   | 1T      | 0.12 ms | 0.62 ms | 0.75 ms | 0.76 ms  |
+//! | DEL: 60/40 Hit/Miss   | 2T      | 0.22 ms | 1.12 ms | 1.32 ms | 1.35 ms  |
 //!
-//! Note: Sub-millisecond median latencies (p50 <= 0.05 ms for reads and deletes) sustained under 1T
-//! baseline; read and delete tail latencies stay bounded under 4.5 ms at p99.9 under 4T
-//! concurrency while elevated 4T p99.9 write tail stems from OCC conflict retries and backing
+//! Note: Sub-millisecond median latencies (p50 <= 0.22 ms for reads and deletes) sustained across 1T
+//! and 2T; read and delete tail latencies stay bounded under 1.5 ms at p99.9 under 2T
+//! concurrency while elevated 2T p99.9 write tail stems from OCC conflict retries and backing
 //! file growth serialization
 
 #![allow(unsafe_op_in_unsafe_fn)]

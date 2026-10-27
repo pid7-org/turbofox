@@ -92,7 +92,7 @@ pub enum TurboError {
         found: usize,
     },
 
-    /// Root node virtual page failed type discriminator check
+    /// Database root metadata failed integrity validation
     InvalidRootNode,
 
     /// Resource is currently busy or referenced by active handles
@@ -101,7 +101,7 @@ pub enum TurboError {
     /// Key type mismatch such as key-value operations on list structures
     InvalidType(&'static str),
 
-    /// Payload exceeds maximum single DataBuf storage capacity
+    /// Key or value payload exceeds engine storage limits (1004 bytes for KV pairs)
     PayloadTooLarge,
 
     /// Payload data failed CRC32 validation or offset integrity

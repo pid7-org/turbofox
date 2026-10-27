@@ -87,15 +87,14 @@ impl TurboList {
 
     /// Append an item payload to the tail of the list
     ///
-    /// Internally allocates new descriptor blocks as needed and returns a [`TurboTicket`] for
-    /// tracking write persistence
+    /// Writes the entry immediately and returns a [`TurboTicket`] for tracking persistence
     ///
     /// ## Crash Safe Durability
     ///
     /// Returns a [`TurboTicket`] bound to this append operation's assigned commit epoch
     ///
-    /// Internally the entry is commited to memory-mapped descriptor blocks immediately, while the
-    /// returned ticket allows tracking for crash safe durability (i.e. persistence on disk)
+    /// The write is committed immediately for concurrent reads, while the returned ticket allows
+    /// tracking physical persistence on disk
     ///
     /// Callers can query [`TurboTicket::is_durable`], block on [`TurboTicket::wait`], or force
     /// writeback via [`TurboTicket::force`] for explicit durability guarantee
@@ -105,9 +104,8 @@ impl TurboList {
     /// ## Errors
     ///
     /// * [`TurboError::PayloadTooLarge`](crate::TurboError::PayloadTooLarge) if item payload
-    ///   exceeds maximum buffer capacity
-    /// * [`TurboError::Storage`](crate::TurboError::Storage) if allocating storage descriptor
-    ///   blocks fails
+    ///   exceeds maximum capacity (1002 bytes)
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if allocating storage space fails
     ///
     /// ## Example
     ///
@@ -138,7 +136,7 @@ impl TurboList {
     ///
     /// ## Errors
     ///
-    /// * [`TurboError::Storage`](crate::TurboError::Storage) if block deallocation fails
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if storage update fails
     ///
     /// ## Example
     ///
@@ -231,8 +229,6 @@ impl TurboList {
     /// Retrieve the item payload at the specified 0-based index and returns `Ok(None)` if index is
     /// out of bounds
     ///
-    /// Internally traverses chained adjacent array descriptor blocks to locate the target item slot
-    ///
     /// ## Errors
     ///
     /// * [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) if payload
@@ -262,7 +258,7 @@ impl TurboList {
         self.engine.list_get_at(&self.key, idx)
     }
 
-    /// Compute total number of item entries in this list by reading allocated descriptor chains
+    /// Return the total number of items stored in this list
     ///
     /// ## Errors
     ///
@@ -354,13 +350,13 @@ impl TurboList {
         Ok(TurboListIter { items, index: 0 })
     }
 
-    /// Remove [`crate::TurboList`] and reclaim all allocated descriptor blocks and payload buffers
+    /// Remove [`crate::TurboList`] and delete all its items from storage
     ///
     /// Returns `Ok(true)` if list existed and was cleared, `Ok(false)` otherwise
     ///
     /// ## Errors
     ///
-    /// * [`TurboError::Storage`](crate::TurboError::Storage) if block reclamation fails
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if storage removal fails
     ///
     /// ## Example
     ///

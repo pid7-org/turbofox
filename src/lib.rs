@@ -48,42 +48,32 @@
 //!
 //! ## Architecture Guarantees
 //!
-//! TurboFox is an embedded key-value storage engine engineered around memory-mapped slot
-//! topography, optimistic concurrency control, and zero-rehash overflow chaining
+//! TurboFox is an embedded key-value storage engine engineered around memory-mapped persistence,
+//! optimistic concurrency control, and zero-rehash index chaining
 //!
 //! ### Zero Rehash
 //!
-//! Primary key routing utilizes 32-bit XxHash32 bit-sliced into depth-indexed buckets
-//! (64 slots each)
+//! Primary key routing uses 32-bit XxHash32 with persistent index chaining:
 //!
-//! Hash collisions resolve via a 16-slot SIMD probing window followed by overflow bucket
-//! chaining:
-//!
-//! * Entries are permanently anchored to their allocated bucket chain without global
-//!   redistribution, eliminating stop-the-world rehashing pauses and maintaining bounded p99 write
-//!   latency
-//! * In-place overwrites execute directly within preallocated DataBuf spans when new payloads fit
-//!   in existing 16-byte chunk boundaries
-//! * Structural allocations expand incrementally via monotonic bump allocation without bulk
-//!   page copies
+//! * Key entries are permanently anchored without global table redistribution, eliminating
+//!   stop-the-world rehashing pauses and maintaining bounded p99 write latency
+//! * In-place overwrites execute directly when updated values fit in existing allocated space
+//! * Storage expands incrementally via monotonic allocation without bulk page copying pauses
 //!
 //! ### Torn-Write Protection
 //!
-//! Point reads execute without reader-writer locks or shared mutex acquisition
+//! Point reads execute concurrently without reader-writer locks or shared mutex acquisition:
 //!
-//! Readers probe 32-bit hash sentinels directly within mapped memory cache lines:
-//!
-//! * Payloads utilize binary framing: `[ CRC32 (4 B) ][ Key ][ Val ][ Pad ]`
-//! * Reading validates CRC32 integrity alongside byte-level key equality (concurrent writes or
-//!   partial page flushes that cause torn reads fail safely via `TurboError::CorruptedPayload`
-//!   rather than returning corrupt data)
-//! * Negative queries (`Ok(None)`) short-circuit on zero-sentinels without accessing payload pages;
-//!   zero heap allocations occur during probe traversal and miss evaluations
+//! * Reading automatically validates payload CRC32 integrity alongside byte-level key equality
+//! * Concurrent writes or partial page flushes that cause torn reads fail safely via
+//!   [`TurboError::CorruptedPayload`] rather than returning corrupted data
+//! * Non-existent keys short-circuit quickly without accessing payload storage pages; zero heap
+//!   allocations occur during lookup misses
 //!
 //! ### Durability Model
 //!
-//! Mutations (`set`, `del`, `append`, `pop`) commit into memory-mapped slots immediately via OCC
-//! and return a lightweight `TurboTicket` bound to a monotonic commit epoch:
+//! Mutations (`set`, `del`, `append`, `pop`) commit immediately via optimistic concurrency control
+//! and return a lightweight [`TurboTicket`] bound to a monotonic commit epoch:
 //!
 //! * Decouples memory-speed writes from physical NVMe writeback latency, where durability
 //!   guarantees depend on the configured sync strategy
@@ -96,42 +86,38 @@
 //!   * A dedicated background sync thread flushes dirty pages up to the current epoch
 //!   * Incorporates adaptive backoff under idle load to prevent write endurance wear on flash
 //!     devices
-//! * `ticket.is_durable()` enables non-blocking checks to poll writeback completion asynchronously
+//! * [`TurboTicket::is_durable`] enables non-blocking checks to poll writeback completion
+//!   asynchronously
 //!
 //! ### TurboList
 //!
-//! Ordered 1-to-N sequences co-exist inside the primary storage file
-//!
-//! Anchored by a primary key registered in root buckets with type flag
-//! `offsets[i][0] & 0x80 != 0`:
+//! Ordered 1-to-N sequences co-exist inside the primary storage file:
 //!
 //! * Eliminates secondary index tables, auxiliary catalog files, and relational join overhead
-//! * Sequences chain through compact 20-byte `AdjArrayList` descriptor blocks (4 item slots per
-//!   node)
-//! * Tail appends sustain amortized O(1) latency (pops deallocate item DataBuf spans and return
-//!   empty descriptor blocks to allocation bitmaps)
-//! * Readers traverse chained descriptors with index-based skipping (`idx / 0x04`) and CRC32 checks
+//! * Provides ordered, append-only lists with amortized O(1) appends and pops
+//! * Supports fast indexed random access ([`TurboList::get_at`]), boundary inspection
+//!   ([`TurboList::first`], [`TurboList::last`]), and snapshot iteration ([`TurboList::iter`])
+//! * Validates item integrity via CRC32 checksums on every read
 //!
 //! ### Storage Topography
 //!
-//! Unified storage container structured into uniform 128-byte slots
+//! Unified single-file storage container managed across memory-mapped virtual address space:
 //!
-//! Initial file footprint begins at only 16 KiB (0x80 slots) on standard 4 KiB host page systems:
-//!
-//! * Virtual memory space reserves up to `MAX_DB_LEN` upfront (physical disk pages back lazily as
-//!   monotonic bump-pointer slot markers advance)
-//! * Buffer pools track 16-byte chunks via 64-bit bitmaps, avoiding external space fragmentation
+//! * Initial file footprint begins at only 16 KiB on standard host systems
+//! * Virtual memory space reserves up to `MAX_DB_LEN` (512 GiB) upfront while physical disk pages
+//!   back lazily as data is written
+//! * Allocations track 16-byte aligned units via bitmasks, avoiding external fragmentation
 //! * Backing files grow dynamically in uniform OS page increments, minimizing write amplification
 //!
 //! ### Operational Invariants
 //!
-//! Hardware and protocol constraints callers must design for:
+//! Constraints callers must design for:
 //!
-//! * Key length bounded between 0x01 and 0xFF bytes and value payload size capped at 0xFFFF bytes
-//! * Contiguous buffer spans within standard DataBuf blocks cap at 0x3F buffers (1008 bytes);
-//!   payloads exceeding capacity return TurboError::PayloadTooLarge
-//! * Multi-slot writes commit via OCC with conflict detection across mapped memory slots
-//!   (aborts and retries up to 0x20 times before surfacing contention errors)
+//! * Key length bounded between 0x01 and 0xFF bytes (255 B)
+//! * Maximum single-entry payload capacity is 1004 bytes for key-value entries and 1002 bytes for
+//!   list items; larger payloads return [`TurboError::PayloadTooLarge`]
+//! * Multi-entry writes commit via OCC with conflict detection (retries up to 0x20 times before
+//!   surfacing contention errors)
 //! * Thread-safe (`Send + Sync`) within a single process via `Arc<TurboFox>`
 //!   * Single-process exclusivity is enforced at startup via mandatory POSIX / Win32 advisory file
 //!     locks
@@ -307,19 +293,18 @@ impl TurboFox {
 
     /// Insert or update a key-value pair
     ///
-    /// Internally commits bytes into memory-mapped data buffers and returns a [`TurboTicket`]
-    /// tracking background write durability
+    /// Commits the entry immediately for concurrent readers and returns a [`TurboTicket`] tracking
+    /// background write durability
     ///
-    /// Key length must not exceed [`crate::MAX_KEY_LEN`] bytes and value payload must not exceed
-    /// [`crate::MAX_VAL_LEN`] bytes
+    /// Key length must not exceed [`crate::MAX_KEY_LEN`] bytes and total entry payload must not
+    /// exceed engine storage capacity (1004 bytes)
     ///
     /// ## Crash Safe Durability
     ///
     /// Returns a [`TurboTicket`] bound to this write's assigned commit epoch
     ///
-    /// Internally write is commited to memory-mapped buffers immediately for lock-free read
-    /// availability, while the ticket allows callers to track when bytes are physically flushed for
-    /// crash safe durability
+    /// Writes are visible immediately to concurrent readers, while the ticket allows callers to
+    /// track when bytes are physically flushed for crash safe durability
     ///
     /// Callers requiring durability guarantees can call [`TurboTicket::wait`] to block until
     /// persisted, or [`TurboTicket::force`] to trigger an immediate flush
@@ -388,8 +373,8 @@ impl TurboFox {
 
     /// Check whether the specified key exists without allocating or copying its value payload
     ///
-    /// Internally performs lock-free bucket probing directly in mapped hash tables; significantly
-    /// faster than [`TurboFox::get`] when checking for existence
+    /// Probes key index existence directly; significantly faster than [`TurboFox::get`] when
+    /// checking for presence
     ///
     /// ## Errors
     ///
@@ -447,7 +432,7 @@ impl TurboFox {
         self.engine.del(key)
     }
 
-    /// Accesse or create a 1-to-N [`TurboList`] structure anchored at the given key
+    /// Access or create a 1-to-N [`TurboList`] structure anchored at the given key
     ///
     /// It allows sequential appends, pops, and index-based random access
     ///

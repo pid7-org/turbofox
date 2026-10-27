@@ -1,13 +1,11 @@
 mod common;
 
-use common::{BenchDir, BenchSummary, new_histogram, print_json_summary};
+use common::{BenchDir, BenchSummary, KEY_SIZE, VAL_SIZE, new_histogram, print_json_summary};
 use std::time::Instant;
 use turbofox::{TurboCfg, TurboFox};
 
 const OPS: usize = 0x000F_4240;
 const SAMPLES: usize = 0x0100;
-const KEY_SIZE: usize = 0x04;
-const VAL_SIZE: usize = 0x08;
 
 fn main() {
     let (bench_dir, db_path) = BenchDir::new(None, "init_perf");

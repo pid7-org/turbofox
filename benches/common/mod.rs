@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tempfile::TempDir;
 
-pub const KEY_SIZE: usize = 0x10;
-pub const VAL_SIZE: usize = 0x40;
+pub const KEY_SIZE: usize = 0x04;
+pub const VAL_SIZE: usize = 0x08;
 pub const SIGFIG: u8 = 0x03;
 pub const HISTOGRAM_MAX_NANOS: u64 = 0x0DF8_4758_0000;
 pub const NANOS_PER_MICRO: f64 = 0x03E8 as f64;
@@ -133,13 +133,12 @@ impl BenchDir {
 
 #[inline(always)]
 pub fn make_key(prefix: u16, thread_id: u16, id: u32) -> [u8; KEY_SIZE] {
-    let mut key = [0u8; KEY_SIZE];
+    let miss_bit = if prefix == MISS_PREFIX { 0x8000_0000u32 } else { 0x0000_0000u32 };
+    let tid_part = ((thread_id as u32) & 0xFF) << 0x17;
+    let id_part = id & 0x007F_FFFF;
+    let encoded = miss_bit | tid_part | id_part;
 
-    key[0x00..0x02].copy_from_slice(&prefix.to_be_bytes());
-    key[0x02..0x04].copy_from_slice(&thread_id.to_be_bytes());
-    key[0x04..0x08].copy_from_slice(&id.to_be_bytes());
-
-    key
+    encoded.to_be_bytes()
 }
 
 pub fn make_val(seed: u32) -> [u8; VAL_SIZE] {

@@ -116,7 +116,7 @@
 //! * Key length bounded between 0x01 and 0xFF bytes (255 B)
 //! * Maximum single-entry payload capacity is 1004 bytes for key-value entries and 1002 bytes for
 //!   list items; larger payloads return [`TurboError::PayloadTooLarge`]
-//! * Multi-entry writes commit via OCC with conflict detection (retries up to 0x20 times before
+//! * Multi-entry writes commit via OCC with conflict detection (retries up to 0x100 times before
 //!   surfacing contention errors)
 //! * Thread-safe (`Send + Sync`) within a single process via `Arc<TurboFox>`
 //!   * Single-process exclusivity is enforced at startup via mandatory POSIX / Win32 advisory file

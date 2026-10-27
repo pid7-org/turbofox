@@ -19,6 +19,8 @@ use std::sync::{
     atomic::{AtomicU32, AtomicU64, Ordering},
 };
 
+const OCC_MAX_RETRIES: u32 = 0x100;
+
 #[derive(Clone, Debug)]
 pub(crate) struct DbufAllocPlan {
     start_slot: usize,
@@ -552,7 +554,7 @@ impl Engine {
             return;
         }
 
-        let base_us = 0x14u64.saturating_mul(1u64 << (attempt - 0x08).min(0x03)).min(0x64);
+        let base_us = 0x14u64.saturating_mul(1u64 << (attempt - 0x08).min(0x05)).min(0x3E8);
         let wait_us = (base_us * Self::fast_jitter(attempt)) / 0x64;
         std::thread::sleep(std::time::Duration::from_micros(wait_us.max(0x01)));
     }
@@ -777,7 +779,7 @@ impl Engine {
             }
         }
 
-        for attempt in 0..0x20 {
+        for attempt in 0..OCC_MAX_RETRIES {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 
@@ -1009,7 +1011,7 @@ impl Engine {
             }
         }
 
-        for attempt in 0..0x20 {
+        for attempt in 0..OCC_MAX_RETRIES {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 
@@ -1102,7 +1104,7 @@ impl Engine {
         let target_bucket_slot = r.bucket_slot;
         let target_entry_idx = r.entry_idx as usize;
 
-        for attempt in 0..0x20 {
+        for attempt in 0..OCC_MAX_RETRIES {
             let old_bucket =
                 self.mmap.read_exact::<Bucket, _, _>(target_bucket_slot as usize, |b| *b)?;
 
@@ -1186,7 +1188,7 @@ impl Engine {
         let target_bucket_slot = r.bucket_slot;
         let target_entry_idx = r.entry_idx as usize;
 
-        for attempt in 0..0x20 {
+        for attempt in 0..OCC_MAX_RETRIES {
             let old_bucket =
                 self.mmap.read_exact::<Bucket, _, _>(target_bucket_slot as usize, |b| *b)?;
             let entry = old_bucket.entry(target_entry_idx);
@@ -1354,7 +1356,7 @@ impl Engine {
 
         let hash = hash_key(key);
 
-        for attempt in 0..0x20 {
+        for attempt in 0..OCC_MAX_RETRIES {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 
@@ -1619,7 +1621,7 @@ impl Engine {
 
         let hash = hash_key(key);
 
-        for attempt in 0..0x20 {
+        for attempt in 0..OCC_MAX_RETRIES {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 
@@ -2047,7 +2049,7 @@ impl Engine {
 
         let hash = hash_key(key);
 
-        for attempt in 0..0x20 {
+        for attempt in 0..OCC_MAX_RETRIES {
             let mut bucket_slot = ROOT_BUCKET_SLOT;
             let mut depth = 0u8;
 

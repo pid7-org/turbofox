@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Generate Catppuccin Latte initialization latency scaling SVG"""
+"""Generate Catppuccin Latte initialization latency scaling SVG with dual lines"""
 
 import json
-import math
 import os
 import sys
 
@@ -15,60 +14,76 @@ COLOR_TEXT = "#4c4f69"
 COLOR_BORDER = "#ccd0da"
 COLOR_LINE = "#bcc0cc"
 
-COLOR_P50 = "#1e66f5" # Blue
-COLOR_P90 = "#fe640b" # Peach
-COLOR_P99 = "#d20f39" # Red
+COLOR_NORMAL = "#1e66f5"    # Blue
+COLOR_INDEX = "#8839ef"     # Mauve
 
 FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
 )
 
-DEFAULT_SCALES = [1000, 10000, 100000]
-
 
 def load_init_results(path):
+    if not os.path.exists(path):
+        return [], []
     with open(path, "r", encoding="utf-8") as handle:
-        data = json.load(handle)
-    records = []
-    for entry in data.get("results", []):
-        if entry.get("benchmark") == "init_perf":
-            ops = entry.get("operations", 0)
-            lat = entry.get("latency_micros", {})
-            records.append({
-                "n": ops,
-                "p50": lat.get("p50", 0.0),
-                "p90": lat.get("p90", 0.0),
-                "p99": lat.get("p99", 0.0),
-                "p999": lat.get("p999", 0.0),
-            })
-    records.sort(key=lambda r: r["n"])
-    return records
+        raw = json.load(handle)
+
+    if isinstance(raw, dict):
+        entries = raw.get("results", [])
+    elif isinstance(raw, list):
+        entries = raw
+    else:
+        entries = []
+
+    normal_records = []
+    index_records = []
+
+    for entry in entries:
+        if entry.get("benchmark") != "init_perf":
+            continue
+        workload = entry.get("workload", "")
+        ops = entry.get("operations", 0)
+        lat = entry.get("latency_micros", {})
+        rec = {
+            "n": ops,
+            "p50": lat.get("p50", 0.0),
+            "p90": lat.get("p90", 0.0),
+            "p99": lat.get("p99", 0.0),
+        }
+        if workload == "with_mem_index":
+            index_records.append(rec)
+        elif workload == "without_mem_index":
+            normal_records.append(rec)
+
+    normal_records.sort(key=lambda r: r["n"])
+    index_records.sort(key=lambda r: r["n"])
+    return normal_records, index_records
 
 
-def generate_svg(records, out_path):
-    svg_w = 0x03E8 # 1000 px
-    svg_h = 0x01F4 # 500 px
+def generate_svg(normal_records, index_records, out_path):
+    svg_w = 0x03E8  # 1000 px
+    svg_h = 0x01F4  # 500 px
 
     p_x = 0x50
     p_y = 0x50
     p_w = svg_w - 0x78
     p_h = svg_h - 0x78
 
-    if not records:
+    all_records = normal_records + index_records
+    if not all_records:
         return
 
-    n_vals = [r["n"] for r in records]
-    max_lat = max(max(r["p99"], r["p90"], r["p50"]) for r in records)
-    max_lat = max(max_lat * 1.25, 10.0)
+    all_n = sorted(list(set(r["n"] for r in all_records)))
+    min_n = min(all_n)
+    max_n = max(all_n)
 
-    # Log10 scaling for X-axis
-    log_min_x = math.log10(min(n_vals)) if min(n_vals) > 0 else 0
-    log_max_x = math.log10(max(n_vals)) if max(n_vals) > min(n_vals) else (log_min_x + 1)
+    max_lat = max(r["p50"] for r in all_records)
+    max_lat = max(max_lat * 1.15, 10.0)
 
     def x_coord(n):
-        if log_max_x == log_min_x:
+        if max_n == min_n:
             return p_x + p_w / 2
-        ratio = (math.log10(n) - log_min_x) / (log_max_x - log_min_x)
+        ratio = (n - min_n) / (max_n - min_n)
         return p_x + ratio * p_w
 
     def y_coord(lat):
@@ -93,25 +108,33 @@ def generate_svg(records, out_path):
     )
     svg.append(
         f'<text x="32" y="52" fill="{COLOR_SUBTLE}" font-size="11">'
-        f'Initialization latency across entry scale N (Catppuccin Latte theme)</text>'
+        f'Open latency across scaling intervals (Catppuccin Latte theme)</text>'
     )
 
     # Legend
-    leg_x = svg_w - 0x0118
-    svg.append(f'<circle cx="{leg_x}" cy="34" r="5" fill="{COLOR_P50}"/>')
+    leg_x = svg_w - 380
     svg.append(
-        f'<text x="{leg_x + 10}" y="38" fill="{COLOR_TEXT}" font-size="11">p50</text>'
+        f'<line x1="{leg_x}" y1="34" x2="{leg_x + 24}" y2="34" '
+        f'stroke="{COLOR_NORMAL}" stroke-width="2.5"/>'
     )
-    svg.append(f'<circle cx="{leg_x + 60}" cy="34" r="5" fill="{COLOR_P90}"/>')
+    svg.append(f'<circle cx="{leg_x + 12}" cy="34" r="4.5" fill="{COLOR_NORMAL}"/>')
     svg.append(
-        f'<text x="{leg_x + 70}" y="38" fill="{COLOR_TEXT}" font-size="11">p90</text>'
-    )
-    svg.append(f'<circle cx="{leg_x + 120}" cy="34" r="5" fill="{COLOR_P99}"/>')
-    svg.append(
-        f'<text x="{leg_x + 130}" y="38" fill="{COLOR_TEXT}" font-size="11">p99</text>'
+        f'<text x="{leg_x + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
+        f'Normal (without_mem_index)</text>'
     )
 
-    # Plot panel background and grid
+    leg_x2 = leg_x + 195
+    svg.append(
+        f'<line x1="{leg_x2}" y1="34" x2="{leg_x2 + 24}" y2="34" '
+        f'stroke="{COLOR_INDEX}" stroke-width="2.5"/>'
+    )
+    svg.append(f'<circle cx="{leg_x2 + 12}" cy="34" r="4.5" fill="{COLOR_INDEX}"/>')
+    svg.append(
+        f'<text x="{leg_x2 + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
+        f'w/ mem_index</text>'
+    )
+
+    # Plot panel background
     svg.append(
         f'<rect x="{p_x}" y="{p_y}" width="{p_w}" height="{p_h}" '
         f'fill="{COLOR_SURFACE}" rx="6"/>'
@@ -122,50 +145,61 @@ def generate_svg(records, out_path):
         y_val = (max_lat / 4.0) * i
         y_pos = y_coord(y_val)
         svg.append(
-            f'<line x1="{p_x}" y1="{y_pos}" x2="{p_x + p_w}" y2="{y_pos}" '
+            f'<line x1="{p_x}" y1="{y_pos:.1f}" x2="{p_x + p_w}" y2="{y_pos:.1f}" '
             f'stroke="{COLOR_LINE}" stroke-dasharray="3,3" stroke-width="1"/>'
         )
         svg.append(
-            f'<text x="{p_x - 10}" y="{y_pos + 4}" fill="{COLOR_SUBTLE}" '
+            f'<text x="{p_x - 10}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
             f'font-size="10" text-anchor="end">{y_val:.1f}µs</text>'
         )
 
-    # Vertical markers for each N
-    for r in records:
-        xc = x_coord(r["n"])
+    # Vertical markers for each interval N
+    for n in all_n:
+        xc = x_coord(n)
         svg.append(
-            f'<line x1="{xc}" y1="{p_y}" x2="{xc}" y2="{p_y + p_h}" '
+            f'<line x1="{xc:.1f}" y1="{p_y}" x2="{xc:.1f}" y2="{p_y + p_h}" '
             f'stroke="{COLOR_LINE}" stroke-width="1"/>'
         )
-        label = f'{r["n"]//1000}K' if r["n"] >= 1000 and r["n"] < 1000000 else (
-            f'{r["n"]//1000000}M' if r["n"] >= 1000000 else str(r["n"])
+        label = f"{n // 1000}K" if n >= 1000 and n < 1000000 else (
+            f"{n // 1000000}M" if n >= 1000000 else str(n)
         )
         svg.append(
-            f'<text x="{xc}" y="{p_y + p_h + 18}" fill="{COLOR_TEXT}" '
+            f'<text x="{xc:.1f}" y="{p_y + p_h + 18}" fill="{COLOR_TEXT}" '
             f'font-size="11" text-anchor="middle">N={label}</text>'
         )
 
-    # Plot lines & points
-    for metric, color in [("p99", COLOR_P99), ("p90", COLOR_P90), ("p50", COLOR_P50)]:
+    # Render series lines and data points
+    series_list = [
+        ("Normal", normal_records, COLOR_NORMAL),
+        ("w/ mem_index", index_records, COLOR_INDEX),
+    ]
+
+    for label, records, color in series_list:
+        if not records:
+            continue
         pts = []
         for r in records:
             xc = x_coord(r["n"])
-            yc = y_coord(r[metric])
+            yc = y_coord(r["p50"])
             pts.append(f"{xc:.1f},{yc:.1f}")
+
         svg.append(
             f'<polyline points="{" ".join(pts)}" fill="none" '
             f'stroke="{color}" stroke-width="2.5"/>'
         )
+
         for r in records:
             xc = x_coord(r["n"])
-            yc = y_coord(r[metric])
+            yc = y_coord(r["p50"])
             svg.append(
                 f'<circle cx="{xc:.1f}" cy="{yc:.1f}" r="4.5" fill="{color}"/>'
             )
+            # Offset text slightly to prevent overlapping
+            offset_y = -8 if color == COLOR_INDEX else 14
             svg.append(
-                f'<text x="{xc:.1f}" y="{yc - 8:.1f}" fill="{color}" '
+                f'<text x="{xc:.1f}" y="{yc + offset_y:.1f}" fill="{color}" '
                 f'font-size="10" font-weight="bold" text-anchor="middle">'
-                f'{r[metric]:.1f}µs</text>'
+                f'{r["p50"]:.1f}µs</text>'
             )
 
     svg.append('</svg>')
@@ -178,5 +212,5 @@ def generate_svg(records, out_path):
 if __name__ == "__main__":
     in_file = sys.argv[1] if len(sys.argv) > 1 else "tmp/results/turbofox_benchmark_results.json"
     out_file = sys.argv[2] if len(sys.argv) > 2 else "assets/init_scaling.svg"
-    records = load_init_results(in_file)
-    generate_svg(records, out_file)
+    norm_rec, idx_rec = load_init_results(in_file)
+    generate_svg(norm_rec, idx_rec, out_file)

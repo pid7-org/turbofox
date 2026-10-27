@@ -145,9 +145,6 @@
 //! | GET (60/40 Hit/Miss)   | 4.47 kops/s         | 4.91 kops/s         | 1.10x         |
 //! | DEL (60/40 Hit/Miss)   | 4.46 kops/s         | 4.93 kops/s         | 1.11x         |
 //!
-//! Note: Evaluation executes on 2 vCPU hardware (c5d.large); throughput scaling reflects
-//! OCC conflict resolution and backing storage synchronization across concurrent threads
-//!
 //! ### Tail Latency Profile Under Concurrency
 //!
 //! Percentile latency distributions (p50 to p99.9) comparing 1T baseline against 2T concurrent
@@ -162,10 +159,29 @@
 //! | DEL: 60/40 Hit/Miss   | 1T      | 0.12 ms | 0.62 ms | 0.75 ms | 0.76 ms  |
 //! | DEL: 60/40 Hit/Miss   | 2T      | 0.22 ms | 1.12 ms | 1.32 ms | 1.35 ms  |
 //!
-//! Note: Sub-millisecond median latencies (p50 <= 0.22 ms for reads and deletes) sustained across 1T
-//! and 2T; read and delete tail latencies stay bounded under 1.5 ms at p99.9 under 2T
-//! concurrency while elevated 2T p99.9 write tail stems from OCC conflict retries and backing
-//! file growth serialization
+//! **TIP**: Sub-millisecond median latencies (p50 <= 0.22 ms for reads and deletes) sustained
+//! across 1T and 2T
+//!
+//! ### Database Open Latency Scaling
+//!
+//! Database open latency across scaling entry intervals comparing mmap baseline against in-memory
+//! index
+//!
+//! | Scale (Entries) | Without Memory Index | With Memory Index |
+//! |:----------------|:---------------------|:------------------|
+//! | 10K             | 45.8 µs              | 12.51 ms          |
+//! | 20K             | 52.1 µs              | 29.05 ms          |
+//! | 30K             | 53.4 µs              | 46.99 ms          |
+//! | 40K             | 55.0 µs              | 61.47 ms          |
+//! | 50K             | 56.1 µs              | 96.27 ms          |
+//! | 60K             | 57.2 µs              | 97.65 ms          |
+//! | 70K             | 58.4 µs              | 113.64 ms         |
+//! | 80K             | 59.9 µs              | 142.87 ms         |
+//! | 90K             | 61.1 µs              | 184.94 ms         |
+//! | 100K            | 62.0 µs              | 209.85 ms         |
+//!
+//! **TIP**: Without in-memory index, database open maintains O(1) instantaneous memory-mapping
+//! latency (~50 µs)
 
 #![allow(unsafe_op_in_unsafe_fn)]
 #![deny(

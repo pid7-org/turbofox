@@ -15,7 +15,7 @@ use crate::meta::Metadata;
 use crate::ticket::TurboTicket;
 use frozen_core::memmap::{MemMap, MemMapCfg, PageSize};
 use std::sync::{
-    Mutex,
+    Mutex, RwLock,
     atomic::{AtomicU32, AtomicU64, Ordering},
 };
 
@@ -37,6 +37,7 @@ pub(crate) struct Engine {
     active_dbuf_hint: AtomicU32,
     sys_page_size: PageSize,
     fp_index: Option<FpIndex>,
+    dbuf_slot_cache: Option<RwLock<Vec<u32>>>,
 }
 
 impl Engine {
@@ -65,6 +66,12 @@ impl Engine {
         let initial_slots = (initial_pages * page_size.as_usize()) / SLOT_SIZE;
         let fp_index = if cfg.mem_index { Some(FpIndex::new(MIN_CAPACITY)) } else { None };
 
+        let dbuf_slot_cache = if cfg.mem_index {
+            Some(RwLock::new(vec![DATABUF_HEAD_SLOT, DATABUF_HEAD_SLOT + (DATABUF_SLOTS as u32)]))
+        } else {
+            None
+        };
+
         let engine = Self {
             mmap,
             growth_mutex: Mutex::new(()),
@@ -74,6 +81,7 @@ impl Engine {
             active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
             sys_page_size: page_size,
             fp_index,
+            dbuf_slot_cache,
         };
 
         engine.format_initial_topography(LAYOUT_VERSION, initial_pages as u32)?;
@@ -149,6 +157,22 @@ impl Engine {
             None
         };
 
+        let dbuf_slot_cache = if cfg.mem_index {
+            let mut hop_to_slot = Vec::new();
+            let mut curr_dbuf = DATABUF_HEAD_SLOT;
+
+            while curr_dbuf != 0 {
+                hop_to_slot.push(curr_dbuf);
+                curr_dbuf = mmap
+                    .read_exact::<DataBuf, _, _>(curr_dbuf as usize, |d| d.next_dbuf_index())
+                    .unwrap_or(0);
+            }
+
+            Some(RwLock::new(hop_to_slot))
+        } else {
+            None
+        };
+
         let engine = Self {
             mmap,
             growth_mutex: Mutex::new(()),
@@ -158,6 +182,7 @@ impl Engine {
             active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
             sys_page_size,
             fp_index,
+            dbuf_slot_cache,
         };
 
         if cfg.mem_index {
@@ -173,14 +198,18 @@ impl Engine {
         };
 
         let mut hop_to_slot = Vec::new();
-        let mut curr_dbuf = DATABUF_HEAD_SLOT;
+        if let Some(ref cache) = self.dbuf_slot_cache {
+            hop_to_slot = cache.read().unwrap().clone();
+        } else {
+            let mut curr_dbuf = DATABUF_HEAD_SLOT;
 
-        while curr_dbuf != 0 {
-            hop_to_slot.push(curr_dbuf);
-            curr_dbuf = self
-                .mmap
-                .read_exact::<DataBuf, _, _>(curr_dbuf as usize, |d| d.next_dbuf_index())
-                .unwrap_or(0);
+            while curr_dbuf != 0 {
+                hop_to_slot.push(curr_dbuf);
+                curr_dbuf = self
+                    .mmap
+                    .read_exact::<DataBuf, _, _>(curr_dbuf as usize, |d| d.next_dbuf_index())
+                    .unwrap_or(0);
+            }
         }
 
         let mut queue = std::collections::VecDeque::new();
@@ -333,6 +362,10 @@ impl Engine {
             d.set_next_dbuf_index(new_slot);
         })?;
 
+        if let Some(ref cache) = self.dbuf_slot_cache {
+            cache.write().unwrap().push(new_slot);
+        }
+
         Ok(new_slot)
     }
 
@@ -367,6 +400,12 @@ impl Engine {
 
     /// Ref: `DESIGN.md` §3.3
     pub(crate) fn locate_databuf_slot(&self, pool_hop: u32) -> TurboResult<u32> {
+        if let Some(ref cache) = self.dbuf_slot_cache {
+            if let Some(&slot) = cache.read().unwrap().get(pool_hop as usize) {
+                return Ok(slot);
+            }
+        }
+
         let mut curr = DATABUF_HEAD_SLOT;
         for _ in 0..pool_hop {
             let next =
@@ -505,6 +544,12 @@ impl Engine {
 
     /// Ref: `DESIGN.md` §3.3
     pub(crate) fn databuf_slot_to_hop(&self, slot: u32) -> TurboResult<u32> {
+        if let Some(ref cache) = self.dbuf_slot_cache {
+            if let Some(hop) = cache.read().unwrap().iter().position(|&s| s == slot) {
+                return Ok(hop as u32);
+            }
+        }
+
         let mut curr = DATABUF_HEAD_SLOT;
         let mut hop = 0;
 

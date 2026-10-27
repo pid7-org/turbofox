@@ -64,13 +64,13 @@ pub enum SyncMode {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurboCfg {
-    /// Filesystem directory hosting memory-mapped database files; must be a directory
+    /// Filesystem directory hosting database files; must be a directory
     pub path: PathBuf,
 
     /// Durability synchronization mode driving background flush worker or manual commits
     pub sync_mode: SyncMode,
 
-    /// Optional in-memory fingerprint index for bypassing persistent bucket-chain traversal
+    /// Optional in-memory index for accelerated key lookups and queries
     pub mem_index: bool,
 }
 
@@ -138,7 +138,11 @@ impl TurboCfg {
         Self { path: path.into(), sync_mode: SyncMode::Manual, mem_index: false }
     }
 
-    /// Enable or disable optional in-memory fingerprint index acceleration
+    /// Enable or disable optional in-memory index acceleration
+    ///
+    /// When enabled, an in-memory index is maintained alongside storage to provide sub-microsecond
+    /// read lookups and higher query throughput at the expense of modest RAM consumption;
+    /// when disabled (default), queries read directly from storage with minimal memory overhead
     ///
     /// ## Example
     ///

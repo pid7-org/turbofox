@@ -1,40 +1,36 @@
 mod common;
 
-use common::{
-    BenchConfig, BenchDir, BenchSummary, HIT_PREFIX, make_key, make_val, new_histogram,
-    print_json_summary,
-};
+use common::{BenchDir, BenchSummary, new_histogram, print_json_summary};
 use std::time::Instant;
 use turbofox::{TurboCfg, TurboFox};
 
+const OPS: usize = 0x000F_4240;
+const SAMPLES: usize = 0x0100;
+const KEY_SIZE: usize = 0x04;
+const VAL_SIZE: usize = 0x08;
+
 fn main() {
-    let cfg = BenchConfig::parse();
-    let scales = if std::env::args().any(|a| a == "--ops") {
-        vec![cfg.ops]
-    } else if !cfg.scales.is_empty() {
-        cfg.scales.clone()
-    } else {
-        vec![cfg.ops]
-    };
+    let (bench_dir, db_path) = BenchDir::new(None, "init_perf");
 
-    let total_scales = scales.len();
-    for (idx, &n) in scales.iter().enumerate() {
-        let tag = format!("init_{}_{}", n, idx);
-        let (bench_dir, db_path) = BenchDir::new(cfg.db_path.clone(), &tag);
+    // Populate dataset once
+    let create_cfg = TurboCfg::manual(&db_path);
+    let db = TurboFox::create(create_cfg).expect("failed to create db");
+    let val = [0x42u8; VAL_SIZE];
 
-        let turbo_cfg = TurboCfg::manual(&db_path).with_mem_index(cfg.mem_index);
-        let db = TurboFox::create(turbo_cfg.clone()).expect("failed to create db");
-        let val = make_val(0x42);
+    for i in 0x00..OPS {
+        let key: [u8; KEY_SIZE] = (i as u32).to_be_bytes();
+        db.set(&key, &val).expect("insert failed");
+    }
 
-        for i in 0x00..n {
-            let key = make_key(HIT_PREFIX, 0x00, i as u32);
-            db.set(&key, &val).expect("insert failed");
-        }
-        db.sync().expect("sync failed");
-        drop(db);
+    db.sync().expect("sync failed");
+    drop(db);
 
-        let db_size = bench_dir.compute_disk_bytes();
-        let samples = cfg.samples.max(0x0A);
+    let db_size = bench_dir.compute_disk_bytes();
+    let configs = [("without_mem_index", false), ("with_mem_index", true)];
+    let total_configs = configs.len();
+
+    for (idx, &(workload, mem_index)) in configs.iter().enumerate() {
+        let turbo_cfg = TurboCfg::manual(&db_path).with_mem_index(mem_index);
         let mut hist = new_histogram();
 
         // Warmup single open
@@ -42,7 +38,7 @@ fn main() {
         drop(warmup_db);
 
         let start_all = Instant::now();
-        for _ in 0x00..samples {
+        for _ in 0x00..SAMPLES {
             let t0 = Instant::now();
             let opened_db = TurboFox::open(turbo_cfg.clone()).expect("open failed");
             let elapsed_ns = t0.elapsed().as_nanos() as u64;
@@ -52,11 +48,10 @@ fn main() {
         }
         let total_elapsed = start_all.elapsed();
 
-        let workload_name = format!("scale_{}", n);
         let summary = BenchSummary {
             benchmark: "init_perf",
-            workload: &workload_name,
-            total_ops: n,
+            workload,
+            total_ops: OPS,
             threads: 0x01,
             total_elapsed,
             hist: &hist,
@@ -64,7 +59,7 @@ fn main() {
         };
 
         print_json_summary(&summary);
-        if idx + 0x01 < total_scales {
+        if idx + 0x01 < total_configs {
             println!(",");
         }
     }

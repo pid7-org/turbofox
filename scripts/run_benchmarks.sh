@@ -133,23 +133,17 @@ for b_id in "${BENCH_ID_ARRAY[@]}"; do
   esac
 done
 
-# 1. Run Init Benchmark across scales
+# 1. Run Init Benchmark across scaling intervals
 if [[ ${RUN_INIT} -eq 1 ]]; then
   taskset_single=""
   if command -v taskset >/dev/null 2>&1; then
     taskset_single="taskset -c 0"
   fi
 
-  IFS=',' read -ra SCALES_ARRAY <<< "${SCALES_LIST}"
-  for N in "${SCALES_ARRAY[@]}"; do
-    echo "Running init_perf [scale=${N}]..." >&2
-    drop_page_cache
-    db_path="${BENCH_DIR}/init_scale_${N}_$$.db"
-    rm -rf "${db_path}"*
-    json_out=$(${taskset_single} "${INIT_BIN}" --ops "${N}" --db-path "${db_path}")
-    rm -rf "${db_path}"*
-    append_result "${json_out}"
-  done
+  echo "Running init_perf across scaling intervals..." >&2
+  drop_page_cache
+  json_out=$(${taskset_single} "${INIT_BIN}")
+  append_result "${json_out}"
 fi
 
 # 2. Run Unified Core KV Benchmark (fixed 2 threads, 256K ops, 60/40 SET)

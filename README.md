@@ -85,42 +85,41 @@ Low-level reference documentation and method signatures are available on
 
 ### Zero Rehash
 
-Primary key routing utilizes 64-bit Wyhash bit-sliced into depth-indexed buckets (64 slots each)
+Primary key routing utilizes 32-bit XxHash32 bit-sliced into depth-indexed buckets (64 slots each)
 
-Hash collisions resolve via a localized 4-slot probing window followed by overflow bucket chaining,
+Hash collisions resolve via a 16-slot SIMD probing window followed by overflow bucket chaining:
 
-* Entries are permanently anchored to their allocated bucket chain and never rehashed across files,
-  which eliminates stop-the-world hash table redistribution pauses while sustaining bounded p99
-  write latency
+* Entries are permanently anchored to their allocated bucket chain without global redistribution,
+  eliminating stop-the-world rehashing pauses and maintaining bounded p99 write latency
 * In-place overwrites execute directly within preallocated DataBuf spans when new payloads fit in
   existing 16-byte chunk boundaries
-* Structural allocations expand incrementally via monotonic bump allocation w/o bulk page copies
+* Structural allocations expand incrementally via monotonic bump allocation without bulk page copies
 
 ### Torn-Write Protection
 
-Point reads execute lock-free w/o reader-writer locks or shared mutex acquisition
+Point reads execute without reader-writer locks or shared mutex acquisition
 
-Readers probe 64-bit hash sentinels directly within mapped virtual memory cache lines,
+Readers probe 32-bit hash sentinels directly within mapped memory cache lines:
 
 * Payloads utilize binary framing: `[ CRC32 (4 B) ][ Key ][ Val ][ Pad ]`
 * Reading validates CRC32 integrity alongside byte-level key equality (concurrent writes or partial
   page flushes that cause torn reads fail safely via `TurboError::CorruptedPayload` rather than
   returning corrupt data)
-- Negative queries (`Ok(None)`) short-circuit on zero-sentinels w/o accessing payload pages (zero
-  heap allocations occur during probe traversal and miss evaluations)
+* Negative queries (`Ok(None)`) short-circuit on zero-sentinels without accessing payload pages;
+  zero heap allocations occur during probe traversal and miss evaluations
 
 ### Durability Model
 
 Mutations (`set`, `del`, `append`, `pop`) commit into memory-mapped slots immediately via OCC and
-return a lightweight `TurboTicket` bound to a monotonic commit epoch,
+return a lightweight `TurboTicket` bound to a monotonic commit epoch:
 
 * Decouples memory-speed writes from physical NVMe writeback latency, where durability guarantees
   depend on the configured sync strategy
-* Manual Mode (`sync_interval: None`),
+* Manual Mode (`sync_interval: None`):
   * The engine performs no automatic background flushing
   * The caller must invoke `db.sync()` or block on `ticket.wait()` to guarantee crash safety on disk
   * Un-flushed mutations remain volatile against OS kernel panics or host power loss
-* Periodic Sync Mode (`sync_interval: Some(dur)`),
+* Periodic Sync Mode (`sync_interval: Some(dur)`):
   * A dedicated background sync thread flushes dirty pages up to the current epoch
   * Incorporates adaptive backoff under idle load to prevent write endurance wear on flash devices
 * `ticket.is_durable()` enables non-blocking checks to poll writeback completion asynchronously
@@ -129,33 +128,33 @@ return a lightweight `TurboTicket` bound to a monotonic commit epoch,
 
 Ordered 1-to-N sequences co-exist inside the primary storage file
 
-Anchored by a primary key registered in root buckets w/ type flag `offsets[i][0] & 0x80 != 0`,
+Anchored by a primary key registered in root buckets with type flag `offsets[i][0] & 0x80 != 0`:
 
 * Eliminates secondary index tables, auxiliary catalog files, and relational join overhead
 * Sequences chain through compact 20-byte `AdjArrayList` descriptor blocks (4 item slots per node)
 * Tail appends sustain amortized O(1) latency (pops deallocate item DataBuf spans and return empty
   descriptor blocks to allocation bitmaps)
-* Readers traverse chained descriptors w/ index-based skipping (`idx / 0x04`) and CRC32 checks
+* Readers traverse chained descriptors with index-based skipping (`idx / 0x04`) and CRC32 checks
 
 ### Storage Topography
 
 Unified storage container structured into uniform 128-byte slots
 
-Initial file footprint begins at only 16 KiB (0x80 slots) on standard 4 KiB host page systems,
+Initial file footprint begins at only 16 KiB (0x80 slots) on standard 4 KiB host page systems:
 
 * Virtual memory space reserves up to `MAX_DB_LEN` upfront (physical disk pages back lazily as
   monotonic bump-pointer slot markers advance)
-* Buffer pools track 16-byte chunks via 64-bit bitmaps, eliminating internal space fragmentation
+* Buffer pools track 16-byte chunks via 64-bit bitmaps, avoiding external space fragmentation
 * Backing files grow dynamically in uniform OS page increments, minimizing write amplification
 
 ### Operational Invariants
 
-Hardware and protocol constraints callers must design for,
+Hardware and protocol constraints callers must design for:
 
 * Key length bounded between 0x01 and 0xFF bytes and value payload size capped at 0xFFFF bytes
-* Contiguous buffer spans within standard DataBuf blocks cap at 0x40 buffers (1024 bytes) while
-  larger payloads span chained segment buffers
-* Multi-slot writes commit via lock-free OCC w/ conflict detection across mapped memory slots
+* Contiguous buffer spans within standard DataBuf blocks cap at 0x3F buffers (1008 bytes);
+  payloads exceeding capacity return TurboError::PayloadTooLarge
+* Multi-slot writes commit via OCC with conflict detection across mapped memory slots
   (aborts and retries up to 0x20 times before surfacing contention errors)
 * Thread-safe (`Send + Sync`) within a single process via `Arc<TurboFox>`
   * Single-process exclusivity is enforced at startup via mandatory POSIX / Win32 advisory file
@@ -172,7 +171,7 @@ Hardware and protocol constraints callers must design for,
 ## Thread Safety
 
 `TurboFox` wraps `Arc<Engine>` internally and is thread-safe (`Send + Sync`) by default, i.e. all
-point reads (`get`), writes (`set`), and deletes (`del`) run concurrently w/o global locks
+point reads (`get`), writes (`set`), and deletes (`del`) run concurrently without global locks
 
 ## API
 
@@ -183,7 +182,7 @@ references
 
 ### Evaluation Environment
 
-Benchmarks execute on bare-metal virtualized cloud instances w/ direct NVMe storage:
+Benchmarks execute on dedicated cloud instances with direct NVMe storage:
 
 - Instance: AWS EC2 `c5d.large` (2 vCPUs, Intel Xeon Platinum 8223CL CPU @ 3.00 GHz)
 - Memory: 0x04 GiB DDR4 system RAM

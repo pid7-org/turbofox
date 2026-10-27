@@ -74,13 +74,8 @@ def generate_svg(lookup, out_path):
         active_threads = [2]
 
     # Find max throughput to scale Y axis
-    max_tp = 0.0
-    for b, wl, tag, title in operations:
-        for thr in active_threads:
-            e = lookup.get((b, wl, thr), {})
-            max_tp = max(max_tp, e.get("throughput_ops_sec", 0.0))
-
-    max_tp = max(max_tp * 1.25, 10000.0)
+    # Limit y-axis to 6.0 kops/s (6,000 ops/sec)
+    max_tp = 6000.0
 
     svg = []
     svg.append(
@@ -129,9 +124,9 @@ def generate_svg(lookup, out_path):
         f'fill="{COLOR_SURFACE}" rx="6"/>'
     )
 
-    # Y-axis gridlines (5 intervals)
-    for i in range(5):
-        val = (max_tp / 4.0) * i
+    # Y-axis gridlines (0 to 6.0 kops/s in 1.0 kops/s intervals)
+    for i in range(7):
+        val = (max_tp / 6.0) * i
         y_pos = p_y + p_h - (val / max_tp) * p_h
         svg.append(
             f'<line x1="{p_x}" y1="{y_pos:.1f}" x2="{p_x + p_w}" y2="{y_pos:.1f}" '
@@ -154,7 +149,7 @@ def generate_svg(lookup, out_path):
             thr = active_threads[0]
             e = lookup.get((bench, wl, thr), {})
             tp = e.get("throughput_ops_sec", 0.0)
-            h = (tp / max_tp) * p_h
+            h = min((tp / max_tp) * p_h, p_h)
             y = p_y + p_h - h
             bx = group_center - (bar_w / 2)
 
@@ -181,8 +176,8 @@ def generate_svg(lookup, out_path):
             tp1 = e1.get("throughput_ops_sec", 0.0)
             tp4 = e4.get("throughput_ops_sec", 0.0)
 
-            h1 = (tp1 / max_tp) * p_h
-            h4 = (tp4 / max_tp) * p_h
+            h1 = min((tp1 / max_tp) * p_h, p_h)
+            h4 = min((tp4 / max_tp) * p_h, p_h)
 
             y1 = p_y + p_h - h1
             y4 = p_y + p_h - h4

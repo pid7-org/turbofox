@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -e
+
+TARGETS=(
+  "x86_64-unknown-linux-gnu"
+  "aarch64-unknown-linux-gnu"
+)
+
+MSRV="1.86.0"
+
+echo "Running pre-commit checks..."
+
+echo "==> Running cargo check..."
+for target in "${TARGETS[@]}"; do
+  echo "    Checking target: $target"
+  cargo check --all-features --release --target "$target"
+  cargo check --tests --benches --all-features --release --target "$target"
+done
+
+echo "==> cargo fmt --check"
+cargo fmt --check
+
+echo "==> Running cargo clippy..."
+for target in "${TARGETS[@]}"; do
+  echo "    Clippy target: $target"
+  cargo clippy --all-features --release --target "$target" -- -D warnings
+done
+
+if command -v rustup >/dev/null 2>&1 && rustup toolchain list | grep -q "$MSRV"; then
+  echo "==> Running MSRV ($MSRV) verification checks..."
+  echo "    Checking MSRV fmt..."
+  cargo +"$MSRV" fmt --check
+  echo "    Checking MSRV clippy..."
+  cargo +"$MSRV" clippy --all-features --release -- -D warnings
+  echo "    Checking MSRV (lib, tests, benches)..."
+  cargo +"$MSRV" check --release --all-features
+  cargo +"$MSRV" check --tests --benches --release --all-features
+else
+  echo "==> Warning: Rust toolchain $MSRV not found; skipping MSRV checks."
+fi
+
+echo "All pre-commit checks passed!"

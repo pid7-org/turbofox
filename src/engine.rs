@@ -175,9 +175,8 @@ impl Engine {
 
         let mut dbuf0 = DataBuf::new();
         dbuf0.set_next_dbuf_index(DATABUF_HEAD_SLOT + (DATABUF_SLOTS as u32));
-        let _ = self
-            .mmap
-            .write_exact::<DataBuf, _, _>(DATABUF_HEAD_SLOT as usize, |d| *d = dbuf0)?;
+        let _ =
+            self.mmap.write_exact::<DataBuf, _, _>(DATABUF_HEAD_SLOT as usize, |d| *d = dbuf0)?;
 
         let dbuf1 = DataBuf::new();
         let _ = self
@@ -609,9 +608,12 @@ impl Engine {
                                 break (bucket_slot, bucket, tomb_idx, false);
                             }
                             let new_bucket_slot = self.expand_bucket()?;
-                            let _ = self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| {
-                                b.set_next_bucket(primary, new_bucket_slot);
-                            })?;
+                            let _ = self.mmap.write_exact::<Bucket, _, _>(
+                                bucket_slot as usize,
+                                |b| {
+                                    b.set_next_bucket(primary, new_bucket_slot);
+                                },
+                            )?;
                             bucket_slot = new_bucket_slot;
                             depth = depth.wrapping_add(1);
                         } else {
@@ -884,9 +886,12 @@ impl Engine {
                                 break (bucket_slot, bucket, tomb_idx, false);
                             }
                             let new_bucket_slot = self.expand_bucket()?;
-                            let _ = self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| {
-                                b.set_next_bucket(primary, new_bucket_slot);
-                            })?;
+                            let _ = self.mmap.write_exact::<Bucket, _, _>(
+                                bucket_slot as usize,
+                                |b| {
+                                    b.set_next_bucket(primary, new_bucket_slot);
+                                },
+                            )?;
                             bucket_slot = new_bucket_slot;
                             depth = depth.wrapping_add(1);
                         } else {

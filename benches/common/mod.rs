@@ -23,6 +23,7 @@ pub struct BenchConfig {
     pub samples: usize,
     pub scales: Vec<usize>,
     pub db_path: Option<PathBuf>,
+    pub mem_index: bool,
 }
 
 impl BenchConfig {
@@ -33,11 +34,15 @@ impl BenchConfig {
         let mut samples = 0x32; // 50 samples
         let mut scales = vec![0x03E8, 0x2710, 0x0001_86A0, 0x000F_4240]; // 1K, 10K, 100K, 1M
         let mut db_path = None;
+        let mut mem_index = false;
 
         let args: Vec<String> = std::env::args().collect();
         let mut idx = 0x01;
         while idx < args.len() {
             match args[idx].as_str() {
+                "--mem-index" | "--simd-index" => {
+                    mem_index = true;
+                }
                 "--ops" if idx + 0x01 < args.len() => {
                     ops = parse_num(&args[idx + 0x01]);
                     idx += 0x02;
@@ -75,7 +80,7 @@ impl BenchConfig {
             idx += 0x01;
         }
 
-        BenchConfig { ops, threads, warmup_ops, samples, scales, db_path }
+        BenchConfig { ops, threads, warmup_ops, samples, scales, db_path, mem_index }
     }
 }
 

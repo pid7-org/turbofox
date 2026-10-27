@@ -22,7 +22,7 @@ fn main() {
         let tag = format!("init_{}_{}", n, idx);
         let (bench_dir, db_path) = BenchDir::new(cfg.db_path.clone(), &tag);
 
-        let turbo_cfg = TurboCfg::manual(&db_path);
+        let turbo_cfg = TurboCfg::manual(&db_path).with_mem_index(cfg.mem_index);
         let db = TurboFox::create(turbo_cfg.clone()).expect("failed to create db");
         let val = make_val(0x42);
 

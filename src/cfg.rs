@@ -43,7 +43,8 @@ pub enum SyncMode {
     /// Background worker coalesces and flushes dirty pages at the configured interval
     Periodic(Duration),
 
-    /// Background thread disabled; caller explicitly drives durability via [`crate::TurboFox::sync`]
+    /// Background thread disabled; caller explicitly flushes durability
+    /// via [`crate::TurboFox::sync`]
     Manual,
 }
 
@@ -68,6 +69,9 @@ pub struct TurboCfg {
 
     /// Durability synchronization mode driving background flush worker or manual commits
     pub sync_mode: SyncMode,
+
+    /// Optional in-memory fingerprint index for bypassing persistent bucket-chain traversal
+    pub mem_index: bool,
 }
 
 impl TurboCfg {
@@ -80,10 +84,11 @@ impl TurboCfg {
     ///
     /// let cfg = TurboCfg::new("data_dir", SyncMode::Manual);
     /// assert_eq!(cfg.sync_mode, SyncMode::Manual);
+    /// assert!(!cfg.mem_index);
     /// ```
     #[inline]
     pub fn new<P: Into<PathBuf>>(path: P, sync_mode: SyncMode) -> Self {
-        Self { path: path.into(), sync_mode }
+        Self { path: path.into(), sync_mode, mem_index: false }
     }
 
     /// Construct configuration driving a periodic background synchronization thread
@@ -109,7 +114,7 @@ impl TurboCfg {
     /// ```
     #[inline]
     pub fn periodic<P: Into<PathBuf>>(path: P, interval: Duration) -> Self {
-        Self { path: path.into(), sync_mode: SyncMode::Periodic(interval) }
+        Self { path: path.into(), sync_mode: SyncMode::Periodic(interval), mem_index: false }
     }
 
     /// Construct configuration with manual synchronization and no background worker thread
@@ -126,10 +131,27 @@ impl TurboCfg {
     ///
     /// let cfg = TurboCfg::manual("data_dir");
     /// assert_eq!(cfg.sync_mode, SyncMode::Manual);
+    /// assert!(!cfg.mem_index);
     /// ```
     #[inline]
     pub fn manual<P: Into<PathBuf>>(path: P) -> Self {
-        Self { path: path.into(), sync_mode: SyncMode::Manual }
+        Self { path: path.into(), sync_mode: SyncMode::Manual, mem_index: false }
+    }
+
+    /// Enable or disable optional in-memory fingerprint index acceleration
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::TurboCfg;
+    ///
+    /// let cfg = TurboCfg::manual("data_dir").with_mem_index(true);
+    /// assert!(cfg.mem_index);
+    /// ```
+    #[inline]
+    pub fn with_mem_index(mut self, enabled: bool) -> Self {
+        self.mem_index = enabled;
+        self
     }
 
     /// Update the synchronization mode
@@ -205,5 +227,9 @@ mod tests {
         let with_interval =
             TurboCfg::manual("test_db_dir").with_sync_interval(Duration::from_millis(0x10));
         assert_eq!(with_interval.sync_mode, SyncMode::Periodic(Duration::from_millis(0x10)));
+        assert!(!with_interval.mem_index);
+
+        let with_index = with_interval.with_mem_index(true);
+        assert!(with_index.mem_index);
     }
 }

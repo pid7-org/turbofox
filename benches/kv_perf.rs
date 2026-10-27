@@ -13,7 +13,7 @@ fn main() {
     let cfg = BenchConfig::parse();
     let (bench_dir, db_path) = BenchDir::new(cfg.db_path.clone(), "kv_perf");
 
-    let turbo_cfg = TurboCfg::manual(&db_path);
+    let turbo_cfg = TurboCfg::manual(&db_path).with_mem_index(cfg.mem_index);
     let db = Arc::new(TurboFox::create(turbo_cfg).expect("failed to create db"));
 
     let thread_count = cfg.threads.max(0x01);

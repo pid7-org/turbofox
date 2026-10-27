@@ -25,6 +25,11 @@ impl BucketEntry {
     }
 
     #[inline(always)]
+    pub(crate) const fn hash(&self) -> u32 {
+        self.hash
+    }
+
+    #[inline(always)]
     pub(crate) const fn is_empty(&self) -> bool {
         self.hash == HASH_EMPTY
     }

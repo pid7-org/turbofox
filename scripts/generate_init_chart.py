@@ -60,6 +60,12 @@ def load_init_results(path):
     return normal_records, index_records
 
 
+def format_latency(micros):
+    if micros >= 1000.0:
+        return f"{micros / 1000.0:.1f}ms"
+    return f"{micros:.1f}µs"
+
+
 def generate_svg(normal_records, index_records, out_path):
     svg_w = 0x03E8  # 1000 px
     svg_h = 0x01F4  # 500 px
@@ -68,6 +74,7 @@ def generate_svg(normal_records, index_records, out_path):
     p_y = 0x50
     p_w = svg_w - 0x78
     p_h = svg_h - 0x78
+    x_pad = 0x28  # 40 px padding from plot edges
 
     all_records = normal_records + index_records
     if not all_records:
@@ -84,7 +91,7 @@ def generate_svg(normal_records, index_records, out_path):
         if max_n == min_n:
             return p_x + p_w / 2
         ratio = (n - min_n) / (max_n - min_n)
-        return p_x + ratio * p_w
+        return p_x + x_pad + ratio * (p_w - 2 * x_pad)
 
     def y_coord(lat):
         ratio = lat / max_lat
@@ -104,7 +111,7 @@ def generate_svg(normal_records, index_records, out_path):
     # Title & Subtitle
     svg.append(
         f'<text x="32" y="34" fill="{COLOR_TEXT}" font-size="16" font-weight="bold">'
-        f'TurboFox Database Open Latency Scaling (O(1) Memory-Mapping Bound)</text>'
+        f'TurboFox Database Open Latency Scaling</text>'
     )
     svg.append(
         f'<text x="32" y="52" fill="{COLOR_SUBTLE}" font-size="11">'
@@ -112,7 +119,7 @@ def generate_svg(normal_records, index_records, out_path):
     )
 
     # Legend
-    leg_x = svg_w - 380
+    leg_x = svg_w - 0x017C  # 380 px
     svg.append(
         f'<line x1="{leg_x}" y1="34" x2="{leg_x + 24}" y2="34" '
         f'stroke="{COLOR_NORMAL}" stroke-width="2.5"/>'
@@ -120,10 +127,10 @@ def generate_svg(normal_records, index_records, out_path):
     svg.append(f'<circle cx="{leg_x + 12}" cy="34" r="4.5" fill="{COLOR_NORMAL}"/>')
     svg.append(
         f'<text x="{leg_x + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
-        f'Normal (without_mem_index)</text>'
+        f'Without Memory Index</text>'
     )
 
-    leg_x2 = leg_x + 195
+    leg_x2 = leg_x + 0x00C8  # 200 px offset
     svg.append(
         f'<line x1="{leg_x2}" y1="34" x2="{leg_x2 + 24}" y2="34" '
         f'stroke="{COLOR_INDEX}" stroke-width="2.5"/>'
@@ -131,7 +138,7 @@ def generate_svg(normal_records, index_records, out_path):
     svg.append(f'<circle cx="{leg_x2 + 12}" cy="34" r="4.5" fill="{COLOR_INDEX}"/>')
     svg.append(
         f'<text x="{leg_x2 + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
-        f'w/ mem_index</text>'
+        f'With Memory Index</text>'
     )
 
     # Plot panel background
@@ -144,13 +151,14 @@ def generate_svg(normal_records, index_records, out_path):
     for i in range(5):
         y_val = (max_lat / 4.0) * i
         y_pos = y_coord(y_val)
+        y_val_ms = y_val / 1000.0
         svg.append(
             f'<line x1="{p_x}" y1="{y_pos:.1f}" x2="{p_x + p_w}" y2="{y_pos:.1f}" '
             f'stroke="{COLOR_LINE}" stroke-dasharray="3,3" stroke-width="1"/>'
         )
         svg.append(
-            f'<text x="{p_x - 10}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
-            f'font-size="10" text-anchor="end">{y_val:.1f}µs</text>'
+            f'<text x="{p_x - 12}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
+            f'font-size="10" text-anchor="end">{y_val_ms:.1f}ms</text>'
         )
 
     # Vertical markers for each interval N
@@ -170,8 +178,8 @@ def generate_svg(normal_records, index_records, out_path):
 
     # Render series lines and data points
     series_list = [
-        ("Normal", normal_records, COLOR_NORMAL),
-        ("w/ mem_index", index_records, COLOR_INDEX),
+        ("Without Memory Index", normal_records, COLOR_NORMAL),
+        ("With Memory Index", index_records, COLOR_INDEX),
     ]
 
     for label, records, color in series_list:
@@ -194,12 +202,11 @@ def generate_svg(normal_records, index_records, out_path):
             svg.append(
                 f'<circle cx="{xc:.1f}" cy="{yc:.1f}" r="4.5" fill="{color}"/>'
             )
-            # Offset text slightly to prevent overlapping
-            offset_y = -8 if color == COLOR_INDEX else 14
+            offset_y = -8
             svg.append(
                 f'<text x="{xc:.1f}" y="{yc + offset_y:.1f}" fill="{color}" '
                 f'font-size="10" font-weight="bold" text-anchor="middle">'
-                f'{r["p50"]:.1f}µs</text>'
+                f'{format_latency(r["p50"])}</text>'
             )
 
     svg.append('</svg>')

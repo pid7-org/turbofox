@@ -1,9 +1,18 @@
 # Changelog
 
+## [0.0.201] - 2026-10-27
+
+- **Breaking:** Databases created with previous versions are incompatible and unsupported
+- Optional in-memory SIMD fingerprint index for key existence and databuf slot resolution
+- 16-slot open addressing with runtime ISA dispatch (AVX2, SSE2, NEON, scalar)
+- Adaptive spin-yield OCC backoff with jitter and expanded 0x100 retry budget under contention
+- `TurboCfg`:
+  - `mem_index` flag for configuring in-memory index acceleration
+  - `with_mem_index` builder method
+
 ## [0.0.101] - 2026-10-26
 
-- Introduction of the new v2 storage layer
-- **Breaking:** Previous v1 storage layer will not be supported
+- **Breaking:** Databases created with previous versions are incompatible and unsupported
 - `MAX_KEY_LEN` and `MAX_VAL_LEN` payload limits
 - `TurboFox`
   - `is_empty` empty state check

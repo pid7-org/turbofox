@@ -341,3 +341,83 @@ fn ok_stress_reopen_and_crc_integrity() {
 
     reopened.delete().unwrap();
 }
+
+/// Ref: `DESIGN.md` §6, §7.4
+#[test]
+fn ok_stress_concurrent_iter_during_deletion_and_pop() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::manual(dir.path());
+    let db = TurboFox::create(cfg).unwrap();
+
+    let list_name = b"iter_del_test_list";
+    let running = Arc::new(AtomicBool::new(true));
+
+    // Seed initial items within scoped block so handle drops
+    {
+        let queue = db.list(list_name);
+        for i in 0..0x20 {
+            let item = format!("seed_item_{:04x}", i);
+            queue.append(item.as_bytes()).unwrap();
+        }
+    }
+
+    let mut worker_handles = Vec::new();
+    let mut reader_handles = Vec::new();
+
+    // 0x02 reader threads continuously reading snapshots and element indexing
+    for _ in 0..0x02 {
+        let db_clone = db.clone();
+        let running_clone = running.clone();
+        reader_handles.push(thread::spawn(move || {
+            let queue = db_clone.list(list_name);
+            while running_clone.load(Ordering::Relaxed) {
+                if let Ok(iter) = queue.iter() {
+                    for item in iter {
+                        assert!(!item.is_empty());
+                    }
+                }
+                let _ = queue.len();
+                let _ = queue.get_at(0);
+            }
+        }));
+    }
+
+    // 0x01 worker thread repeatedly mutating and popping items
+    {
+        let db_clone = db.clone();
+        worker_handles.push(thread::spawn(move || {
+            let queue = db_clone.list(list_name);
+            for i in 0..0x40 {
+                let item = format!("churn_item_{:04x}", i);
+                let _ = queue.append(item.as_bytes());
+                let _ = queue.pop();
+            }
+        }));
+    }
+
+    // 0x01 worker thread deleting and recreating the list
+    {
+        let db_clone = db.clone();
+        worker_handles.push(thread::spawn(move || {
+            for i in 0..0x20 {
+                let _ = db_clone.del(list_name);
+                let queue = db_clone.list(list_name);
+                let item = format!("recreated_item_{:04x}", i);
+                let _ = queue.append(item.as_bytes());
+            }
+        }));
+    }
+
+    for h in worker_handles {
+        h.join().unwrap();
+    }
+
+    running.store(false, Ordering::Relaxed);
+    for h in reader_handles {
+        h.join().unwrap();
+    }
+
+    // Clean up
+    let _ = db.del(list_name);
+    db.delete().unwrap();
+}

@@ -15,6 +15,15 @@ pub(crate) fn hash_key(key: &[u8]) -> u32 {
     if hints::unlikely(h < MIN_VALID_HASH) { h + MIN_VALID_HASH } else { h }
 }
 
+/// Trie child index calculation via folded 5-bit slicing
+///
+/// Ref: `DESIGN.md` §4.1
+#[inline(always)]
+pub(crate) const fn trie_child_idx(hash: u32, depth: usize) -> usize {
+    let raw_slice = (hash >> (5 * (depth % 6))) & 0x1F;
+    if raw_slice >= 0x1E { (raw_slice - 0x1E) as usize } else { raw_slice as usize }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,20 +149,19 @@ mod tests {
     }
 
     #[test]
-    fn ok_trie_depth_slicing_invariant() {
+    fn ok_trie_depth_slicing_and_folding_invariant() {
         let h = hash_key(b"trie_routing_key");
-        for depth in 0..5 {
-            let child_idx = (h >> (6 * depth)) & 0x3F;
-            assert!(child_idx < 0x40, "Trie child index must fit in 6 bits (0..63)");
+        for depth in 0..0x0C {
+            let child_idx = trie_child_idx(h, depth);
+            assert!(child_idx < 0x1E, "Trie child index must be in 0..29");
         }
-    }
 
-    #[test]
-    fn ok_bucket_probing_slot0_invariant() {
-        let h = hash_key(b"bucket_probe_key");
-        for depth in 0..5 {
-            let slot_0 = ((h >> (6 * depth)) % 0x15) as usize;
-            assert!(slot_0 < 0x15, "Initial bucket slot must be in 0..20");
-        }
+        // Test folding edge cases
+        let mock_h30 = 30u32;
+        let mock_h31 = 31u32;
+
+        assert_eq!(trie_child_idx(mock_h30, 0), 0);
+        assert_eq!(trie_child_idx(mock_h31, 0), 1);
+        assert_eq!(trie_child_idx(29, 0), 29);
     }
 }

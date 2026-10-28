@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Catppuccin Latte initialization latency scaling SVG with dual lines"""
+"""Generate Catppuccin Latte initialization latency scaling SVG"""
 
 import json
 import os
@@ -15,7 +15,6 @@ COLOR_BORDER = "#ccd0da"
 COLOR_LINE = "#bcc0cc"
 
 COLOR_NORMAL = "#1e66f5"    # Blue
-COLOR_INDEX = "#8839ef"     # Mauve
 
 FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
@@ -24,7 +23,7 @@ FONT_STACK = (
 
 def load_init_results(path):
     if not os.path.exists(path):
-        return [], []
+        return []
     with open(path, "r", encoding="utf-8") as handle:
         raw = json.load(handle)
 
@@ -35,13 +34,13 @@ def load_init_results(path):
     else:
         entries = []
 
-    normal_records = []
-    index_records = []
-
+    records = []
     for entry in entries:
         if entry.get("benchmark") != "init_perf":
             continue
         workload = entry.get("workload", "")
+        if workload == "with_mem_index":
+            continue
         ops = entry.get("operations", 0)
         lat = entry.get("latency_micros", {})
         rec = {
@@ -50,14 +49,10 @@ def load_init_results(path):
             "p90": lat.get("p90", 0.0),
             "p99": lat.get("p99", 0.0),
         }
-        if workload == "with_mem_index":
-            index_records.append(rec)
-        elif workload == "without_mem_index":
-            normal_records.append(rec)
+        records.append(rec)
 
-    normal_records.sort(key=lambda r: r["n"])
-    index_records.sort(key=lambda r: r["n"])
-    return normal_records, index_records
+    records.sort(key=lambda r: r["n"])
+    return records
 
 
 def format_latency(micros):
@@ -66,7 +61,7 @@ def format_latency(micros):
     return f"{micros:.1f}µs"
 
 
-def generate_svg(normal_records, index_records, out_path):
+def generate_svg(records, out_path):
     svg_w = 0x03E8  # 1000 px
     svg_h = 0x01F4  # 500 px
 
@@ -76,15 +71,14 @@ def generate_svg(normal_records, index_records, out_path):
     p_h = svg_h - 0x78
     x_pad = 0x28  # 40 px padding from plot edges
 
-    all_records = normal_records + index_records
-    if not all_records:
+    if not records:
         return
 
-    all_n = sorted(list(set(r["n"] for r in all_records)))
+    all_n = sorted(list(set(r["n"] for r in records)))
     min_n = min(all_n)
     max_n = max(all_n)
 
-    max_lat = max(r["p50"] for r in all_records)
+    max_lat = max(r["p50"] for r in records)
     max_lat = max(max_lat * 1.15, 10.0)
 
     def x_coord(n):
@@ -119,7 +113,7 @@ def generate_svg(normal_records, index_records, out_path):
     )
 
     # Legend
-    leg_x = svg_w - 0x017C  # 380 px
+    leg_x = svg_w - 0x00DC  # 220 px
     svg.append(
         f'<line x1="{leg_x}" y1="34" x2="{leg_x + 24}" y2="34" '
         f'stroke="{COLOR_NORMAL}" stroke-width="2.5"/>'
@@ -127,18 +121,7 @@ def generate_svg(normal_records, index_records, out_path):
     svg.append(f'<circle cx="{leg_x + 12}" cy="34" r="4.5" fill="{COLOR_NORMAL}"/>')
     svg.append(
         f'<text x="{leg_x + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
-        f'Without Memory Index</text>'
-    )
-
-    leg_x2 = leg_x + 0x00C8  # 200 px offset
-    svg.append(
-        f'<line x1="{leg_x2}" y1="34" x2="{leg_x2 + 24}" y2="34" '
-        f'stroke="{COLOR_INDEX}" stroke-width="2.5"/>'
-    )
-    svg.append(f'<circle cx="{leg_x2 + 12}" cy="34" r="4.5" fill="{COLOR_INDEX}"/>')
-    svg.append(
-        f'<text x="{leg_x2 + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
-        f'With Memory Index</text>'
+        f'Open Latency (p50)</text>'
     )
 
     # Plot panel background
@@ -176,38 +159,30 @@ def generate_svg(normal_records, index_records, out_path):
             f'font-size="11" text-anchor="middle">N={label}</text>'
         )
 
-    # Render series lines and data points
-    series_list = [
-        ("Without Memory Index", normal_records, COLOR_NORMAL),
-        ("With Memory Index", index_records, COLOR_INDEX),
-    ]
+    # Render series line and data points
+    pts = []
+    for r in records:
+        xc = x_coord(r["n"])
+        yc = y_coord(r["p50"])
+        pts.append(f"{xc:.1f},{yc:.1f}")
 
-    for label, records, color in series_list:
-        if not records:
-            continue
-        pts = []
-        for r in records:
-            xc = x_coord(r["n"])
-            yc = y_coord(r["p50"])
-            pts.append(f"{xc:.1f},{yc:.1f}")
+    svg.append(
+        f'<polyline points="{" ".join(pts)}" fill="none" '
+        f'stroke="{COLOR_NORMAL}" stroke-width="2.5"/>'
+    )
 
+    for r in records:
+        xc = x_coord(r["n"])
+        yc = y_coord(r["p50"])
         svg.append(
-            f'<polyline points="{" ".join(pts)}" fill="none" '
-            f'stroke="{color}" stroke-width="2.5"/>'
+            f'<circle cx="{xc:.1f}" cy="{yc:.1f}" r="4.5" fill="{COLOR_NORMAL}"/>'
         )
-
-        for r in records:
-            xc = x_coord(r["n"])
-            yc = y_coord(r["p50"])
-            svg.append(
-                f'<circle cx="{xc:.1f}" cy="{yc:.1f}" r="4.5" fill="{color}"/>'
-            )
-            offset_y = -8
-            svg.append(
-                f'<text x="{xc:.1f}" y="{yc + offset_y:.1f}" fill="{color}" '
-                f'font-size="10" font-weight="bold" text-anchor="middle">'
-                f'{format_latency(r["p50"])}</text>'
-            )
+        offset_y = -8
+        svg.append(
+            f'<text x="{xc:.1f}" y="{yc + offset_y:.1f}" fill="{COLOR_NORMAL}" '
+            f'font-size="10" font-weight="bold" text-anchor="middle">'
+            f'{format_latency(r["p50"])}</text>'
+        )
 
     svg.append('</svg>')
 
@@ -219,5 +194,5 @@ def generate_svg(normal_records, index_records, out_path):
 if __name__ == "__main__":
     in_file = sys.argv[1] if len(sys.argv) > 1 else "tmp/results/turbofox_benchmark_results.json"
     out_file = sys.argv[2] if len(sys.argv) > 2 else "assets/init_scaling.svg"
-    norm_rec, idx_rec = load_init_results(in_file)
-    generate_svg(norm_rec, idx_rec, out_file)
+    records = load_init_results(in_file)
+    generate_svg(records, out_file)

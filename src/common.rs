@@ -6,7 +6,7 @@ use core::ops::{Deref, DerefMut};
 pub(crate) const MAGIC: [u8; 4] = *b"TBFX";
 
 /// Ref: `DESIGN.md` §4.1
-pub(crate) const SEED: u32 = 0x5442_4658;
+pub(crate) const SEED: u32 = 0x00;
 
 /// Ref: `DESIGN.md` §8.2
 pub(crate) const MODULE_ID: u8 = 0x46;
@@ -81,6 +81,7 @@ pub(crate) const MIN_VALID_HASH: u32 = 2;
 pub(crate) const LIST_FLAG_MASK: u8 = 0x80;
 pub(crate) const LIST_FLAG_BE: u32 = 0x8000_0000;
 pub(crate) const ADJ_ARR_IDX_MASK: u32 = 0x7FFF_FFFF;
+
 /// Maximum key length in bytes
 pub const MAX_KEY_LEN: usize = 0xFF;
 /// Maximum value length in bytes

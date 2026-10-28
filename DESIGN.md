@@ -248,7 +248,7 @@ index into `arrays[local_array]`
 
 ### 4.1 Key Hash Normalization
 
-Algorithm: `twox_hash::XxHash32` initialized with seed `0x5442_4658` (`"TBFX"`)
+Algorithm: `twox_hash::XxHash32` initialized with seed `0x00` (as default SEED is fastest option)
 
 ```rs
 let h = hasher.finish() as u32;

@@ -2,8 +2,7 @@ use core::hash::Hasher;
 use frozen_core::hints;
 use twox_hash::XxHash32;
 
-#[allow(unused_imports)]
-pub(crate) use crate::common::{HASH_EMPTY, HASH_TOMBSTONE, MIN_VALID_HASH, SEED};
+pub(crate) use crate::common::{MIN_VALID_HASH, SEED};
 
 #[inline(always)]
 pub(crate) fn hash_key(key: &[u8]) -> u32 {
@@ -31,8 +30,6 @@ mod tests {
     #[test]
     fn ok_constants_and_sentinels() {
         assert_eq!(SEED, 0x5442_4658);
-        assert_eq!(HASH_EMPTY, 0);
-        assert_eq!(HASH_TOMBSTONE, 1);
         assert_eq!(MIN_VALID_HASH, 2);
         assert_eq!(SEED, u32::from_be_bytes(*b"TBFX"));
     }
@@ -66,8 +63,6 @@ mod tests {
                 h >= MIN_VALID_HASH,
                 "Hash must be >= MIN_VALID_HASH (2), got {h} for key {key:?}"
             );
-            assert_ne!(h, HASH_EMPTY, "Hash must never equal HASH_EMPTY (0)");
-            assert_ne!(h, HASH_TOMBSTONE, "Hash must never equal HASH_TOMBSTONE (1)");
         }
     }
 

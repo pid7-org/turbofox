@@ -14,7 +14,6 @@ fn main() {
 
     let num_intervals = TOTAL_KEYS / INTERVAL_STEP;
     let mut current_keys = 0x00;
-    let configs = [("trie_routing", ())];
     let mut is_first = true;
 
     for interval_idx in 0x01..=num_intervals {
@@ -39,40 +38,38 @@ fn main() {
 
         let db_size = bench_dir.compute_disk_bytes();
 
-        for &(workload, _) in &configs {
-            let turbo_cfg = TurboCfg::manual(&db_path);
-            let mut hist = new_histogram();
+        let turbo_cfg = TurboCfg::manual(&db_path);
+        let mut hist = new_histogram();
 
-            let warmup_db = TurboFox::open(turbo_cfg.clone()).expect("warmup open failed");
-            drop(warmup_db);
+        let warmup_db = TurboFox::open(turbo_cfg.clone()).expect("warmup open failed");
+        drop(warmup_db);
 
-            let start_all = Instant::now();
-            for _ in 0x00..SAMPLES_PER_INTERVAL {
-                let t0 = Instant::now();
-                let opened_db = TurboFox::open(turbo_cfg.clone()).expect("open failed");
-                let elapsed_ns = t0.elapsed().as_nanos() as u64;
+        let start_all = Instant::now();
+        for _ in 0x00..SAMPLES_PER_INTERVAL {
+            let t0 = Instant::now();
+            let opened_db = TurboFox::open(turbo_cfg.clone()).expect("open failed");
+            let elapsed_ns = t0.elapsed().as_nanos() as u64;
 
-                hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
-                drop(opened_db);
-            }
-            let total_elapsed = start_all.elapsed();
-
-            if !is_first {
-                println!(",");
-            }
-            is_first = false;
-
-            let summary = BenchSummary {
-                benchmark: "init_perf",
-                workload,
-                total_ops: target_keys,
-                threads: 0x01,
-                total_elapsed,
-                hist: &hist,
-                db_size_bytes: db_size,
-            };
-
-            print_json_summary(&summary);
+            hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
+            drop(opened_db);
         }
+        let total_elapsed = start_all.elapsed();
+
+        if !is_first {
+            println!(",");
+        }
+        is_first = false;
+
+        let summary = BenchSummary {
+            benchmark: "init_perf",
+            workload: "open",
+            total_ops: target_keys,
+            threads: 0x01,
+            total_elapsed,
+            hist: &hist,
+            db_size_bytes: db_size,
+        };
+
+        print_json_summary(&summary);
     }
 }

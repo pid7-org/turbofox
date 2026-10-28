@@ -540,6 +540,15 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 128]`):
    - Assert `meta.free_slot_marker <= meta.total_slots`; error if corrupt
 5. Construct and return `TurboFox` engine handle
 
+#### `open_or_create(cfg: TurboCfg) -> TurboResult<TurboFox>`
+
+1. Construct `MemMapCfg` resolving target versioned file path (`{dir}/{name}_{version}`)
+2. Check backing storage presence via `versioned_path().exists()`:
+   - If present: delegate directly to `open(cfg)`
+   - If absent: delegate directly to `create(cfg)`
+3. Strictly propagate all header verification, layout, and advisory lock errors;
+   never fall back to recreation on validation failure to prevent silent data clobbering
+
 ### 8.2 Engine Configuration & `MemMapCfg` Translation
 
 `TurboCfg` exposes user parameters and translates directly to `MemMapCfg`:

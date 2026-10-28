@@ -42,24 +42,39 @@ pub(crate) const METADATA_SLOTS: usize = 1;
 pub(crate) const METADATA_SLOT: u32 = 0;
 
 /// Ref: `DESIGN.md` §1, §3.3
-pub(crate) const DATABUF_SIZE: usize = 0x0400;
-pub(crate) const DATABUF_SLOTS: usize = 8;
-pub(crate) const DATABUF_BUF_COUNT: usize = 0x3F;
-pub(crate) const DATABUF_BUF_SIZE: usize = 0x10;
-pub(crate) const DATABUF_PAYLOAD_SIZE: usize = 0x03F0;
-pub(crate) const DATABUF_FULL_BIT: u64 = 1;
-pub(crate) const DATABUF_OCCUPANCY_MASK: u64 = 0xFFFF_FFFF_FFFF_FFFE;
+pub(crate) const DBUF_SIZE: usize = 0x0100;
+pub(crate) const DBUF_SLOTS: usize = 2;
+pub(crate) const DBUF_BUF_COUNT: usize = 31;
+pub(crate) const DBUF_BUF_SIZE: usize = 8;
+pub(crate) const DBUF_PAYLOAD_SIZE: usize = 248;
+pub(crate) const DBUF_FULL_BIT: u32 = 0x8000_0000;
+pub(crate) const DBUF_OCCUPANCY_MASK: u32 = 0x7FFF_FFFF;
+
+pub(crate) const DATABUF_SIZE: usize = DBUF_SIZE;
+pub(crate) const DATABUF_SLOTS: usize = DBUF_SLOTS;
+pub(crate) const DATABUF_BUF_COUNT: usize = DBUF_BUF_COUNT;
+pub(crate) const DATABUF_BUF_SIZE: usize = DBUF_BUF_SIZE;
+pub(crate) const DATABUF_PAYLOAD_SIZE: usize = DBUF_PAYLOAD_SIZE;
+pub(crate) const DATABUF_FULL_BIT: u32 = DBUF_FULL_BIT;
+pub(crate) const DATABUF_OCCUPANCY_MASK: u32 = DBUF_OCCUPANCY_MASK;
+
 pub(crate) const CRC_SIZE: usize = 4;
 pub(crate) const KV_HEADER_SIZE: usize = 4;
 pub(crate) const LIST_KEY_HEADER_SIZE: usize = 5;
 pub(crate) const LIST_VAL_HEADER_SIZE: usize = 6;
-pub(crate) const LIST_KEY_INLINE_MAX: usize = 0x0B;
-pub(crate) const LIST_VAL_INLINE_MAX: usize = 0x0A;
+pub(crate) const LIST_KEY_INLINE_MAX: usize = 3;
+pub(crate) const LIST_VAL_INLINE_MAX: usize = 2;
 
-/// Ref: `DESIGN.md` §1, §3.2
-pub(crate) const BUCKET_SIZE: usize = 0x0400;
-pub(crate) const BUCKET_SLOTS: usize = 8;
-pub(crate) const BUCKET_ENTRIES: usize = 0x40;
+/// Ref: `DESIGN.md` §1, §3.1, §3.2
+pub(crate) const NODE_SIZE: usize = 0x80;
+pub(crate) const NODE_SLOTS: usize = 1;
+pub(crate) const NODE_CHILDREN: usize = 30;
+pub(crate) const NODE_FLAG: u32 = 0x0000_0000;
+pub(crate) const BUCKET_FLAG: u32 = 0x0000_0001;
+
+pub(crate) const BUCKET_SIZE: usize = 0x80;
+pub(crate) const BUCKET_SLOTS: usize = 1;
+pub(crate) const BUCKET_ENTRIES: usize = 10;
 pub(crate) const HASH_EMPTY: u32 = 0;
 pub(crate) const HASH_TOMBSTONE: u32 = 1;
 pub(crate) const MIN_VALID_HASH: u32 = 2;
@@ -71,13 +86,14 @@ pub const MAX_KEY_LEN: usize = 0xFF;
 /// Maximum value length in bytes
 pub const MAX_VAL_LEN: usize = 0xFFFF;
 
-/// Ref: `DESIGN.md` §4.2
-pub(crate) const HASH_SLICE_BITS: u32 = 6;
-pub(crate) const HASH_SLICE_MASK: u32 = 0x3F;
-pub(crate) const HASH_SLICES_PER_U32: u32 = 5;
+/// Ref: `DESIGN.md` §4.1, §4.2
+pub(crate) const HASH_SLICE_BITS: u32 = 5;
+pub(crate) const HASH_SLICE_MASK: u32 = 0x1F;
+pub(crate) const HASH_SLICES_PER_U32: u32 = 6;
+pub(crate) const MAX_TRIE_DEPTH: usize = 0x07;
 
 /// Ref: `DESIGN.md` §4.3
-pub(crate) const BUCKET_PROBE_LIMIT: usize = 0x10;
+pub(crate) const BUCKET_PROBE_LIMIT: usize = 10;
 
 /// Ref: `DESIGN.md` §1
 pub(crate) const PAGE_SIZE_4K: usize = 0x1000;
@@ -89,16 +105,20 @@ pub(crate) const SLOTS_PER_16K_PAGE: usize = 0x80;
 pub(crate) const SLOTS_PER_64K_PAGE: usize = 0x0200;
 
 /// Ref: `DESIGN.md` §3.1
-pub(crate) const ROOT_BUCKET_SLOT: u32 = 0x08;
+pub(crate) const ROOT_NODE_SLOT: u32 = 0x10;
+pub(crate) const ROOT_BUCKET_SLOT: u32 = 0x11;
 pub(crate) const ADJ_ARR_HEAD_SLOT: u32 = 0x01;
-pub(crate) const DATABUF_HEAD_SLOT: u32 = 0x10;
+pub(crate) const ADJ_ARR_TAIL_SLOT: u32 = 0x2F;
+pub(crate) const DATABUF_HEAD_SLOT: u32 = 0x02;
+pub(crate) const INITIAL_BUCKET_START_SLOT: u32 = 0x11;
+pub(crate) const INITIAL_BUCKET_COUNT: usize = 30;
 
 /// Ref: `DESIGN.md` §2
-pub(crate) const INITIAL_FREE_SLOT_MARKER: u32 = 0x20;
-pub(crate) const INITIAL_FOOTPRINT_SLOTS: u32 = 0x20;
-pub(crate) const INITIAL_FOOTPRINT_BYTES: usize = 0x1000;
-pub(crate) const INITIAL_ADJ_ARR_BLOCKS: usize = 7;
-pub(crate) const INITIAL_DATABUF_POOLS: usize = 2;
+pub(crate) const INITIAL_FREE_SLOT_MARKER: u32 = 0x30;
+pub(crate) const INITIAL_FOOTPRINT_SLOTS: u32 = 0x30;
+pub(crate) const INITIAL_FOOTPRINT_BYTES: usize = 0x1800;
+pub(crate) const INITIAL_ADJ_ARR_BLOCKS: usize = 2;
+pub(crate) const INITIAL_DATABUF_POOLS: usize = 7;
 
 /// Ref: `DESIGN.md` §8.1
 pub(crate) const INITIAL_PAGES_4K: usize = 4;
@@ -106,17 +126,30 @@ pub(crate) const INITIAL_PAGES_16K: usize = 1;
 pub(crate) const INITIAL_PAGES_64K: usize = 1;
 
 /// Ref: `DESIGN.md` §5.1, §5.3
-pub(crate) const ALLOC_SLOT_QUANTUM: u32 = 8;
-pub(crate) const ALLOC_BYTE_QUANTUM: usize = 0x0400;
+pub(crate) const ALLOC_SLOT_QUANTUM: u32 = 2;
+pub(crate) const ALLOC_BYTE_QUANTUM: usize = 0x0100;
 
 /// Ref: `DESIGN.md` §9.1
 pub(crate) const MAX_BUF_IDX: u32 = 0x7FFF_FFFF;
-pub(crate) const MAX_DBUF_SLOT: u32 = MAX_BUF_IDX / (DATABUF_BUF_COUNT as u32);
-pub(crate) const MAX_DATABUFS: u32 = MAX_DBUF_SLOT / (DATABUF_SLOTS as u32);
+pub(crate) const MAX_DBUF_SLOT: u32 = MAX_BUF_IDX / (DBUF_BUF_COUNT as u32);
+pub(crate) const MAX_DATABUFS: u32 = MAX_DBUF_SLOT / (DBUF_SLOTS as u32);
 pub(crate) const MAX_STORAGE_PAGES: u32 = MAX_DBUF_SLOT.div_ceil(SLOTS_PER_4K_PAGE as u32);
 pub(crate) const MAX_SLOTS: u64 = 1 << 0x20;
 pub(crate) const MAX_STORAGE_PAGES_4K: u32 = 0x0800_0000;
 pub(crate) const MAX_DB_LEN: usize = 0x80_0000_0000;
+
+pub(crate) const OCC_MAX_RETRIES: u32 = 0x100;
+
+/// Ref: `DESIGN.md` §3.1, §3.2
+#[repr(C, align(8))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SlotHeader {
+    pub(crate) flag: u32,
+    pub(crate) padding: [u8; 4],
+}
+
+const _: () = assert!(core::mem::size_of::<SlotHeader>() == 8);
+const _: () = assert!(core::mem::align_of::<SlotHeader>() == 8);
 
 /// Ref: `DESIGN.md` §1, §3
 #[repr(C, align(8))]
@@ -186,6 +219,11 @@ impl Slot {
     pub(crate) fn as_mut_slice(&mut self) -> &mut [u8] {
         &mut self.0
     }
+
+    #[inline(always)]
+    pub(crate) fn flag(&self) -> u32 {
+        u32::from_le_bytes([self.0[0], self.0[1], self.0[2], self.0[3]])
+    }
 }
 
 #[cfg(test)]
@@ -227,16 +265,16 @@ mod tests {
 
     #[test]
     fn ok_static_head_constants() {
-        assert_eq!(ROOT_BUCKET_SLOT, 0x08);
+        assert_eq!(ROOT_NODE_SLOT, 0x10);
         assert_eq!(ADJ_ARR_HEAD_SLOT, 0x01);
-        assert_eq!(DATABUF_HEAD_SLOT, 0x10);
-        assert_eq!(INITIAL_FREE_SLOT_MARKER, 0x20);
+        assert_eq!(DATABUF_HEAD_SLOT, 0x02);
+        assert_eq!(INITIAL_FREE_SLOT_MARKER, 0x30);
     }
 
     #[test]
     fn ok_capacity_proof_invariants() {
-        assert_eq!(MAX_DBUF_SLOT, 34087042);
-        assert_eq!(MAX_DATABUFS, 4260880);
+        assert_eq!(MAX_DBUF_SLOT, 69273666);
+        assert_eq!(MAX_DATABUFS, 34636833);
         assert_eq!(MAX_DB_LEN, 0x80_0000_0000);
         assert_eq!(MAX_DB_LEN, 512 * 1024 * 1024 * 1024);
         assert_eq!(MAX_SLOTS, 1u64 << 0x20);

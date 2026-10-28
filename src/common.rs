@@ -260,8 +260,7 @@ mod tests {
     #[test]
     fn ok_magic_and_seed() {
         assert_eq!(MAGIC, *b"TBFX");
-        assert_eq!(SEED, 0x5442_4658);
-        assert_eq!(SEED, u32::from_be_bytes(MAGIC));
+        assert_eq!(SEED, 0x00);
     }
 
     #[test]

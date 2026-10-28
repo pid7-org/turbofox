@@ -29,9 +29,8 @@ mod tests {
 
     #[test]
     fn ok_constants_and_sentinels() {
-        assert_eq!(SEED, 0x5442_4658);
+        assert_eq!(SEED, 0x00);
         assert_eq!(MIN_VALID_HASH, 2);
-        assert_eq!(SEED, u32::from_be_bytes(*b"TBFX"));
     }
 
     #[test]

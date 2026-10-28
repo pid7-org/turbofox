@@ -106,3 +106,52 @@ fn err_turbofox_open_corrupted_headers_matrix() {
     }
     assert!(matches!(TurboFox::open(cfg.clone()).unwrap_err(), TurboError::CorruptedHeader(_)));
 }
+
+/// Ref: `DESIGN.md` §8.1
+#[test]
+fn ok_turbofox_open_or_create_lifecycle() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::manual(dir.path());
+
+    // 1: First call creates fresh database
+    {
+        let db = TurboFox::open_or_create(cfg.clone()).unwrap();
+        assert_eq!(db.total_entries(), 0);
+        db.set(b"service:state", b"running").unwrap();
+        db.sync().unwrap();
+    }
+
+    // 2: Subsequent call reopens existing database
+    {
+        let reopened = TurboFox::open_or_create(cfg.clone()).unwrap();
+        assert_eq!(reopened.total_entries(), 1);
+        assert_eq!(reopened.get(b"service:state").unwrap(), Some(b"running".to_vec()));
+        reopened.delete().unwrap();
+    }
+}
+
+/// Ref: `DESIGN.md` §3.1, §8.1
+#[test]
+fn err_turbofox_open_or_create_corrupt_fails_safely() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::manual(dir.path());
+
+    {
+        let db = TurboFox::open_or_create(cfg.clone()).unwrap();
+        db.set(b"critical_key", b"payload").unwrap();
+        db.sync().unwrap();
+    }
+
+    let file_path =
+        std::fs::read_dir(dir.path()).unwrap().filter_map(|e| e.ok()).next().unwrap().path();
+
+    // Corrupt magic header in existing file
+    {
+        let mut file = OpenOptions::new().write(true).open(&file_path).unwrap();
+        file.seek(SeekFrom::Start(0)).unwrap();
+        file.write_all(b"CORR").unwrap();
+    }
+
+    // open_or_create must return error and not overwrite the corrupt file
+    assert!(matches!(TurboFox::open_or_create(cfg.clone()).unwrap_err(), TurboError::InvalidMagic));
+}

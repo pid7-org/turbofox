@@ -1597,51 +1597,91 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-        let matched_idx = bucket
-            .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+        for attempt in 0..OCC_MAX_RETRIES {
+            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let orig_bucket_slot = bucket_slot as usize;
+            let orig_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(orig_bucket_slot, |b| *b)?;
 
-        let target_entry_idx = match matched_idx {
-            Some(idx) => idx,
-            None => return Ok(None),
-        };
+            let matched_idx = bucket
+                .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
 
-        let entry = bucket.entry(target_entry_idx);
-        let mut curr_arr_idx = entry.adjarr_idx();
-        let mut current_offset = 0usize;
+            let target_entry_idx = match matched_idx {
+                Some(i) => i,
+                None => return Ok(None),
+            };
 
-        loop {
-            let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
-            let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-            let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
+            let entry = bucket.entry(target_entry_idx);
+            let mut curr_arr_idx = entry.adjarr_idx();
+            let mut current_offset = 0usize;
+            let mut result_payload: Option<Option<Vec<u8>>> = None;
+            let mut retry_needed = false;
 
-            let array = block.array(local_arr);
-            let array_len = array.len();
-
-            if idx < current_offset + array_len {
-                let local_entry_idx = idx - current_offset;
-                if let Some(e) = array.entry(local_entry_idx) {
-                    if !e.is_empty() {
-                        return self.read_list_item_payload(e.buf_idx()).map(Some);
+            loop {
+                let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
+                let block_slot = match self.locate_adjarr_block_slot(block_hop) {
+                    Ok(s) => s as usize,
+                    Err(_) => {
+                        retry_needed = true;
+                        break;
                     }
+                };
+
+                let block = match self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        retry_needed = true;
+                        break;
+                    }
+                };
+
+                let array = block.array(local_arr);
+                let array_len = array.len();
+
+                if idx < current_offset + array_len {
+                    let local_entry_idx = idx - current_offset;
+                    if let Some(e) = array.entry(local_entry_idx) {
+                        if !e.is_empty() {
+                            match self.read_list_item_payload(e.buf_idx()) {
+                                Ok(p) => result_payload = Some(Some(p)),
+                                Err(_) => {
+                                    retry_needed = true;
+                                    break;
+                                }
+                            }
+                        } else {
+                            result_payload = Some(None);
+                        }
+                    } else {
+                        result_payload = Some(None);
+                    }
+                    break;
                 }
 
-                return Ok(None);
+                current_offset += array_len;
+                let next = array.next_array();
+                if next == 0 {
+                    break;
+                }
+                curr_arr_idx = next;
             }
 
-            current_offset += array_len;
-            let next = array.next_array();
-
-            if next == 0 {
-                break;
+            let current_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
+            if !retry_needed && current_slot == orig_slot {
+                return Ok(result_payload.unwrap_or(None));
             }
 
-            curr_arr_idx = next;
+            Self::occ_backoff(attempt);
         }
 
-        Ok(None)
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        if bucket.probe_match(hash, |i| self.match_list_key(&bucket.entry(i), key)).is_none() {
+            Ok(None)
+        } else {
+            Err(TurboError::ResourceBusy("list get_at retry limit exceeded"))
+        }
     }
 
     /// Ref: `DESIGN.md` §7.4
@@ -1651,39 +1691,69 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-        let matched_idx = bucket
-            .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+        for attempt in 0..OCC_MAX_RETRIES {
+            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let orig_bucket_slot = bucket_slot as usize;
+            let orig_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(orig_bucket_slot, |b| *b)?;
 
-        let target_entry_idx = match matched_idx {
-            Some(idx) => idx,
-            None => return Ok(0),
-        };
+            let matched_idx = bucket
+                .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
 
-        let entry = bucket.entry(target_entry_idx);
-        let mut curr_arr_idx = entry.adjarr_idx();
-        let mut total_count = 0usize;
+            let target_entry_idx = match matched_idx {
+                Some(idx) => idx,
+                None => return Ok(0),
+            };
 
-        loop {
-            let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
-            let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-            let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
+            let entry = bucket.entry(target_entry_idx);
+            let mut curr_arr_idx = entry.adjarr_idx();
+            let mut total_count = 0usize;
+            let mut retry_needed = false;
 
-            let array = block.array(local_arr);
+            loop {
+                let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
+                let block_slot = match self.locate_adjarr_block_slot(block_hop) {
+                    Ok(s) => s as usize,
+                    Err(_) => {
+                        retry_needed = true;
+                        break;
+                    }
+                };
 
-            total_count += array.len();
-            let next = array.next_array();
+                let block = match self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        retry_needed = true;
+                        break;
+                    }
+                };
 
-            if next == 0 {
-                break;
+                let array = block.array(local_arr);
+                total_count += array.len();
+
+                let next = array.next_array();
+                if next == 0 {
+                    break;
+                }
+                curr_arr_idx = next;
             }
 
-            curr_arr_idx = next;
+            let current_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
+            if !retry_needed && current_slot == orig_slot {
+                return Ok(total_count);
+            }
+
+            Self::occ_backoff(attempt);
         }
 
-        Ok(total_count)
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        if bucket.probe_match(hash, |idx| self.match_list_key(&bucket.entry(idx), key)).is_none() {
+            Ok(0)
+        } else {
+            Err(TurboError::ResourceBusy("list len retry limit exceeded"))
+        }
     }
 
     /// Ref: `DESIGN.md` §7.4
@@ -1693,44 +1763,85 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-        let matched_idx = bucket
-            .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+        for attempt in 0..OCC_MAX_RETRIES {
+            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let orig_bucket_slot = bucket_slot as usize;
+            let orig_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(orig_bucket_slot, |b| *b)?;
 
-        let target_entry_idx = match matched_idx {
-            Some(idx) => idx,
-            None => return Ok(Vec::new()),
-        };
+            let matched_idx = bucket
+                .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
 
-        let entry = bucket.entry(target_entry_idx);
-        let mut curr_arr_idx = entry.adjarr_idx();
-        let mut items = Vec::new();
+            let target_entry_idx = match matched_idx {
+                Some(idx) => idx,
+                None => return Ok(Vec::new()),
+            };
 
-        loop {
-            let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
-            let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-            let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
+            let entry = bucket.entry(target_entry_idx);
+            let mut curr_arr_idx = entry.adjarr_idx();
+            let mut items = Vec::new();
+            let mut retry_needed = false;
 
-            let array = block.array(local_arr);
-            for i in 0..array.len() {
-                if let Some(e) = array.entry(i) {
-                    if !e.is_empty() {
-                        items.push(self.read_list_item_payload(e.buf_idx())?);
+            loop {
+                let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
+                let block_slot = match self.locate_adjarr_block_slot(block_hop) {
+                    Ok(s) => s as usize,
+                    Err(_) => {
+                        retry_needed = true;
+                        break;
+                    }
+                };
+
+                let block = match self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b) {
+                    Ok(b) => b,
+                    Err(_) => {
+                        retry_needed = true;
+                        break;
+                    }
+                };
+
+                let array = block.array(local_arr);
+                for i in 0..array.len() {
+                    if let Some(e) = array.entry(i) {
+                        if !e.is_empty() {
+                            match self.read_list_item_payload(e.buf_idx()) {
+                                Ok(payload) => items.push(payload),
+                                Err(_) => {
+                                    retry_needed = true;
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
+
+                if retry_needed {
+                    break;
+                }
+
+                let next = array.next_array();
+                if next == 0 {
+                    break;
+                }
+                curr_arr_idx = next;
             }
 
-            let next = array.next_array();
-            if next == 0 {
-                break;
+            let current_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
+            if !retry_needed && current_slot == orig_slot {
+                return Ok(items);
             }
 
-            curr_arr_idx = next;
+            Self::occ_backoff(attempt);
         }
 
-        Ok(items)
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        if bucket.probe_match(hash, |idx| self.match_list_key(&bucket.entry(idx), key)).is_none() {
+            Ok(Vec::new())
+        } else {
+            Err(TurboError::ResourceBusy("list items retry limit exceeded"))
+        }
     }
 
     /// Ref: `DESIGN.md` §7.4

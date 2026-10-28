@@ -109,6 +109,9 @@ pub enum TurboError {
 
     /// Storage capacity exhausted; cannot allocate additional physical pages
     DatabaseFull,
+
+    /// Trie depth recursion ceiling reached due to hash collision limit
+    CollisionLimit,
 }
 
 impl From<frozen_core::error::FrozenError> for TurboError {
@@ -149,6 +152,7 @@ impl core::fmt::Display for TurboError {
             Self::PayloadTooLarge => write!(f, "payload exceeds max buffer capacity"),
             Self::CorruptedPayload(reason) => write!(f, "corrupted payload: {}", reason),
             Self::DatabaseFull => write!(f, "database storage capacity exhausted"),
+            Self::CollisionLimit => write!(f, "trie depth collision limit exceeded"),
         }
     }
 }
@@ -198,6 +202,7 @@ mod tests {
         assert_eq!(TurboError::PayloadTooLarge.to_string(), "payload exceeds max buffer capacity");
         assert_eq!(TurboError::CorruptedPayload("crc").to_string(), "corrupted payload: crc");
         assert_eq!(TurboError::DatabaseFull.to_string(), "database storage capacity exhausted");
+        assert_eq!(TurboError::CollisionLimit.to_string(), "trie depth collision limit exceeded");
         assert_eq!(
             TurboError::CorruptedHeader("bad total_slots").to_string(),
             "corrupted header: bad total_slots"

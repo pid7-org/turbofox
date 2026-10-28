@@ -14,7 +14,7 @@ fn main() {
 
     let num_intervals = TOTAL_KEYS / INTERVAL_STEP;
     let mut current_keys = 0x00;
-    let configs = [("without_mem_index", false), ("with_mem_index", true)];
+    let configs = [("trie_routing", ())];
     let mut is_first = true;
 
     for interval_idx in 0x01..=num_intervals {
@@ -39,8 +39,8 @@ fn main() {
 
         let db_size = bench_dir.compute_disk_bytes();
 
-        for &(workload, mem_index) in &configs {
-            let turbo_cfg = TurboCfg::manual(&db_path).with_mem_index(mem_index);
+        for &(workload, _) in &configs {
+            let turbo_cfg = TurboCfg::manual(&db_path);
             let mut hist = new_histogram();
 
             let warmup_db = TurboFox::open(turbo_cfg.clone()).expect("warmup open failed");

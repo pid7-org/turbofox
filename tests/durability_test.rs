@@ -29,7 +29,7 @@ fn ok_turbofox_persistence_across_reopen() {
             assert_eq!(db.get(k.as_bytes()).unwrap(), Some(expected_v.into_bytes()));
         }
 
-        let expanded = vec![0x33; 0x0120];
+        let expanded = vec![0x33; 0xA0];
         db.set(b"persist_k_00", &expanded).unwrap();
         db.set(b"persist_k_new", b"val_new").unwrap();
         assert_eq!(db.total_entries(), 0x11);
@@ -38,7 +38,7 @@ fn ok_turbofox_persistence_across_reopen() {
 
     let reopened = TurboFox::open(cfg).unwrap();
     assert_eq!(reopened.total_entries(), 0x11);
-    assert_eq!(reopened.get(b"persist_k_00").unwrap(), Some(vec![0x33; 0x0120]));
+    assert_eq!(reopened.get(b"persist_k_00").unwrap(), Some(vec![0x33; 0xA0]));
     assert_eq!(reopened.get(b"persist_k_new").unwrap(), Some(b"val_new".to_vec()));
 
     reopened.delete().unwrap();

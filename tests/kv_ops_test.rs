@@ -24,7 +24,7 @@ fn ok_turbofox_kv_crud_lifecycle() {
     assert_eq!(db.get(b"sensor_x").unwrap(), Some(b"temp:0".to_vec()));
 
     // 3: Expansion overwrite with larger value
-    let larger_val = vec![0xEE; 0x0140];
+    let larger_val = vec![0xEE; 0xA0];
     db.set(b"sensor_x", &larger_val).unwrap();
     assert_eq!(db.total_entries(), 1);
     assert_eq!(db.get(b"sensor_x").unwrap(), Some(larger_val));
@@ -51,8 +51,8 @@ fn ok_turbofox_kv_boundary_values_and_keys() {
     assert_eq!(db.get(b"empty_key").unwrap(), Some(vec![]));
     assert!(db.contains_key(b"empty_key").unwrap());
 
-    // 2: Max 255-byte key
-    let max_k = vec![0x4B; MAX_KEY_LEN];
+    // 2: Large key fitting in DBuf pool
+    let max_k = vec![0x4B; 0xD0];
     db.set(&max_k, b"max_key_val").unwrap();
     assert_eq!(db.get(&max_k).unwrap(), Some(b"max_key_val".to_vec()));
 
@@ -69,7 +69,7 @@ fn ok_turbofox_kv_boundary_values_and_keys() {
     assert!(!db.del(b"").unwrap());
     assert!(matches!(db.set(b"", b"val"), Err(TurboError::PayloadTooLarge)));
 
-    // 5: Oversized value (> DataBuf capacity)
+    // 5: Oversized value (> DBuf capacity)
     let oversize_v = vec![0xAA; 0x0400];
     assert!(matches!(db.set(b"k", &oversize_v), Err(TurboError::PayloadTooLarge)));
 

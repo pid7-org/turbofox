@@ -93,14 +93,14 @@ fn err_turbofox_open_corrupted_headers_matrix() {
     }
     assert!(matches!(
         TurboFox::open(cfg.clone()).unwrap_err(),
-        TurboError::VersionMismatch { expected: 2, found: 9 }
+        TurboError::VersionMismatch { expected: 3, found: 9 }
     ));
 
     // Restore version, corrupt total_slots divergence
     {
         let mut file = OpenOptions::new().write(true).open(&file_path).unwrap();
         file.seek(SeekFrom::Start(4)).unwrap();
-        file.write_all(&0x0000_0002u32.to_le_bytes()).unwrap();
+        file.write_all(&0x0000_0003u32.to_le_bytes()).unwrap();
         file.seek(SeekFrom::Start(0x10)).unwrap();
         file.write_all(&0x0000_07FFu32.to_le_bytes()).unwrap();
     }

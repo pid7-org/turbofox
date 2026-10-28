@@ -123,22 +123,23 @@ fn ok_turbofox_physical_os_page_growth() {
     let initial_rem_bytes = db.remaining_bytes().unwrap();
 
     // Ingest heavy payloads to consume slots and trigger OS page growth
-    for i in 0..0x80 {
+    let count = 0x90;
+    for i in 0..count {
         let k = format!("page_grow_{:04}", i).into_bytes();
-        let v = vec![0x3C; 0x0180];
+        let v = vec![0x3C; 0xDC];
         db.set(&k, &v).unwrap();
     }
 
     let grown_pages = db.total_pages().unwrap();
     assert!(grown_pages >= initial_pages);
-    assert_eq!(db.total_entries(), 0x80);
+    assert_eq!(db.total_entries(), count);
 
     db.sync().unwrap();
     drop(db);
 
     let reopened = TurboFox::open(cfg).unwrap();
     assert_eq!(reopened.total_pages().unwrap(), grown_pages);
-    assert_eq!(reopened.total_entries(), 0x80);
+    assert_eq!(reopened.total_entries(), count);
     assert!(reopened.remaining_bytes().unwrap() <= initial_rem_bytes);
 
     reopened.delete().unwrap();

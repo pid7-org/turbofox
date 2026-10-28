@@ -46,6 +46,27 @@
 //! db.delete().unwrap();
 //! ```
 //!
+//! ## Lifecycle & Initialization
+//!
+//! TurboFox provides three initialization primitives,
+//!
+//! * [`TurboFox::open_or_create`]: Recommended for general application lifecycles; checks
+//!   backing storage presence and initializes if missing, while strictly propagating corruption
+//!   or validation errors rather than silently clobbering existing state
+//! * [`TurboFox::open`]: Strict open; requires existing database files and validates magic,
+//!   layout version, page alignment, and header integrity; fails if storage is absent
+//! * [`TurboFox::create`]: Strict creation; initializes physical pages and format metadata;
+//!   fails with [`TurboError::Storage`] if storage files already exist
+//!
+//!
+//! TurboFox provides three distinct initialization entry points to match operational requirements,
+//!
+//! | Method           | Target Exists | Target Missing | Target Corrupt | Recommended Use Case                     |
+//! |:-----------------|:------------- |:---------------|:---------------|:-----------------------------------------|
+//! | `open_or_create` | Opens DB      | Inits DB       | Fails (`Err`)  | General application boot sequences       |
+//! | `create`         | Fails (`Err`) | Inits DB       | N/A            | Cold setup or provisioning scripts       |
+//! | `open`           | Opens DB      | Fails (`Err`)  | Fails (`Err`)  | Strict restarts requiring existing state |
+//!
 //! ## Architecture Guarantees
 //!
 //! TurboFox is an embedded key-value storage engine engineered around memory-mapped persistence,
@@ -302,6 +323,47 @@ impl TurboFox {
     /// ```
     pub fn open(cfg: TurboCfg) -> TurboResult<Self> {
         let engine = Engine::open(cfg)?;
+
+        Ok(Self { engine: Arc::new(engine) })
+    }
+
+    /// Open an existing [`TurboFox`] database or initialize a fresh instance if absent
+    ///
+    /// If backing database files already exist at the target path, opens and validates them;
+    /// otherwise formats a fresh database layout
+    ///
+    /// Corrupt headers or invalid magic bytes are not masked or silently overwritten, returning
+    /// validation errors immediately
+    ///
+    /// ## Errors
+    ///
+    /// * [`TurboError::Storage`] if files cannot be created or accessed
+    /// * [`TurboError::CorruptedHeader`] if existing file header validation fails
+    /// * [`TurboError::InvalidMagic`] if existing file magic signature is invalid
+    /// * [`TurboError::VersionMismatch`] if layout version does not match engine version
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::manual(path);
+    ///
+    /// {
+    ///     let db = TurboFox::open_or_create(cfg.clone()).unwrap();
+    ///     db.set(b"service", b"active").unwrap();
+    ///     db.sync().unwrap();
+    /// }
+    ///
+    /// let reopened = TurboFox::open_or_create(cfg).unwrap();
+    /// assert_eq!(reopened.get(b"service").unwrap(), Some(b"active".to_vec()));
+    ///
+    /// reopened.delete().unwrap();
+    /// ```
+    pub fn open_or_create(cfg: TurboCfg) -> TurboResult<Self> {
+        let engine = Engine::open_or_create(cfg)?;
 
         Ok(Self { engine: Arc::new(engine) })
     }

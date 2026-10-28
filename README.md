@@ -18,6 +18,7 @@ barriers
 ## Index
 
 - [Usage](#usage)
+- [Lifecycle & Initialization](#lifecycle--initialization)
 - [Architecture Guarantees](#architecture-guarantees)
   - [Zero Rehash](#zero-rehash)
   - [Torn-Write Protection](#torn-write-protection)
@@ -55,7 +56,7 @@ let dir = tempfile::tempdir().unwrap();
 let path = dir.path();
 
 let cfg = TurboCfg::manual(path);
-let db = TurboFox::create(cfg).unwrap();
+let db = TurboFox::open_or_create(cfg).unwrap();
 
 let ticket = db.set(b"device:01", b"state_active").unwrap();
 assert_eq!(db.get(b"device:01").unwrap(), Some(b"state_active".to_vec()));
@@ -67,14 +68,36 @@ assert!(db.del(b"device:01").unwrap());
 assert_eq!(db.get(b"device:01").unwrap(), None);
 
 let list = db.list(b"events");
-list.append(b"boot").unwrap();
-list.append(b"init").unwrap();
+
+list.append(b"boot").unwrap().sync().unwrap();
+list.append(b"init").unwrap().sync().unwrap();
+
 assert_eq!(list.len().unwrap(), 2);
 assert_eq!(list.pop().unwrap(), Some(b"init".to_vec()));
 
 drop(list);
 db.delete().unwrap();
 ```
+
+## Lifecycle & Initialization
+
+TurboFox provides three initialization primitives,
+
+* [`TurboFox::open_or_create`]: Recommended for general application lifecycles; checks
+  backing storage presence and initializes if missing, while strictly propagating corruption
+  or validation errors rather than silently clobbering existing state
+* [`TurboFox::open`]: Strict open; requires existing database files and validates magic,
+  layout version, page alignment, and header integrity; fails if storage is absent
+* [`TurboFox::create`]: Strict creation; initializes physical pages and format metadata;
+  fails with [`TurboError::Storage`] if storage files already exist
+
+TurboFox provides three distinct initialization entry points to match operational requirements,
+
+| Method           | Target Exists | Target Missing | Target Corrupt | Recommended Use Case                     |
+|:-----------------|:------------- |:---------------|:---------------|:-----------------------------------------|
+| `open_or_create` | Opens DB      | Inits DB       | Fails (`Err`)  | General application boot sequences       |
+| `create`         | Fails (`Err`) | Inits DB       | N/A            | Cold setup or provisioning scripts       |
+| `open`           | Opens DB      | Fails (`Err`)  | Fails (`Err`)  | Strict restarts requiring existing state |
 
 ## Architecture Guarantees
 
@@ -166,8 +189,8 @@ point reads (`get`), writes (`set`), and deletes (`del`) run concurrently withou
 
 ## API
 
-Refer to [docs.rs](https://docs.rs/turbofox/latest/turbofox/) for crate documentation and full API
-references
+Refer to [docs.rs](https://docs.rs/turbofox/latest/turbofox/) for complete crate documentation and
+API references
 
 ## Benchmarks
 

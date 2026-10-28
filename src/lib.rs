@@ -201,10 +201,9 @@ mod dbuf;
 mod engine;
 mod error;
 mod hash;
-mod index;
-mod index_probe;
 mod list;
 mod meta;
+mod node;
 mod probe;
 mod ticket;
 

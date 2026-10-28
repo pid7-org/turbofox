@@ -2,16 +2,17 @@ use crate::adjarr::{AdjArrayBlock, decompose_relative_array_idx, relative_array_
 use crate::bucket::{Bucket, BucketEntry, ProbeResult};
 use crate::cfg::TurboCfg;
 use crate::common::{
-    ADJ_ARR_HEAD_SLOT, ADJ_ARRAY_ENTRIES, ALLOC_SLOT_QUANTUM, BUCKET_ENTRIES, BUCKET_SLOTS,
-    DATABUF_BUF_COUNT, DATABUF_HEAD_SLOT, DATABUF_SLOTS, DB_NAME_TAG, INITIAL_ADJ_ARR_BLOCKS,
-    INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION, MAGIC, MAX_DB_LEN, MAX_KEY_LEN, MAX_VAL_LEN,
-    MODULE_ID, ROOT_BUCKET_SLOT, SLOT_SIZE, Slot,
+    ADJ_ARR_HEAD_SLOT, ADJ_ARR_TAIL_SLOT, ALLOC_SLOT_QUANTUM, BUCKET_ENTRIES, BUCKET_FLAG,
+    BUCKET_SLOTS, DATABUF_HEAD_SLOT, DB_NAME_TAG, DBUF_BUF_COUNT, DBUF_SLOTS, INITIAL_BUCKET_COUNT,
+    INITIAL_BUCKET_START_SLOT, INITIAL_DATABUF_POOLS, INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION,
+    MAGIC, MAX_DB_LEN, MAX_KEY_LEN, MAX_TRIE_DEPTH, MAX_VAL_LEN, MODULE_ID, NODE_CHILDREN,
+    NODE_FLAG, NODE_SLOTS, OCC_MAX_RETRIES, ROOT_NODE_SLOT, SLOT_SIZE, Slot,
 };
-use crate::dbuf::DataBuf;
+use crate::dbuf::DBuf;
 use crate::error::{TurboError, TurboResult};
-use crate::hash::hash_key;
-use crate::index::{FpIndex, IndexRef, LookupResult, MIN_CAPACITY};
+use crate::hash::{hash_key, trie_child_idx};
 use crate::meta::Metadata;
+use crate::node::Node;
 use crate::ticket::TurboTicket;
 use frozen_core::memmap::{MemMap, MemMapCfg, PageSize};
 use std::sync::{
@@ -19,14 +20,12 @@ use std::sync::{
     atomic::{AtomicU32, AtomicU64, Ordering},
 };
 
-const OCC_MAX_RETRIES: u32 = 0x100;
-
 #[derive(Clone, Debug)]
 pub(crate) struct DbufAllocPlan {
     start_slot: usize,
     local_idx: usize,
-    orig: DataBuf,
-    mutated: DataBuf,
+    orig: DBuf,
+    mutated: DBuf,
 }
 
 #[derive(Debug)]
@@ -38,7 +37,6 @@ pub(crate) struct Engine {
     free_slot_marker: AtomicU32,
     active_dbuf_hint: AtomicU32,
     sys_page_size: PageSize,
-    fp_index: Option<FpIndex>,
 }
 
 impl Engine {
@@ -65,7 +63,6 @@ impl Engine {
 
         let mmap = MemMap::<Slot>::new(memmap_cfg)?;
         let initial_slots = (initial_pages * page_size.as_usize()) / SLOT_SIZE;
-        let fp_index = if cfg.mem_index { Some(FpIndex::new(MIN_CAPACITY)) } else { None };
 
         let engine = Self {
             mmap,
@@ -75,7 +72,6 @@ impl Engine {
             free_slot_marker: AtomicU32::new(INITIAL_FREE_SLOT_MARKER),
             active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
             sys_page_size: page_size,
-            fp_index,
         };
 
         engine.format_initial_topography(LAYOUT_VERSION, initial_pages as u32)?;
@@ -145,11 +141,10 @@ impl Engine {
             return Err(TurboError::CorruptedHeader("metadata total_pages divergence"));
         }
 
-        let fp_index = if cfg.mem_index {
-            Some(FpIndex::new(((meta.total_entries as usize) * 0x0A / 0x07).max(MIN_CAPACITY)))
-        } else {
-            None
-        };
+        let root_flag = mmap.read_exact::<Slot, _, _>(ROOT_NODE_SLOT as usize, |s| s.flag())?;
+        if root_flag != NODE_FLAG {
+            return Err(TurboError::InvalidRootNode);
+        }
 
         let engine = Self {
             mmap,
@@ -159,70 +154,9 @@ impl Engine {
             free_slot_marker: AtomicU32::new(meta.free_slot_marker),
             active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
             sys_page_size,
-            fp_index,
         };
-
-        if cfg.mem_index {
-            engine.populate_fp_index()?;
-        }
 
         Ok(engine)
-    }
-
-    fn populate_fp_index(&self) -> TurboResult<()> {
-        let Some(ref idx) = self.fp_index else {
-            return Ok(());
-        };
-
-        let mut hop_to_slot = Vec::new();
-        let mut curr_dbuf = DATABUF_HEAD_SLOT;
-
-        while curr_dbuf != 0 {
-            hop_to_slot.push(curr_dbuf);
-            curr_dbuf = self
-                .mmap
-                .read_exact::<DataBuf, _, _>(curr_dbuf as usize, |d| d.next_dbuf_index())
-                .unwrap_or(0);
-        }
-
-        let mut queue = std::collections::VecDeque::new();
-        let mut visited = std::collections::HashSet::new();
-
-        queue.push_back(ROOT_BUCKET_SLOT);
-        let _ = visited.insert(ROOT_BUCKET_SLOT);
-
-        while let Some(bucket_slot) = queue.pop_front() {
-            if let Ok(bucket) = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b) {
-                for i in 0..BUCKET_ENTRIES {
-                    let entry = bucket.entry(i);
-
-                    if entry.is_occupied() {
-                        let (pool_hop, _) = DataBuf::decompose_buf_idx(entry.buf_idx());
-                        let dbuf_slot = hop_to_slot.get(pool_hop as usize).copied().unwrap_or(0);
-
-                        idx.insert(
-                            entry.hash(),
-                            IndexRef {
-                                hash: entry.hash(),
-                                bucket_slot,
-                                dbuf_slot,
-                                entry_idx: i as u8,
-                                _pad: [0x00; 3],
-                                offset: bucket.offsets[i],
-                            },
-                        );
-                    }
-                }
-
-                for next in bucket.next_bucket_indices {
-                    if next != 0 && visited.insert(next) {
-                        queue.push_back(next);
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 
     /// Ref: `DESIGN.md` §2
@@ -230,33 +164,43 @@ impl Engine {
         let meta = Metadata::new(self.sys_page_size.as_u32(), version, initial_pages);
         let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
 
-        for slot in 1..INITIAL_ADJ_ARR_BLOCKS {
-            let mut block = AdjArrayBlock::new();
-            block.set_next_block((slot + 1) as u32);
-            let _ = self.mmap.write_exact::<AdjArrayBlock, _, _>(slot, |b| *b = block)?;
+        let mut block_head = AdjArrayBlock::new();
+        block_head.set_next_block(ADJ_ARR_TAIL_SLOT);
+
+        let _ = self
+            .mmap
+            .write_exact::<AdjArrayBlock, _, _>(ADJ_ARR_HEAD_SLOT as usize, |b| *b = block_head)?;
+
+        for i in 0..INITIAL_DATABUF_POOLS {
+            let pool_slot = DATABUF_HEAD_SLOT + (i as u32) * (DBUF_SLOTS as u32);
+            let next_slot =
+                if i + 1 < INITIAL_DATABUF_POOLS { pool_slot + (DBUF_SLOTS as u32) } else { 0 };
+
+            let mut dbuf = DBuf::new();
+            dbuf.set_next_dbuf_index(next_slot);
+
+            let _ = self.mmap.write_exact::<DBuf, _, _>(pool_slot as usize, |d| *d = dbuf)?;
+        }
+
+        let mut children = [0u32; NODE_CHILDREN];
+        for (i, child) in children.iter_mut().enumerate() {
+            *child = INITIAL_BUCKET_START_SLOT + (i as u32);
+        }
+
+        let root_node = Node::with_children(children);
+        let _ = self.mmap.write_exact::<Node, _, _>(ROOT_NODE_SLOT as usize, |n| *n = root_node)?;
+
+        for s in 0..INITIAL_BUCKET_COUNT {
+            let bucket_slot = INITIAL_BUCKET_START_SLOT + (s as u32);
+            let bucket = Bucket::new();
+
+            let _ = self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b = bucket)?;
         }
 
         let block_tail = AdjArrayBlock::new();
         let _ = self
             .mmap
-            .write_exact::<AdjArrayBlock, _, _>(INITIAL_ADJ_ARR_BLOCKS, |b| *b = block_tail)?;
-
-        let root_bucket = Bucket::new();
-        let _ = self
-            .mmap
-            .write_exact::<Bucket, _, _>(ROOT_BUCKET_SLOT as usize, |b| *b = root_bucket)?;
-
-        let mut dbuf0 = DataBuf::new();
-        dbuf0.set_next_dbuf_index(DATABUF_HEAD_SLOT + (DATABUF_SLOTS as u32));
-        let _ =
-            self.mmap.write_exact::<DataBuf, _, _>(DATABUF_HEAD_SLOT as usize, |d| *d = dbuf0)?;
-
-        let dbuf1 = DataBuf::new();
-        let _ = self
-            .mmap
-            .write_exact::<DataBuf, _, _>((DATABUF_HEAD_SLOT as usize) + DATABUF_SLOTS, |d| {
-                *d = dbuf1
-            })?;
+            .write_exact::<AdjArrayBlock, _, _>(ADJ_ARR_TAIL_SLOT as usize, |b| *b = block_tail)?;
 
         Ok(())
     }
@@ -316,22 +260,12 @@ impl Engine {
         Ok(())
     }
 
-    /// Ref: `DESIGN.md` §5.3
-    pub(crate) fn expand_bucket(&self) -> TurboResult<u32> {
-        let new_slot = self.alloc_uniform_slots(BUCKET_SLOTS as u32)?;
-        let new_bucket = Bucket::new();
-
-        let _ = self.mmap.write_exact::<Bucket, _, _>(new_slot as usize, |b| *b = new_bucket)?;
-
-        Ok(new_slot)
-    }
-
     fn expand_databuf_locked(&self, tail_slot: usize) -> TurboResult<u32> {
-        let new_slot = self.alloc_uniform_slots_locked(DATABUF_SLOTS as u32)?;
-        let new_dbuf = DataBuf::new();
+        let new_slot = self.alloc_uniform_slots_locked(DBUF_SLOTS as u32)?;
+        let new_dbuf = DBuf::new();
 
-        let _ = self.mmap.write_exact::<DataBuf, _, _>(new_slot as usize, |d| *d = new_dbuf)?;
-        let _ = self.mmap.write_exact::<DataBuf, _, _>(tail_slot, |d| {
+        let _ = self.mmap.write_exact::<DBuf, _, _>(new_slot as usize, |d| *d = new_dbuf)?;
+        let _ = self.mmap.write_exact::<DBuf, _, _>(tail_slot, |d| {
             d.set_next_dbuf_index(new_slot);
         })?;
 
@@ -345,18 +279,20 @@ impl Engine {
         let new_slot = self.expand_databuf_locked(tail_slot)?;
 
         self.active_dbuf_hint.store(new_slot, Ordering::Relaxed);
-
         Ok(new_slot)
     }
 
     /// Ref: `DESIGN.md` §5.3
     pub(crate) fn expand_adjarr(&self, tail_slot: usize) -> TurboResult<u32> {
         let new_slot = self.alloc_uniform_slots(ALLOC_SLOT_QUANTUM)?;
+
         for i in 0..ALLOC_SLOT_QUANTUM {
             let s = (new_slot + i) as usize;
             let next = if i + 1 < ALLOC_SLOT_QUANTUM { new_slot + i + 1 } else { 0 };
+
             let mut block = AdjArrayBlock::new();
             block.set_next_block(next);
+
             let _ = self.mmap.write_exact::<AdjArrayBlock, _, _>(s, |b| *b = block)?;
         }
 
@@ -372,7 +308,7 @@ impl Engine {
         let mut curr = DATABUF_HEAD_SLOT;
         for _ in 0..pool_hop {
             let next =
-                self.mmap.read_exact::<DataBuf, _, _>(curr as usize, |d| d.next_dbuf_index())?;
+                self.mmap.read_exact::<DBuf, _, _>(curr as usize, |d| d.next_dbuf_index())?;
 
             if next == 0 {
                 return Err(TurboError::CorruptedHeader("broken databuf chain"));
@@ -416,9 +352,8 @@ impl Engine {
 
         loop {
             if curr == exclude_slot {
-                let next = self
-                    .mmap
-                    .read_exact::<DataBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
+                let next =
+                    self.mmap.read_exact::<DBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
 
                 if next != 0 {
                     curr = next;
@@ -431,7 +366,7 @@ impl Engine {
                     curr = DATABUF_HEAD_SLOT as usize;
                 }
             } else {
-                let (next, alloc_opt) = self.mmap.read_exact::<DataBuf, _, _>(curr, |d| {
+                let (next, alloc_opt) = self.mmap.read_exact::<DBuf, _, _>(curr, |d| {
                     let next = d.next_dbuf_index() as usize;
                     let mut mutated = *d;
 
@@ -445,6 +380,7 @@ impl Engine {
                     if wrapped {
                         self.active_dbuf_hint.store(curr as u32, Ordering::Relaxed);
                     }
+
                     return Ok(DbufAllocPlan { start_slot: curr, local_idx, orig, mutated });
                 }
 
@@ -452,12 +388,14 @@ impl Engine {
                     if !wrapped {
                         self.active_dbuf_hint.store(next as u32, Ordering::Relaxed);
                     }
+
                     curr = next;
                 } else {
                     tail_slot = curr;
                     if wrapped || start_slot == (DATABUF_HEAD_SLOT as usize) {
                         break;
                     }
+
                     wrapped = true;
                     curr = DATABUF_HEAD_SLOT as usize;
                 }
@@ -474,20 +412,24 @@ impl Engine {
         loop {
             let next = self
                 .mmap
-                .read_exact::<DataBuf, _, _>(actual_tail, |d| d.next_dbuf_index() as usize)?;
+                .read_exact::<DBuf, _, _>(actual_tail, |d| d.next_dbuf_index() as usize)?;
+
             if next == 0 {
                 break;
             }
+
             actual_tail = next;
             if actual_tail != exclude_slot {
-                let (_, alloc_opt) = self.mmap.read_exact::<DataBuf, _, _>(actual_tail, |d| {
+                let (_, alloc_opt) = self.mmap.read_exact::<DBuf, _, _>(actual_tail, |d| {
                     let next = d.next_dbuf_index() as usize;
                     let mut mutated = *d;
+
                     match mutated.alloc_contiguous(needed) {
                         Some(local_idx) => (next, Some((local_idx, *d, mutated))),
                         None => (next, None),
                     }
                 })?;
+
                 if let Some((local_idx, orig, mutated)) = alloc_opt {
                     self.active_dbuf_hint.store(actual_tail as u32, Ordering::Relaxed);
                     return Ok(DbufAllocPlan { start_slot: actual_tail, local_idx, orig, mutated });
@@ -498,7 +440,7 @@ impl Engine {
         let new_slot = self.expand_databuf_locked(actual_tail)? as usize;
         self.active_dbuf_hint.store(new_slot as u32, Ordering::Relaxed);
 
-        let mut dbuf = self.mmap.read_exact::<DataBuf, _, _>(new_slot, |d| *d)?;
+        let mut dbuf = self.mmap.read_exact::<DBuf, _, _>(new_slot, |d| *d)?;
         let orig = dbuf;
         let local_idx = dbuf.alloc_contiguous(needed).ok_or(TurboError::DatabaseFull)?;
 
@@ -515,7 +457,7 @@ impl Engine {
                 return Ok(hop);
             }
 
-            curr = self.mmap.read_exact::<DataBuf, _, _>(curr as usize, |d| d.next_dbuf_index())?;
+            curr = self.mmap.read_exact::<DBuf, _, _>(curr as usize, |d| d.next_dbuf_index())?;
             hop += 1;
         }
 
@@ -529,11 +471,13 @@ impl Engine {
                 std::cell::Cell::new(0x8888_4444_2222_1111)
             };
         }
+
         SEED.with(|s| {
             let mut x = s.get().wrapping_add(attempt as u64);
             x ^= x << 0x0D;
             x ^= x >> 0x07;
             x ^= x << 0x11;
+
             s.set(x);
             0x4B + (x % 0x33)
         })
@@ -546,6 +490,7 @@ impl Engine {
             for _ in 0..spins {
                 std::hint::spin_loop();
             }
+
             return;
         }
 
@@ -556,7 +501,68 @@ impl Engine {
 
         let base_us = 0x14u64.saturating_mul(1u64 << (attempt - 0x08).min(0x05)).min(0x3E8);
         let wait_us = (base_us * Self::fast_jitter(attempt)) / 0x64;
+
         std::thread::sleep(std::time::Duration::from_micros(wait_us.max(0x01)));
+    }
+
+    /// Traverse trie to leaf bucket
+    fn traverse_to_leaf(&self, hash: u32) -> TurboResult<(u32, usize)> {
+        let mut curr_slot = ROOT_NODE_SLOT;
+        let mut depth = 0usize;
+
+        loop {
+            let node = self.mmap.read_exact::<Node, _, _>(curr_slot as usize, |n| *n)?;
+            let child_idx = trie_child_idx(hash, depth);
+            let target_slot = node.bucket_indices[child_idx];
+            let flag = self.mmap.read_exact::<Slot, _, _>(target_slot as usize, |s| s.flag())?;
+
+            if flag == NODE_FLAG {
+                curr_slot = target_slot;
+                depth += 1;
+            } else if flag == BUCKET_FLAG {
+                return Ok((target_slot, depth));
+            } else {
+                return Err(TurboError::InvalidRootNode);
+            }
+        }
+    }
+
+    /// Recursively format split subtree for overflowing entries
+    fn format_split_subtree(&self, entries: &[BucketEntry], depth: usize) -> TurboResult<Node> {
+        if depth >= MAX_TRIE_DEPTH {
+            return Err(TurboError::CollisionLimit);
+        }
+
+        let start_slot = self.alloc_uniform_slots(NODE_CHILDREN as u32)?;
+        let mut groups: [Vec<BucketEntry>; NODE_CHILDREN] = Default::default();
+
+        for e in entries {
+            let c_idx = trie_child_idx(e.hash(), depth + 1);
+            groups[c_idx].push(*e);
+        }
+
+        let mut child_slots = [0u32; NODE_CHILDREN];
+        for i in 0..NODE_CHILDREN {
+            let child_slot = start_slot + (i as u32);
+            child_slots[i] = child_slot;
+
+            if groups[i].len() <= BUCKET_ENTRIES {
+                let mut child_b = Bucket::new();
+                for (idx, e) in groups[i].iter().enumerate() {
+                    child_b.set_entry(idx, *e);
+                }
+
+                let _ =
+                    self.mmap.write_exact::<Bucket, _, _>(child_slot as usize, |b| *b = child_b)?;
+            } else {
+                let child_node = self.format_split_subtree(&groups[i], depth + 1)?;
+                let _ = self
+                    .mmap
+                    .write_exact::<Node, _, _>(child_slot as usize, |n| *n = child_node)?;
+            }
+        }
+
+        Ok(Node::with_children(child_slots))
     }
 
     /// Ref: `DESIGN.md` §7.1
@@ -566,83 +572,30 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        if let Some(ref idx) = self.fp_index {
-            let mut payload = None;
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-            let res = idx.lookup(hash, |r| {
-                if r.is_list() || r.klen() != key.len() {
-                    return false;
+        let matched_idx =
+            bucket.probe_match(hash, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
+
+        match matched_idx {
+            Some(entry_idx) => {
+                let entry = bucket.entry(entry_idx);
+                if entry.is_list() {
+                    return Err(TurboError::InvalidType("Key is a list"));
                 }
 
-                let (_, local_idx) = DataBuf::decompose_buf_idx(r.buf_idx());
-                let Ok(read_res) =
-                    self.mmap.read_exact::<DataBuf, _, _>(r.dbuf_slot as usize, |d| {
-                        if d.verify_key(local_idx, key) {
-                            d.read_kv_payload(local_idx, r.klen(), r.vlen())
-                                .ok()
-                                .map(|(_, val)| val.to_vec())
-                        } else {
-                            None
-                        }
-                    })
-                else {
-                    return false;
-                };
+                let (pool_hop, local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
+                let dbuf_slot = self.locate_databuf_slot(pool_hop)?;
+                let dbuf = self.mmap.read_exact::<DBuf, _, _>(dbuf_slot as usize, |d| *d)?;
 
-                if let Some(val) = read_res {
-                    payload = Some(val);
-                    true
-                } else {
-                    false
-                }
-            });
+                let (_, val) = dbuf
+                    .read_kv_payload(local_idx, entry.klen() as usize, entry.vlen() as usize)
+                    .map_err(|_| TurboError::CorruptedPayload("KV CRC32 mismatch"))?;
 
-            match res {
-                LookupResult::Hit(_) => {
-                    if let Some(val) = payload {
-                        return Ok(Some(val));
-                    }
-                }
-                LookupResult::DefiniteMiss => return Ok(None),
-                LookupResult::Overflow => {}
+                Ok(Some(val.to_vec()))
             }
-        }
-
-        let mut depth = 0u8;
-        let mut bucket_slot = ROOT_BUCKET_SLOT;
-
-        loop {
-            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-            let probe_res = bucket
-                .probe(hash, depth, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
-
-            match probe_res {
-                ProbeResult::Found(entry_idx) => {
-                    let entry = bucket.entry(entry_idx);
-                    if entry.is_list() {
-                        return Err(TurboError::InvalidType("Key is a list"));
-                    }
-
-                    let (pool_hop, local_idx) = DataBuf::decompose_buf_idx(entry.buf_idx());
-                    let dbuf_slot = self.locate_databuf_slot(pool_hop)?;
-                    let dbuf = self.mmap.read_exact::<DataBuf, _, _>(dbuf_slot as usize, |d| *d)?;
-
-                    let (_, val) = dbuf
-                        .read_kv_payload(local_idx, entry.klen() as usize, entry.vlen() as usize)
-                        .map_err(|_| TurboError::CorruptedPayload("KV CRC32 mismatch"))?;
-
-                    return Ok(Some(val.to_vec()));
-                }
-                ProbeResult::Vacant(_) => return Ok(None),
-                ProbeResult::Overflow { next_bucket, .. } => {
-                    if next_bucket == 0 {
-                        return Ok(None);
-                    }
-
-                    bucket_slot = next_bucket;
-                    depth = depth.wrapping_add(1);
-                }
-            }
+            None => Ok(None),
         }
     }
 
@@ -652,58 +605,22 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        if let Some(ref idx) = self.fp_index {
-            let res = idx.lookup(hash, |r| {
-                if r.is_list() || r.klen() != key.len() {
-                    return false;
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+
+        let matched_idx =
+            bucket.probe_match(hash, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
+
+        match matched_idx {
+            Some(entry_idx) => {
+                let entry = bucket.entry(entry_idx);
+                if entry.is_list() {
+                    return Err(TurboError::InvalidType("Key is a list"));
                 }
 
-                let (_, local_idx) = DataBuf::decompose_buf_idx(r.buf_idx());
-                let Ok(matches) =
-                    self.mmap.read_exact::<DataBuf, _, _>(r.dbuf_slot as usize, |d| {
-                        d.verify_key(local_idx, key)
-                    })
-                else {
-                    return false;
-                };
-
-                matches
-            });
-
-            match res {
-                LookupResult::Hit(_) => return Ok(true),
-                LookupResult::DefiniteMiss => return Ok(false),
-                LookupResult::Overflow => {}
+                Ok(true)
             }
-        }
-
-        let mut depth = 0u8;
-        let mut bucket_slot = ROOT_BUCKET_SLOT;
-
-        loop {
-            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-            let probe_res = bucket
-                .probe(hash, depth, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
-
-            match probe_res {
-                ProbeResult::Found(entry_idx) => {
-                    let entry = bucket.entry(entry_idx);
-                    if entry.is_list() {
-                        return Err(TurboError::InvalidType("Key is a list"));
-                    }
-
-                    return Ok(true);
-                }
-                ProbeResult::Vacant(_) => return Ok(false),
-                ProbeResult::Overflow { next_bucket, .. } => {
-                    if next_bucket == 0 {
-                        return Ok(false);
-                    }
-
-                    bucket_slot = next_bucket;
-                    depth = depth.wrapping_add(1);
-                }
-            }
+            None => Ok(false),
         }
     }
 
@@ -720,14 +637,14 @@ impl Engine {
             return false;
         }
 
-        let (pool_hop, local_idx) = DataBuf::decompose_buf_idx(entry.buf_idx());
+        let (pool_hop, local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
         let Ok(dbuf_slot) = self.locate_databuf_slot(pool_hop) else {
             return false;
         };
 
         let Ok(matches) = self
             .mmap
-            .read_exact::<DataBuf, _, _>(dbuf_slot as usize, |d| d.verify_key(local_idx, key))
+            .read_exact::<DBuf, _, _>(dbuf_slot as usize, |d| d.verify_key(local_idx, key))
         else {
             return false;
         };
@@ -741,227 +658,248 @@ impl Engine {
             return Err(TurboError::PayloadTooLarge);
         }
 
-        let req = DataBuf::required_kv_buffers(key.len(), val.len());
-        if req > DATABUF_BUF_COUNT {
+        let req = DBuf::required_kv_buffers(key.len(), val.len());
+        if req > DBUF_BUF_COUNT {
             return Err(TurboError::PayloadTooLarge);
         }
 
         let hash = hash_key(key);
-        if let Some(ref idx) = self.fp_index {
-            let mut matched_ref = None;
-
-            let res = idx.lookup(hash, |r| {
-                if r.is_list() || r.klen() != key.len() {
-                    return false;
-                }
-
-                let (_, local_idx) = DataBuf::decompose_buf_idx(r.buf_idx());
-                let Ok(matches) =
-                    self.mmap.read_exact::<DataBuf, _, _>(r.dbuf_slot as usize, |d| {
-                        d.verify_key(local_idx, key)
-                    })
-                else {
-                    return false;
-                };
-
-                if matches {
-                    matched_ref = Some(r);
-                    true
-                } else {
-                    false
-                }
-            });
-
-            if let LookupResult::Hit(_) = res {
-                if let Some(r) = matched_ref {
-                    return self.set_overwrite(key, val, hash, req, r);
-                }
-            }
-        }
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let mut bucket_slot = ROOT_BUCKET_SLOT;
-            let mut depth = 0u8;
+            let (bucket_slot, depth) = self.traverse_to_leaf(hash)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-            let (target_bucket_slot, old_bucket, target_entry_idx, is_update) = loop {
-                let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-                let probe_res = bucket.probe(hash, depth, |entry_idx| {
-                    self.match_any_key(&bucket.entry(entry_idx), key)
-                });
+            let probe_res =
+                bucket.probe(hash, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
 
-                match probe_res {
-                    ProbeResult::Found(entry_idx) => {
-                        break (bucket_slot, bucket, entry_idx, true);
+            match probe_res {
+                ProbeResult::Found(target_entry_idx) => {
+                    let old_entry = bucket.entry(target_entry_idx);
+                    if old_entry.is_list() {
+                        return Err(TurboError::InvalidType("cannot overwrite list key with KV"));
                     }
-                    ProbeResult::Vacant(entry_idx) => {
-                        break (bucket_slot, bucket, entry_idx, false);
-                    }
-                    ProbeResult::Overflow { primary, next_bucket, candidate_slot } => {
-                        if next_bucket == 0 {
-                            if let Some(tomb_idx) = candidate_slot {
-                                break (bucket_slot, bucket, tomb_idx, false);
-                            }
 
-                            let new_bucket_slot = self.expand_bucket()?;
-                            let _ = self.mmap.write_exact::<Bucket, _, _>(
-                                bucket_slot as usize,
-                                |b| {
-                                    b.set_next_bucket(primary, new_bucket_slot);
-                                },
-                            )?;
+                    let old_req = DBuf::required_kv_buffers(
+                        old_entry.klen() as usize,
+                        old_entry.vlen() as usize,
+                    );
 
-                            bucket_slot = new_bucket_slot;
-                            depth = depth.wrapping_add(1);
+                    let (old_pool_hop, old_local_idx) =
+                        DBuf::decompose_buf_idx(old_entry.buf_idx());
+
+                    let old_dbuf_slot = self.locate_databuf_slot(old_pool_hop)? as usize;
+                    let orig_old_dbuf =
+                        self.mmap.read_exact::<DBuf, _, _>(old_dbuf_slot, |d| *d)?;
+
+                    let target_global_buf: u32;
+                    let mut touched_dbufs: Vec<(usize, DBuf, DBuf)> = Vec::with_capacity(2);
+
+                    if req <= old_req {
+                        let mut mutated = orig_old_dbuf;
+                        if req < old_req {
+                            mutated.free_contiguous(old_local_idx + req, old_req - req);
+                        }
+
+                        mutated
+                            .write_kv_payload(old_local_idx, key, val)
+                            .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                        touched_dbufs.push((old_dbuf_slot, orig_old_dbuf, mutated));
+                        target_global_buf = old_entry.buf_idx();
+                    } else {
+                        let mut freed_old = orig_old_dbuf;
+                        freed_old.free_contiguous(old_local_idx, old_req);
+
+                        if let Some(new_local) = freed_old.alloc_contiguous(req) {
+                            freed_old
+                                .write_kv_payload(new_local, key, val)
+                                .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                            target_global_buf = DBuf::global_buf_idx(old_pool_hop, new_local);
+                            touched_dbufs.push((old_dbuf_slot, orig_old_dbuf, freed_old));
                         } else {
-                            bucket_slot = next_bucket;
-                            depth = depth.wrapping_add(1);
+                            let mut plan = self.find_free_databuf(req, old_dbuf_slot)?;
+                            plan.mutated
+                                .write_kv_payload(plan.local_idx, key, val)
+                                .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                            let new_pool_hop = self.databuf_slot_to_hop(plan.start_slot as u32)?;
+                            target_global_buf = DBuf::global_buf_idx(new_pool_hop, plan.local_idx);
+
+                            touched_dbufs.push((old_dbuf_slot, orig_old_dbuf, freed_old));
+                            touched_dbufs.push((plan.start_slot, plan.orig, plan.mutated));
+                        }
+                    }
+
+                    let mut new_bucket = bucket;
+                    new_bucket.set_kv(
+                        target_entry_idx,
+                        hash,
+                        key.len() as u8,
+                        val.len() as u16,
+                        target_global_buf,
+                    );
+
+                    let mut changes: Vec<(usize, Slot, Slot)> =
+                        Vec::with_capacity(BUCKET_SLOTS + touched_dbufs.len() * DBUF_SLOTS);
+
+                    for i in 0..BUCKET_SLOTS {
+                        let orig_s = bucket.as_slots()[i];
+                        let new_s = new_bucket.as_slots()[i];
+
+                        if orig_s != new_s {
+                            changes.push(((bucket_slot as usize) + i, orig_s, new_s));
+                        }
+                    }
+
+                    for (dbuf_slot, orig_d, mut_d) in &touched_dbufs {
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = orig_d.as_slots()[i];
+                            let new_s = mut_d.as_slots()[i];
+
+                            if orig_s != new_s {
+                                changes.push((dbuf_slot + i, orig_s, new_s));
+                            }
+                        }
+                    }
+
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+
+                    for (s, orig_s, new_s) in &changes {
+                        if let Err(e) = tx.write(orig_s, new_s, *s) {
+                            return Err(TurboError::from(e));
+                        }
+                    }
+
+                    match tx.commit() {
+                        Ok(ticket) => return Ok(TurboTicket::new(ticket)),
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
                         }
                     }
                 }
-            };
-
-            let target_global_buf: u32;
-            let target_dbuf_slot: usize;
-            let mut touched_dbufs: Vec<(usize, DataBuf, DataBuf)> = Vec::with_capacity(2);
-
-            if is_update {
-                let old_entry = old_bucket.entry(target_entry_idx);
-                if old_entry.is_list() {
-                    return Err(TurboError::InvalidType("cannot overwrite list key with KV"));
-                }
-
-                let old_req = DataBuf::required_kv_buffers(
-                    old_entry.klen() as usize,
-                    old_entry.vlen() as usize,
-                );
-
-                let (old_pool_hop, old_local_idx) = DataBuf::decompose_buf_idx(old_entry.buf_idx());
-                let old_dbuf_slot = self.locate_databuf_slot(old_pool_hop)? as usize;
-                let orig_old_dbuf = self.mmap.read_exact::<DataBuf, _, _>(old_dbuf_slot, |d| *d)?;
-
-                if req <= old_req {
-                    let mut mutated = orig_old_dbuf;
-                    if req < old_req {
-                        mutated.free_contiguous(old_local_idx + req, old_req - req);
-                    }
-
-                    mutated
-                        .write_kv_payload(old_local_idx, key, val)
+                ProbeResult::Vacant(target_entry_idx) => {
+                    let mut plan = self.find_free_databuf(req, 0)?;
+                    plan.mutated
+                        .write_kv_payload(plan.local_idx, key, val)
                         .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    touched_dbufs.push((old_dbuf_slot, orig_old_dbuf, mutated));
-                    target_global_buf = old_entry.buf_idx();
-                    target_dbuf_slot = old_dbuf_slot;
-                } else {
-                    let mut freed_old = orig_old_dbuf;
-                    freed_old.free_contiguous(old_local_idx, old_req);
+                    let pool_hop = self.databuf_slot_to_hop(plan.start_slot as u32)?;
+                    let target_global_buf = DBuf::global_buf_idx(pool_hop, plan.local_idx);
 
-                    if let Some(new_local) = freed_old.alloc_contiguous(req) {
-                        freed_old
-                            .write_kv_payload(new_local, key, val)
-                            .map_err(|_| TurboError::PayloadTooLarge)?;
+                    let mut new_bucket = bucket;
+                    new_bucket.set_kv(
+                        target_entry_idx,
+                        hash,
+                        key.len() as u8,
+                        val.len() as u16,
+                        target_global_buf,
+                    );
 
-                        target_global_buf = DataBuf::global_buf_idx(old_pool_hop, new_local);
-                        touched_dbufs.push((old_dbuf_slot, orig_old_dbuf, freed_old));
-                        target_dbuf_slot = old_dbuf_slot;
-                    } else {
-                        let mut plan = self.find_free_databuf(req, old_dbuf_slot)?;
-                        plan.mutated
-                            .write_kv_payload(plan.local_idx, key, val)
-                            .map_err(|_| TurboError::PayloadTooLarge)?;
+                    let mut changes: Vec<(usize, Slot, Slot)> =
+                        Vec::with_capacity(BUCKET_SLOTS + DBUF_SLOTS);
 
-                        let new_pool_hop = self.databuf_slot_to_hop(plan.start_slot as u32)?;
-                        target_global_buf = DataBuf::global_buf_idx(new_pool_hop, plan.local_idx);
+                    for i in 0..BUCKET_SLOTS {
+                        let orig_s = bucket.as_slots()[i];
+                        let new_s = new_bucket.as_slots()[i];
 
-                        touched_dbufs.push((old_dbuf_slot, orig_old_dbuf, freed_old));
-                        touched_dbufs.push((plan.start_slot, plan.orig, plan.mutated));
-                        target_dbuf_slot = plan.start_slot;
-                    }
-                }
-            } else {
-                let mut plan = self.find_free_databuf(req, 0)?;
-                plan.mutated
-                    .write_kv_payload(plan.local_idx, key, val)
-                    .map_err(|_| TurboError::PayloadTooLarge)?;
-
-                let pool_hop = self.databuf_slot_to_hop(plan.start_slot as u32)?;
-                target_global_buf = DataBuf::global_buf_idx(pool_hop, plan.local_idx);
-
-                touched_dbufs.push((plan.start_slot, plan.orig, plan.mutated));
-                target_dbuf_slot = plan.start_slot;
-            }
-
-            let mut new_bucket = old_bucket;
-            new_bucket.set_kv(
-                target_entry_idx,
-                hash,
-                key.len() as u8,
-                val.len() as u16,
-                target_global_buf,
-            );
-
-            let mut changes: Vec<(usize, Slot, Slot)> =
-                Vec::with_capacity(BUCKET_SLOTS + touched_dbufs.len() * DATABUF_SLOTS);
-
-            for i in 0..BUCKET_SLOTS {
-                let orig_s = old_bucket.as_slots()[i];
-                let new_s = new_bucket.as_slots()[i];
-
-                if orig_s != new_s {
-                    changes.push(((target_bucket_slot as usize) + i, orig_s, new_s));
-                }
-            }
-
-            for (dbuf_slot, orig_d, mut_d) in &touched_dbufs {
-                for i in 0..DATABUF_SLOTS {
-                    let orig_s = orig_d.as_slots()[i];
-                    let new_s = mut_d.as_slots()[i];
-
-                    if orig_s != new_s {
-                        changes.push((dbuf_slot + i, orig_s, new_s));
-                    }
-                }
-            }
-
-            changes.sort_by_key(|(s, _, _)| *s);
-            let mut tx = self.mmap.new_tx();
-            for (s, orig_s, new_s) in &changes {
-                if let Err(e) = tx.write(orig_s, new_s, *s) {
-                    return Err(TurboError::from(e));
-                }
-            }
-
-            match tx.commit() {
-                Ok(ticket) => {
-                    if !is_update {
-                        let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
+                        if orig_s != new_s {
+                            changes.push(((bucket_slot as usize) + i, orig_s, new_s));
+                        }
                     }
 
-                    if let Some(ref idx) = self.fp_index {
-                        let final_offset = crate::bucket::encode_kv_offset(
-                            key.len() as u8,
-                            val.len() as u16,
-                            target_global_buf,
-                        );
+                    for i in 0..DBUF_SLOTS {
+                        let orig_s = plan.orig.as_slots()[i];
+                        let new_s = plan.mutated.as_slots()[i];
 
-                        idx.insert(
-                            hash,
-                            IndexRef {
-                                hash,
-                                bucket_slot: target_bucket_slot,
-                                dbuf_slot: target_dbuf_slot as u32,
-                                entry_idx: target_entry_idx as u8,
-                                _pad: [0x00; 3],
-                                offset: final_offset,
-                            },
-                        );
+                        if orig_s != new_s {
+                            changes.push((plan.start_slot + i, orig_s, new_s));
+                        }
                     }
 
-                    return Ok(TurboTicket::new(ticket));
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+
+                    for (s, orig_s, new_s) in &changes {
+                        if let Err(e) = tx.write(orig_s, new_s, *s) {
+                            return Err(TurboError::from(e));
+                        }
+                    }
+
+                    match tx.commit() {
+                        Ok(ticket) => {
+                            let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
+                            return Ok(TurboTicket::new(ticket));
+                        }
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
+                    }
                 }
-                Err(_) => {
-                    Self::occ_backoff(attempt);
-                    continue;
+                ProbeResult::Full => {
+                    if depth >= MAX_TRIE_DEPTH {
+                        return Err(TurboError::CollisionLimit);
+                    }
+
+                    let mut plan = self.find_free_databuf(req, 0)?;
+                    plan.mutated
+                        .write_kv_payload(plan.local_idx, key, val)
+                        .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                    let pool_hop = self.databuf_slot_to_hop(plan.start_slot as u32)?;
+                    let target_global_buf = DBuf::global_buf_idx(pool_hop, plan.local_idx);
+
+                    let new_entry = BucketEntry::pack_kv(
+                        hash,
+                        key.len() as u8,
+                        val.len() as u16,
+                        target_global_buf,
+                    );
+
+                    let mut all_entries = Vec::with_capacity(BUCKET_ENTRIES + 1);
+                    for i in 0..BUCKET_ENTRIES {
+                        all_entries.push(bucket.entry(i));
+                    }
+
+                    all_entries.push(new_entry);
+                    let split_node = self.format_split_subtree(&all_entries, depth)?;
+
+                    let mut changes: Vec<(usize, Slot, Slot)> =
+                        Vec::with_capacity(NODE_SLOTS + DBUF_SLOTS);
+
+                    changes.push((bucket_slot as usize, *bucket.as_slot(), *split_node.as_slot()));
+
+                    for i in 0..DBUF_SLOTS {
+                        let orig_s = plan.orig.as_slots()[i];
+                        let new_s = plan.mutated.as_slots()[i];
+
+                        if orig_s != new_s {
+                            changes.push((plan.start_slot + i, orig_s, new_s));
+                        }
+                    }
+
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+
+                    for (s, orig_s, new_s) in &changes {
+                        if let Err(e) = tx.write(orig_s, new_s, *s) {
+                            return Err(TurboError::from(e));
+                        }
+                    }
+
+                    match tx.commit() {
+                        Ok(ticket) => {
+                            let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
+                            return Ok(TurboTicket::new(ticket));
+                        }
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
+                    }
                 }
             }
         }
@@ -976,371 +914,79 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        if let Some(ref idx) = self.fp_index {
-            let mut matched_ref = None;
-            let res = idx.lookup(hash, |r| {
-                if r.is_list() || r.klen() != key.len() {
-                    return false;
-                }
-
-                let (_, local_idx) = DataBuf::decompose_buf_idx(r.buf_idx());
-                let Ok(matches) =
-                    self.mmap.read_exact::<DataBuf, _, _>(r.dbuf_slot as usize, |d| {
-                        d.verify_key(local_idx, key)
-                    })
-                else {
-                    return false;
-                };
-
-                if matches {
-                    matched_ref = Some(r);
-                    true
-                } else {
-                    false
-                }
-            });
-
-            match res {
-                LookupResult::DefiniteMiss => return Ok(false),
-                LookupResult::Hit(_) => {
-                    if let Some(r) = matched_ref {
-                        return self.del_target(key, hash, r);
-                    }
-                }
-                LookupResult::Overflow => {}
-            }
-        }
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let mut bucket_slot = ROOT_BUCKET_SLOT;
-            let mut depth = 0u8;
+            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-            let (target_bucket_slot, old_bucket, target_entry_idx) = loop {
-                let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-                let res = bucket.probe(hash, depth, |entry_idx| {
-                    self.match_any_key(&bucket.entry(entry_idx), key)
-                });
+            let matched_idx = bucket
+                .probe_match(hash, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
 
-                match res {
-                    ProbeResult::Found(entry_idx) => {
-                        break (bucket_slot, bucket, entry_idx);
+            match matched_idx {
+                Some(target_entry_idx) => {
+                    let entry = bucket.entry(target_entry_idx);
+                    if entry.is_list() {
+                        return self.list_del(key);
                     }
-                    ProbeResult::Vacant(_) => return Ok(false),
-                    ProbeResult::Overflow { next_bucket, .. } => {
-                        if next_bucket == 0 {
-                            return Ok(false);
+
+                    let req =
+                        DBuf::required_kv_buffers(entry.klen() as usize, entry.vlen() as usize);
+
+                    let (pool_hop, local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
+                    let dbuf_slot = self.locate_databuf_slot(pool_hop)? as usize;
+                    let orig_dbuf = self.mmap.read_exact::<DBuf, _, _>(dbuf_slot, |d| *d)?;
+
+                    let mut freed_dbuf = orig_dbuf;
+                    freed_dbuf.free_contiguous(local_idx, req);
+
+                    let mut new_bucket = bucket;
+                    new_bucket.mark_tombstone(target_entry_idx);
+
+                    let mut changes: Vec<(usize, Slot, Slot)> =
+                        Vec::with_capacity(BUCKET_SLOTS + DBUF_SLOTS);
+
+                    for i in 0..BUCKET_SLOTS {
+                        let orig_s = bucket.as_slots()[i];
+                        let new_s = new_bucket.as_slots()[i];
+
+                        if orig_s != new_s {
+                            changes.push(((bucket_slot as usize) + i, orig_s, new_s));
                         }
-                        bucket_slot = next_bucket;
-                        depth = depth.wrapping_add(1);
-                    }
-                }
-            };
-
-            let entry = old_bucket.entry(target_entry_idx);
-            if entry.is_list() {
-                return self.list_del(key);
-            }
-
-            let req = DataBuf::required_kv_buffers(entry.klen() as usize, entry.vlen() as usize);
-            let (pool_hop, local_idx) = DataBuf::decompose_buf_idx(entry.buf_idx());
-            let dbuf_slot = self.locate_databuf_slot(pool_hop)? as usize;
-            let orig_dbuf = self.mmap.read_exact::<DataBuf, _, _>(dbuf_slot, |d| *d)?;
-
-            let mut freed_dbuf = orig_dbuf;
-            freed_dbuf.free_contiguous(local_idx, req);
-
-            let mut new_bucket = old_bucket;
-            new_bucket.mark_tombstone(target_entry_idx);
-
-            let mut changes: Vec<(usize, Slot, Slot)> =
-                Vec::with_capacity(BUCKET_SLOTS + DATABUF_SLOTS);
-
-            for i in 0..BUCKET_SLOTS {
-                let orig_s = old_bucket.as_slots()[i];
-                let new_s = new_bucket.as_slots()[i];
-
-                if orig_s != new_s {
-                    changes.push(((target_bucket_slot as usize) + i, orig_s, new_s));
-                }
-            }
-
-            for i in 0..DATABUF_SLOTS {
-                let orig_s = orig_dbuf.as_slots()[i];
-                let new_s = freed_dbuf.as_slots()[i];
-
-                if orig_s != new_s {
-                    changes.push((dbuf_slot + i, orig_s, new_s));
-                }
-            }
-
-            changes.sort_by_key(|(s, _, _)| *s);
-            let mut tx = self.mmap.new_tx();
-            for (s, orig_s, new_s) in &changes {
-                if let Err(e) = tx.write(orig_s, new_s, *s) {
-                    return Err(TurboError::from(e));
-                }
-            }
-
-            match tx.commit() {
-                Ok(_) => {
-                    let _ = self.total_entries.fetch_sub(1, Ordering::Relaxed);
-                    if let Some(ref idx) = self.fp_index {
-                        let _ = idx.delete(hash, target_bucket_slot, target_entry_idx as u8);
                     }
 
-                    return Ok(true);
+                    for i in 0..DBUF_SLOTS {
+                        let orig_s = orig_dbuf.as_slots()[i];
+                        let new_s = freed_dbuf.as_slots()[i];
+
+                        if orig_s != new_s {
+                            changes.push((dbuf_slot + i, orig_s, new_s));
+                        }
+                    }
+
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+                    for (s, orig_s, new_s) in &changes {
+                        if let Err(e) = tx.write(orig_s, new_s, *s) {
+                            return Err(TurboError::from(e));
+                        }
+                    }
+
+                    match tx.commit() {
+                        Ok(_) => {
+                            let _ = self.total_entries.fetch_sub(1, Ordering::Relaxed);
+                            return Ok(true);
+                        }
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
+                    }
                 }
-                Err(_) => {
-                    Self::occ_backoff(attempt);
-                    continue;
-                }
+                None => return Ok(false),
             }
         }
 
         Err(TurboError::ResourceBusy("OCC write conflict limit reached"))
-    }
-
-    fn del_target(&self, key: &[u8], hash: u32, r: IndexRef) -> TurboResult<bool> {
-        let target_bucket_slot = r.bucket_slot;
-        let target_entry_idx = r.entry_idx as usize;
-
-        for attempt in 0..OCC_MAX_RETRIES {
-            let old_bucket =
-                self.mmap.read_exact::<Bucket, _, _>(target_bucket_slot as usize, |b| *b)?;
-
-            let entry = old_bucket.entry(target_entry_idx);
-            if !entry.is_occupied() || !self.match_any_key(&entry, key) {
-                return self.del(key);
-            }
-
-            if entry.is_list() {
-                return self.list_del(key);
-            }
-
-            let req = DataBuf::required_kv_buffers(entry.klen() as usize, entry.vlen() as usize);
-            let (_pool_hop, local_idx) = DataBuf::decompose_buf_idx(entry.buf_idx());
-
-            let dbuf_slot = r.dbuf_slot as usize;
-            let orig_dbuf = self.mmap.read_exact::<DataBuf, _, _>(dbuf_slot, |d| *d)?;
-
-            let mut freed_dbuf = orig_dbuf;
-            freed_dbuf.free_contiguous(local_idx, req);
-
-            let mut new_bucket = old_bucket;
-            new_bucket.mark_tombstone(target_entry_idx);
-
-            let mut changes: Vec<(usize, Slot, Slot)> =
-                Vec::with_capacity(BUCKET_SLOTS + DATABUF_SLOTS);
-
-            for i in 0..BUCKET_SLOTS {
-                let orig_s = old_bucket.as_slots()[i];
-                let new_s = new_bucket.as_slots()[i];
-
-                if orig_s != new_s {
-                    changes.push(((target_bucket_slot as usize) + i, orig_s, new_s));
-                }
-            }
-
-            for i in 0..DATABUF_SLOTS {
-                let orig_s = orig_dbuf.as_slots()[i];
-                let new_s = freed_dbuf.as_slots()[i];
-
-                if orig_s != new_s {
-                    changes.push((dbuf_slot + i, orig_s, new_s));
-                }
-            }
-
-            changes.sort_by_key(|(s, _, _)| *s);
-            let mut tx = self.mmap.new_tx();
-            for (s, orig_s, new_s) in &changes {
-                if let Err(e) = tx.write(orig_s, new_s, *s) {
-                    return Err(TurboError::from(e));
-                }
-            }
-
-            match tx.commit() {
-                Ok(_) => {
-                    let _ = self.total_entries.fetch_sub(1, Ordering::Relaxed);
-                    if let Some(ref idx) = self.fp_index {
-                        let _ = idx.delete(hash, target_bucket_slot, target_entry_idx as u8);
-                    }
-
-                    return Ok(true);
-                }
-                Err(_) => {
-                    Self::occ_backoff(attempt);
-                    continue;
-                }
-            }
-        }
-
-        Err(TurboError::ResourceBusy("OCC write conflict limit reached"))
-    }
-
-    fn set_overwrite(
-        &self,
-        key: &[u8],
-        val: &[u8],
-        hash: u32,
-        req: usize,
-        r: IndexRef,
-    ) -> TurboResult<TurboTicket> {
-        let target_bucket_slot = r.bucket_slot;
-        let target_entry_idx = r.entry_idx as usize;
-
-        for attempt in 0..OCC_MAX_RETRIES {
-            let old_bucket =
-                self.mmap.read_exact::<Bucket, _, _>(target_bucket_slot as usize, |b| *b)?;
-            let entry = old_bucket.entry(target_entry_idx);
-
-            if !entry.is_occupied() || !self.match_any_key(&entry, key) {
-                return self.set(key, val);
-            }
-
-            let (_, local_idx) = DataBuf::decompose_buf_idx(entry.buf_idx());
-            let dbuf_slot = r.dbuf_slot as usize;
-            let orig_dbuf = self.mmap.read_exact::<DataBuf, _, _>(dbuf_slot, |d| *d)?;
-            let curr_req =
-                DataBuf::required_kv_buffers(entry.klen() as usize, entry.vlen() as usize);
-
-            let mut touched_dbufs: Vec<(usize, DataBuf, DataBuf)> = Vec::with_capacity(2);
-            let target_global_buf;
-            let target_dbuf_slot: usize;
-
-            if req <= curr_req {
-                let mut mut_d = orig_dbuf;
-                mut_d
-                    .write_kv_payload(local_idx, key, val)
-                    .map_err(|_| TurboError::PayloadTooLarge)?;
-
-                target_global_buf = entry.buf_idx();
-                touched_dbufs.push((dbuf_slot, orig_dbuf, mut_d));
-                target_dbuf_slot = dbuf_slot;
-            } else {
-                let mut freed_d = orig_dbuf;
-                freed_d.free_contiguous(local_idx, curr_req);
-
-                let mut plan = self.find_free_databuf(req, 0)?;
-                if plan.start_slot == dbuf_slot {
-                    plan.orig = freed_d;
-                    plan.mutated = freed_d;
-
-                    let alloc_idx =
-                        plan.mutated.alloc_contiguous(req).ok_or(TurboError::DatabaseFull)?;
-                    plan.local_idx = alloc_idx;
-                    plan.mutated
-                        .write_kv_payload(alloc_idx, key, val)
-                        .map_err(|_| TurboError::PayloadTooLarge)?;
-
-                    let pool_hop_new = self.databuf_slot_to_hop(plan.start_slot as u32)?;
-                    target_global_buf = DataBuf::global_buf_idx(pool_hop_new, alloc_idx);
-                    touched_dbufs.push((plan.start_slot, orig_dbuf, plan.mutated));
-                    target_dbuf_slot = plan.start_slot;
-                } else {
-                    touched_dbufs.push((dbuf_slot, orig_dbuf, freed_d));
-                    plan.mutated
-                        .write_kv_payload(plan.local_idx, key, val)
-                        .map_err(|_| TurboError::PayloadTooLarge)?;
-
-                    let pool_hop_new = self.databuf_slot_to_hop(plan.start_slot as u32)?;
-                    target_global_buf = DataBuf::global_buf_idx(pool_hop_new, plan.local_idx);
-                    touched_dbufs.push((plan.start_slot, plan.orig, plan.mutated));
-                    target_dbuf_slot = plan.start_slot;
-                }
-            }
-
-            let mut new_bucket = old_bucket;
-            new_bucket.set_kv(
-                target_entry_idx,
-                hash,
-                key.len() as u8,
-                val.len() as u16,
-                target_global_buf,
-            );
-
-            let mut changes: Vec<(usize, Slot, Slot)> =
-                Vec::with_capacity(BUCKET_SLOTS + touched_dbufs.len() * DATABUF_SLOTS);
-
-            for i in 0..BUCKET_SLOTS {
-                let orig_s = old_bucket.as_slots()[i];
-                let new_s = new_bucket.as_slots()[i];
-
-                if orig_s != new_s {
-                    changes.push(((target_bucket_slot as usize) + i, orig_s, new_s));
-                }
-            }
-
-            for (ds, orig_d, mut_d) in &touched_dbufs {
-                for i in 0..DATABUF_SLOTS {
-                    let orig_s = orig_d.as_slots()[i];
-                    let new_s = mut_d.as_slots()[i];
-
-                    if orig_s != new_s {
-                        changes.push((ds + i, orig_s, new_s));
-                    }
-                }
-            }
-
-            changes.sort_by_key(|(s, _, _)| *s);
-            let mut tx = self.mmap.new_tx();
-
-            for (s, orig_s, new_s) in &changes {
-                if let Err(e) = tx.write(orig_s, new_s, *s) {
-                    return Err(TurboError::from(e));
-                }
-            }
-
-            match tx.commit() {
-                Ok(ticket) => {
-                    if let Some(ref idx) = self.fp_index {
-                        let final_offset = crate::bucket::encode_kv_offset(
-                            key.len() as u8,
-                            val.len() as u16,
-                            target_global_buf,
-                        );
-                        idx.insert(
-                            hash,
-                            IndexRef {
-                                hash,
-                                bucket_slot: target_bucket_slot,
-                                dbuf_slot: target_dbuf_slot as u32,
-                                entry_idx: target_entry_idx as u8,
-                                _pad: [0x00; 3],
-                                offset: final_offset,
-                            },
-                        );
-                    }
-
-                    return Ok(TurboTicket::new(ticket));
-                }
-                Err(_) => {
-                    Self::occ_backoff(attempt);
-                    continue;
-                }
-            }
-        }
-
-        Err(TurboError::ResourceBusy("OCC write conflict limit reached"))
-    }
-
-    fn match_list_key(&self, entry: &BucketEntry, key: &[u8]) -> bool {
-        if !entry.is_list() {
-            return false;
-        }
-
-        let (pool_hop, local_idx) = DataBuf::decompose_buf_idx(entry.buf_idx());
-        let Ok(dbuf_slot) = self.locate_databuf_slot(pool_hop) else {
-            return false;
-        };
-
-        let Ok(matches) = self
-            .mmap
-            .read_exact::<DataBuf, _, _>(dbuf_slot as usize, |d| d.verify_list_key(local_idx, key))
-        else {
-            return false;
-        };
-
-        matches
     }
 
     /// Ref: `DESIGN.md` §7.4
@@ -1349,198 +995,100 @@ impl Engine {
             return Err(TurboError::PayloadTooLarge);
         }
 
-        let req_item = DataBuf::required_list_val_buffers(item.len());
-        if req_item > DATABUF_BUF_COUNT {
+        let req_item = DBuf::required_list_val_buffers(item.len());
+        if req_item > DBUF_BUF_COUNT {
             return Err(TurboError::PayloadTooLarge);
         }
 
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let mut bucket_slot = ROOT_BUCKET_SLOT;
-            let mut depth = 0u8;
+            let (bucket_slot, depth) = self.traverse_to_leaf(hash)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-            let (target_bucket_slot, old_bucket, target_entry_idx, exists) = loop {
-                let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-                let res = bucket.probe(hash, depth, |entry_idx| {
-                    self.match_any_key(&bucket.entry(entry_idx), key)
-                });
+            let probe_res =
+                bucket.probe(hash, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
 
-                match res {
-                    ProbeResult::Found(entry_idx) => {
-                        break (bucket_slot, bucket, entry_idx, true);
+            match probe_res {
+                ProbeResult::Found(target_entry_idx) => {
+                    let entry = bucket.entry(target_entry_idx);
+                    if !entry.is_list() {
+                        return Err(TurboError::InvalidType("Key is a KV entry"));
                     }
-                    ProbeResult::Vacant(entry_idx) => {
-                        break (bucket_slot, bucket, entry_idx, false);
-                    }
-                    ProbeResult::Overflow { primary, next_bucket, candidate_slot } => {
-                        if next_bucket == 0 {
-                            if let Some(tomb_idx) = candidate_slot {
-                                break (bucket_slot, bucket, tomb_idx, false);
-                            }
-                            let new_bucket_slot = self.expand_bucket()?;
-                            let _ = self.mmap.write_exact::<Bucket, _, _>(
-                                bucket_slot as usize,
-                                |b| {
-                                    b.set_next_bucket(primary, new_bucket_slot);
-                                },
-                            )?;
-                            bucket_slot = new_bucket_slot;
-                            depth = depth.wrapping_add(1);
-                        } else {
-                            bucket_slot = next_bucket;
-                            depth = depth.wrapping_add(1);
+
+                    let mut item_plan = self.find_free_databuf(req_item, 0)?;
+                    item_plan
+                        .mutated
+                        .write_list_val_payload(item_plan.local_idx, item)
+                        .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                    let item_pool_hop = self.databuf_slot_to_hop(item_plan.start_slot as u32)?;
+                    let item_buf_idx = DBuf::global_buf_idx(item_pool_hop, item_plan.local_idx);
+
+                    let mut curr_arr_idx = entry.adjarr_idx();
+                    let (last_block_slot, last_orig_block, last_local_array) = loop {
+                        let (block_hop, local_array) = decompose_relative_array_idx(curr_arr_idx);
+                        let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
+
+                        let block =
+                            self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
+
+                        let next = block.array(local_array).next_array();
+                        if next == 0 {
+                            break (block_slot, block, local_array);
                         }
-                    }
-                }
-            };
 
-            if exists {
-                let entry = old_bucket.entry(target_entry_idx);
-                if !entry.is_list() {
-                    return Err(TurboError::InvalidType("Key is a KV entry"));
-                }
+                        curr_arr_idx = next;
+                    };
 
-                let mut item_plan = self.find_free_databuf(req_item, 0)?;
-                item_plan
-                    .mutated
-                    .write_list_val_payload(item_plan.local_idx, item)
-                    .map_err(|_| TurboError::PayloadTooLarge)?;
-                let item_pool_hop = self.databuf_slot_to_hop(item_plan.start_slot as u32)?;
-                let item_buf_idx = DataBuf::global_buf_idx(item_pool_hop, item_plan.local_idx);
+                    let mut touched_blocks: Vec<(usize, AdjArrayBlock, AdjArrayBlock)> = Vec::new();
 
-                let mut curr_arr_idx = entry.adjarr_idx();
-                let (last_block_slot, last_orig_block, last_local_array) = loop {
-                    let (block_hop, local_array) = decompose_relative_array_idx(curr_arr_idx);
-                    let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-                    let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
+                    if !last_orig_block.array(last_local_array).is_full() {
+                        let mut mutated_block = last_orig_block;
+                        let _ = mutated_block.array_mut(last_local_array).push(item_buf_idx);
 
-                    let next = block.array(local_array).next_array();
-                    if next == 0 {
-                        break (block_slot, block, local_array);
-                    }
-                    curr_arr_idx = next;
-                };
-
-                let mut touched_blocks: Vec<(usize, AdjArrayBlock, AdjArrayBlock)> = Vec::new();
-
-                if !last_orig_block.array(last_local_array).is_full() {
-                    let mut mutated_block = last_orig_block;
-                    let _ = mutated_block.array_mut(last_local_array).push(item_buf_idx);
-                    touched_blocks.push((last_block_slot, last_orig_block, mutated_block));
-                } else {
-                    let (new_arr_idx, new_block_slot, new_orig_block, mut new_mut_block) =
-                        self.find_free_adjarr_array(last_block_slot)?;
-
-                    let (_, new_local_arr) = decompose_relative_array_idx(new_arr_idx);
-                    let _ = new_mut_block.array_mut(new_local_arr).push(item_buf_idx);
-
-                    let mut mutated_last_block = last_orig_block;
-                    mutated_last_block.array_mut(last_local_array).set_next_array(new_arr_idx);
-
-                    if last_block_slot == new_block_slot {
-                        let _ = mutated_last_block.array_mut(new_local_arr).push(item_buf_idx);
-                        mutated_last_block.set_array_occupied(new_local_arr, true);
-                        touched_blocks.push((last_block_slot, last_orig_block, mutated_last_block));
+                        touched_blocks.push((last_block_slot, last_orig_block, mutated_block));
                     } else {
-                        touched_blocks.push((last_block_slot, last_orig_block, mutated_last_block));
-                        touched_blocks.push((new_block_slot, new_orig_block, new_mut_block));
-                    }
-                }
+                        let (new_arr_idx, new_block_slot, new_orig_block, mut new_mut_block) =
+                            self.find_free_adjarr_array(last_block_slot)?;
 
-                let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
-                for (bs, orig_b, mut_b) in &touched_blocks {
-                    let orig_s = *orig_b.as_slot();
-                    let new_s = *mut_b.as_slot();
+                        let (_, new_local_arr) = decompose_relative_array_idx(new_arr_idx);
+                        let _ = new_mut_block.array_mut(new_local_arr).push(item_buf_idx);
 
-                    if orig_s != new_s {
-                        changes.push((*bs, orig_s, new_s));
-                    }
-                }
+                        let mut mutated_last_block = last_orig_block;
+                        mutated_last_block.array_mut(last_local_array).set_next_array(new_arr_idx);
 
-                for i in 0..DATABUF_SLOTS {
-                    let orig_s = item_plan.orig.as_slots()[i];
-                    let new_s = item_plan.mutated.as_slots()[i];
+                        if last_block_slot == new_block_slot {
+                            let _ = mutated_last_block.array_mut(new_local_arr).push(item_buf_idx);
+                            mutated_last_block.set_array_occupied(new_local_arr, true);
 
-                    if orig_s != new_s {
-                        changes.push((item_plan.start_slot + i, orig_s, new_s));
-                    }
-                }
+                            touched_blocks.push((
+                                last_block_slot,
+                                last_orig_block,
+                                mutated_last_block,
+                            ));
+                        } else {
+                            touched_blocks.push((
+                                last_block_slot,
+                                last_orig_block,
+                                mutated_last_block,
+                            ));
 
-                changes.sort_by_key(|(s, _, _)| *s);
-                let mut tx = self.mmap.new_tx();
-                for (s, orig_s, new_s) in &changes {
-                    if let Err(e) = tx.write(orig_s, new_s, *s) {
-                        return Err(TurboError::from(e));
-                    }
-                }
-
-                match tx.commit() {
-                    Ok(ticket) => return Ok(TurboTicket::new(ticket)),
-                    Err(_) => {
-                        Self::occ_backoff(attempt);
-                        continue;
-                    }
-                }
-            } else {
-                let req_key = DataBuf::required_list_key_buffers(key.len());
-
-                let mut key_plan = self.find_free_databuf(req_key, 0)?;
-                key_plan
-                    .mutated
-                    .write_list_key_payload(key_plan.local_idx, key)
-                    .map_err(|_| TurboError::PayloadTooLarge)?;
-
-                let key_pool_hop = self.databuf_slot_to_hop(key_plan.start_slot as u32)?;
-                let key_buf_idx = DataBuf::global_buf_idx(key_pool_hop, key_plan.local_idx);
-
-                let mut item_plan = self.find_free_databuf(req_item, key_plan.start_slot)?;
-                item_plan
-                    .mutated
-                    .write_list_val_payload(item_plan.local_idx, item)
-                    .map_err(|_| TurboError::PayloadTooLarge)?;
-
-                let item_pool_hop = self.databuf_slot_to_hop(item_plan.start_slot as u32)?;
-                let item_buf_idx = DataBuf::global_buf_idx(item_pool_hop, item_plan.local_idx);
-
-                let (arr_idx, block_slot, orig_block, mut mut_block) =
-                    self.find_free_adjarr_array(0)?;
-                let (_, local_arr) = decompose_relative_array_idx(arr_idx);
-                let _ = mut_block.array_mut(local_arr).push(item_buf_idx);
-
-                let mut new_bucket = old_bucket;
-                new_bucket.set_list(target_entry_idx, hash, arr_idx, key_buf_idx);
-
-                let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
-                for i in 0..BUCKET_SLOTS {
-                    let orig_s = old_bucket.as_slots()[i];
-                    let new_s = new_bucket.as_slots()[i];
-
-                    if orig_s != new_s {
-                        changes.push(((target_bucket_slot as usize) + i, orig_s, new_s));
-                    }
-                }
-
-                changes.push((block_slot, *orig_block.as_slot(), *mut_block.as_slot()));
-                if key_plan.start_slot == item_plan.start_slot {
-                    for i in 0..DATABUF_SLOTS {
-                        let orig_s = key_plan.orig.as_slots()[i];
-                        let new_s = item_plan.mutated.as_slots()[i];
-
-                        if orig_s != new_s {
-                            changes.push((key_plan.start_slot + i, orig_s, new_s));
+                            touched_blocks.push((new_block_slot, new_orig_block, new_mut_block));
                         }
                     }
-                } else {
-                    for i in 0..DATABUF_SLOTS {
-                        let orig_s = key_plan.orig.as_slots()[i];
-                        let new_s = key_plan.mutated.as_slots()[i];
+
+                    let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
+                    for (bs, orig_b, mut_b) in &touched_blocks {
+                        let orig_s = *orig_b.as_slot();
+                        let new_s = *mut_b.as_slot();
 
                         if orig_s != new_s {
-                            changes.push((key_plan.start_slot + i, orig_s, new_s));
+                            changes.push((*bs, orig_s, new_s));
                         }
                     }
-                    for i in 0..DATABUF_SLOTS {
+
+                    for i in 0..DBUF_SLOTS {
                         let orig_s = item_plan.orig.as_slots()[i];
                         let new_s = item_plan.mutated.as_slots()[i];
 
@@ -1548,24 +1096,206 @@ impl Engine {
                             changes.push((item_plan.start_slot + i, orig_s, new_s));
                         }
                     }
-                }
 
-                changes.sort_by_key(|(s, _, _)| *s);
-                let mut tx = self.mmap.new_tx();
-                for (s, orig_s, new_s) in &changes {
-                    if let Err(e) = tx.write(orig_s, new_s, *s) {
-                        return Err(TurboError::from(e));
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+
+                    for (s, orig_s, new_s) in &changes {
+                        if let Err(e) = tx.write(orig_s, new_s, *s) {
+                            return Err(TurboError::from(e));
+                        }
+                    }
+
+                    match tx.commit() {
+                        Ok(ticket) => return Ok(TurboTicket::new(ticket)),
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
                     }
                 }
+                ProbeResult::Vacant(target_entry_idx) => {
+                    let req_key = DBuf::required_list_key_buffers(key.len());
 
-                match tx.commit() {
-                    Ok(ticket) => {
-                        let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
-                        return Ok(TurboTicket::new(ticket));
+                    let mut key_plan = self.find_free_databuf(req_key, 0)?;
+                    key_plan
+                        .mutated
+                        .write_list_key_payload(key_plan.local_idx, key)
+                        .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                    let key_pool_hop = self.databuf_slot_to_hop(key_plan.start_slot as u32)?;
+                    let key_buf_idx = DBuf::global_buf_idx(key_pool_hop, key_plan.local_idx);
+
+                    let mut item_plan = self.find_free_databuf(req_item, key_plan.start_slot)?;
+                    item_plan
+                        .mutated
+                        .write_list_val_payload(item_plan.local_idx, item)
+                        .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                    let item_pool_hop = self.databuf_slot_to_hop(item_plan.start_slot as u32)?;
+                    let item_buf_idx = DBuf::global_buf_idx(item_pool_hop, item_plan.local_idx);
+
+                    let (arr_idx, block_slot, orig_block, mut mut_block) =
+                        self.find_free_adjarr_array(0)?;
+
+                    let (_, local_arr) = decompose_relative_array_idx(arr_idx);
+                    let _ = mut_block.array_mut(local_arr).push(item_buf_idx);
+
+                    let mut new_bucket = bucket;
+                    new_bucket.set_list(target_entry_idx, hash, arr_idx, key_buf_idx);
+
+                    let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
+                    for i in 0..BUCKET_SLOTS {
+                        let orig_s = bucket.as_slots()[i];
+                        let new_s = new_bucket.as_slots()[i];
+
+                        if orig_s != new_s {
+                            changes.push(((bucket_slot as usize) + i, orig_s, new_s));
+                        }
                     }
-                    Err(_) => {
-                        Self::occ_backoff(attempt);
-                        continue;
+
+                    changes.push((block_slot, *orig_block.as_slot(), *mut_block.as_slot()));
+                    if key_plan.start_slot == item_plan.start_slot {
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = key_plan.orig.as_slots()[i];
+                            let new_s = item_plan.mutated.as_slots()[i];
+
+                            if orig_s != new_s {
+                                changes.push((key_plan.start_slot + i, orig_s, new_s));
+                            }
+                        }
+                    } else {
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = key_plan.orig.as_slots()[i];
+                            let new_s = key_plan.mutated.as_slots()[i];
+
+                            if orig_s != new_s {
+                                changes.push((key_plan.start_slot + i, orig_s, new_s));
+                            }
+                        }
+
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = item_plan.orig.as_slots()[i];
+                            let new_s = item_plan.mutated.as_slots()[i];
+
+                            if orig_s != new_s {
+                                changes.push((item_plan.start_slot + i, orig_s, new_s));
+                            }
+                        }
+                    }
+
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+
+                    for (s, orig_s, new_s) in &changes {
+                        if let Err(e) = tx.write(orig_s, new_s, *s) {
+                            return Err(TurboError::from(e));
+                        }
+                    }
+
+                    match tx.commit() {
+                        Ok(ticket) => {
+                            let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
+                            return Ok(TurboTicket::new(ticket));
+                        }
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
+                    }
+                }
+                ProbeResult::Full => {
+                    if depth >= MAX_TRIE_DEPTH {
+                        return Err(TurboError::CollisionLimit);
+                    }
+
+                    let req_key = DBuf::required_list_key_buffers(key.len());
+
+                    let mut key_plan = self.find_free_databuf(req_key, 0)?;
+                    key_plan
+                        .mutated
+                        .write_list_key_payload(key_plan.local_idx, key)
+                        .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                    let key_pool_hop = self.databuf_slot_to_hop(key_plan.start_slot as u32)?;
+                    let key_buf_idx = DBuf::global_buf_idx(key_pool_hop, key_plan.local_idx);
+
+                    let mut item_plan = self.find_free_databuf(req_item, key_plan.start_slot)?;
+                    item_plan
+                        .mutated
+                        .write_list_val_payload(item_plan.local_idx, item)
+                        .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                    let item_pool_hop = self.databuf_slot_to_hop(item_plan.start_slot as u32)?;
+                    let item_buf_idx = DBuf::global_buf_idx(item_pool_hop, item_plan.local_idx);
+
+                    let (arr_idx, block_slot, orig_block, mut mut_block) =
+                        self.find_free_adjarr_array(0)?;
+
+                    let (_, local_arr) = decompose_relative_array_idx(arr_idx);
+                    let _ = mut_block.array_mut(local_arr).push(item_buf_idx);
+
+                    let new_entry = BucketEntry::pack_list(hash, arr_idx, key_buf_idx);
+
+                    let mut all_entries = Vec::with_capacity(BUCKET_ENTRIES + 1);
+                    for i in 0..BUCKET_ENTRIES {
+                        all_entries.push(bucket.entry(i));
+                    }
+
+                    all_entries.push(new_entry);
+                    let split_node = self.format_split_subtree(&all_entries, depth)?;
+
+                    let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
+                    changes.push((bucket_slot as usize, *bucket.as_slot(), *split_node.as_slot()));
+
+                    changes.push((block_slot, *orig_block.as_slot(), *mut_block.as_slot()));
+                    if key_plan.start_slot == item_plan.start_slot {
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = key_plan.orig.as_slots()[i];
+                            let new_s = item_plan.mutated.as_slots()[i];
+
+                            if orig_s != new_s {
+                                changes.push((key_plan.start_slot + i, orig_s, new_s));
+                            }
+                        }
+                    } else {
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = key_plan.orig.as_slots()[i];
+                            let new_s = key_plan.mutated.as_slots()[i];
+
+                            if orig_s != new_s {
+                                changes.push((key_plan.start_slot + i, orig_s, new_s));
+                            }
+                        }
+
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = item_plan.orig.as_slots()[i];
+                            let new_s = item_plan.mutated.as_slots()[i];
+
+                            if orig_s != new_s {
+                                changes.push((item_plan.start_slot + i, orig_s, new_s));
+                            }
+                        }
+                    }
+
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+
+                    for (s, orig_s, new_s) in &changes {
+                        if let Err(e) = tx.write(orig_s, new_s, *s) {
+                            return Err(TurboError::from(e));
+                        }
+                    }
+
+                    match tx.commit() {
+                        Ok(ticket) => {
+                            let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
+                            return Ok(TurboTicket::new(ticket));
+                        }
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
+                        }
                     }
                 }
             }
@@ -1574,7 +1304,6 @@ impl Engine {
         Err(TurboError::ResourceBusy("OCC write conflict limit reached"))
     }
 
-    /// Ref: `DESIGN.md` §3.4
     fn find_free_adjarr_array(
         &self,
         _exclude_slot: usize,
@@ -1613,6 +1342,26 @@ impl Engine {
         Ok((relative_idx, new_slot, orig, block))
     }
 
+    fn match_list_key(&self, entry: &BucketEntry, key: &[u8]) -> bool {
+        if !entry.is_list() {
+            return false;
+        }
+
+        let (pool_hop, local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
+        let Ok(dbuf_slot) = self.locate_databuf_slot(pool_hop) else {
+            return false;
+        };
+
+        let Ok(matches) = self
+            .mmap
+            .read_exact::<DBuf, _, _>(dbuf_slot as usize, |d| d.verify_list_key(local_idx, key))
+        else {
+            return false;
+        };
+
+        matches
+    }
+
     /// Ref: `DESIGN.md` §7.4
     pub(crate) fn list_pop(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
         if key.is_empty() || key.len() > MAX_KEY_LEN {
@@ -1622,31 +1371,18 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let mut bucket_slot = ROOT_BUCKET_SLOT;
-            let mut depth = 0u8;
+            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-            let (_target_bucket_slot, old_bucket, target_entry_idx) = loop {
-                let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-                let res = bucket.probe(hash, depth, |entry_idx| {
-                    self.match_list_key(&bucket.entry(entry_idx), key)
-                });
+            let matched_idx = bucket
+                .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
 
-                match res {
-                    ProbeResult::Found(entry_idx) => {
-                        break (bucket_slot, bucket, entry_idx);
-                    }
-                    ProbeResult::Vacant(_) => return Ok(None),
-                    ProbeResult::Overflow { next_bucket, .. } => {
-                        if next_bucket == 0 {
-                            return Ok(None);
-                        }
-                        bucket_slot = next_bucket;
-                        depth = depth.wrapping_add(1);
-                    }
-                }
+            let target_entry_idx = match matched_idx {
+                Some(idx) => idx,
+                None => return Ok(None),
             };
 
-            let entry = old_bucket.entry(target_entry_idx);
+            let entry = bucket.entry(target_entry_idx);
             let mut curr_arr_idx = entry.adjarr_idx();
             let mut prev_info: Option<(u32, usize, AdjArrayBlock, usize)> = None;
 
@@ -1670,23 +1406,21 @@ impl Engine {
                 None => return Ok(None),
             };
 
-            let (item_pool_hop, item_local_idx) =
-                DataBuf::decompose_buf_idx(popped_entry.buf_idx());
-            let item_dbuf_slot = self.locate_databuf_slot(item_pool_hop)? as usize;
-            let orig_item_dbuf = self.mmap.read_exact::<DataBuf, _, _>(item_dbuf_slot, |d| *d)?;
+            let (item_pool_hop, item_local_idx) = DBuf::decompose_buf_idx(popped_entry.buf_idx());
 
-            let payload_raw = orig_item_dbuf.payload_bytes();
-            let start_byte = item_local_idx * 0x10;
-            let vlen =
-                u16::from_le_bytes([payload_raw[start_byte + 4], payload_raw[start_byte + 5]])
-                    as usize;
+            let item_dbuf_slot = self.locate_databuf_slot(item_pool_hop)? as usize;
+            let orig_item_dbuf = self.mmap.read_exact::<DBuf, _, _>(item_dbuf_slot, |d| *d)?;
+
+            let vlen = orig_item_dbuf
+                .read_list_vlen(item_local_idx)
+                .map_err(|_| TurboError::CorruptedPayload("List item invalid index"))?;
 
             let val_bytes = orig_item_dbuf
                 .read_list_val_payload(item_local_idx, vlen)
                 .map_err(|_| TurboError::CorruptedPayload("List item CRC mismatch"))?
                 .to_vec();
 
-            let req_item = DataBuf::required_list_val_buffers(vlen);
+            let req_item = DBuf::required_list_val_buffers(vlen);
             let mut freed_item_dbuf = orig_item_dbuf;
             freed_item_dbuf.free_contiguous(item_local_idx, req_item);
 
@@ -1719,14 +1453,16 @@ impl Engine {
             for (bs, orig_b, mut_b) in &touched_blocks {
                 let orig_s = *orig_b.as_slot();
                 let new_s = *mut_b.as_slot();
+
                 if orig_s != new_s {
                     changes.push((*bs, orig_s, new_s));
                 }
             }
 
-            for i in 0..DATABUF_SLOTS {
+            for i in 0..DBUF_SLOTS {
                 let orig_s = orig_item_dbuf.as_slots()[i];
                 let new_s = freed_item_dbuf.as_slots()[i];
+
                 if orig_s != new_s {
                     changes.push((item_dbuf_slot + i, orig_s, new_s));
                 }
@@ -1759,41 +1495,32 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let mut bucket_slot = ROOT_BUCKET_SLOT;
-        let mut depth = 0u8;
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-        loop {
-            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-            let probe_res = bucket
-                .probe(hash, depth, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+        let matched_idx = bucket
+            .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
 
-            match probe_res {
-                ProbeResult::Found(entry_idx) => {
-                    let entry = bucket.entry(entry_idx);
-                    let (block_hop, local_arr) = decompose_relative_array_idx(entry.adjarr_idx());
-                    let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-                    let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
+        let target_entry_idx = match matched_idx {
+            Some(idx) => idx,
+            None => return Ok(None),
+        };
 
-                    let array = block.array(local_arr);
-                    let Some(first_entry) = array.entry(0) else {
-                        return Ok(None);
-                    };
-                    if first_entry.is_empty() {
-                        return Ok(None);
-                    }
+        let entry = bucket.entry(target_entry_idx);
+        let (block_hop, local_arr) = decompose_relative_array_idx(entry.adjarr_idx());
 
-                    return self.read_list_item_payload(first_entry.buf_idx()).map(Some);
-                }
-                ProbeResult::Vacant(_) => return Ok(None),
-                ProbeResult::Overflow { next_bucket, .. } => {
-                    if next_bucket == 0 {
-                        return Ok(None);
-                    }
-                    bucket_slot = next_bucket;
-                    depth = depth.wrapping_add(1);
-                }
-            }
+        let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
+        let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
+
+        let Some(first_entry) = block.array(local_arr).entry(0) else {
+            return Ok(None);
+        };
+
+        if first_entry.is_empty() {
+            return Ok(None);
         }
+
+        self.read_list_item_payload(first_entry.buf_idx()).map(Some)
     }
 
     /// Ref: `DESIGN.md` §7.4
@@ -1803,69 +1530,58 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let mut bucket_slot = ROOT_BUCKET_SLOT;
-        let mut depth = 0u8;
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+
+        let matched_idx = bucket
+            .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+
+        let target_entry_idx = match matched_idx {
+            Some(idx) => idx,
+            None => return Ok(None),
+        };
+
+        let entry = bucket.entry(target_entry_idx);
+        let mut curr_arr_idx = entry.adjarr_idx();
+        let mut last_occupied_buf_idx: Option<u32> = None;
 
         loop {
-            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-            let probe_res = bucket
-                .probe(hash, depth, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+            let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
+            let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
+            let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
 
-            match probe_res {
-                ProbeResult::Found(entry_idx) => {
-                    let entry = bucket.entry(entry_idx);
-                    let mut curr_arr_idx = entry.adjarr_idx();
-                    let mut last_occupied_buf: Option<u32> = None;
-
-                    loop {
-                        let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
-                        let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-                        let block =
-                            self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
-                        let array = block.array(local_arr);
-
-                        for i in (0..ADJ_ARRAY_ENTRIES).rev() {
-                            if let Some(e) = array.entry(i) {
-                                if !e.is_empty() {
-                                    last_occupied_buf = Some(e.buf_idx());
-                                    break;
-                                }
-                            }
-                        }
-
-                        let next = array.next_array();
-                        if next == 0 {
-                            break;
-                        }
-                        curr_arr_idx = next;
+            let array = block.array(local_arr);
+            for i in (0..array.len()).rev() {
+                if let Some(e) = array.entry(i) {
+                    if !e.is_empty() {
+                        last_occupied_buf_idx = Some(e.buf_idx());
+                        break;
                     }
-
-                    return match last_occupied_buf {
-                        Some(buf_idx) => self.read_list_item_payload(buf_idx).map(Some),
-                        None => Ok(None),
-                    };
-                }
-                ProbeResult::Vacant(_) => return Ok(None),
-                ProbeResult::Overflow { next_bucket, .. } => {
-                    if next_bucket == 0 {
-                        return Ok(None);
-                    }
-                    bucket_slot = next_bucket;
-                    depth = depth.wrapping_add(1);
                 }
             }
+
+            let next = array.next_array();
+            if next == 0 {
+                break;
+            }
+
+            curr_arr_idx = next;
+        }
+
+        match last_occupied_buf_idx {
+            Some(buf_idx) => self.read_list_item_payload(buf_idx).map(Some),
+            None => Ok(None),
         }
     }
 
-    /// Ref: `DESIGN.md` §3.3
     fn read_list_item_payload(&self, buf_idx: u32) -> TurboResult<Vec<u8>> {
-        let (pool_hop, local_idx) = DataBuf::decompose_buf_idx(buf_idx);
+        let (pool_hop, local_idx) = DBuf::decompose_buf_idx(buf_idx);
         let dbuf_slot = self.locate_databuf_slot(pool_hop)? as usize;
-        let dbuf = self.mmap.read_exact::<DataBuf, _, _>(dbuf_slot, |d| *d)?;
+        let dbuf = self.mmap.read_exact::<DBuf, _, _>(dbuf_slot, |d| *d)?;
 
-        let raw = dbuf.payload_bytes();
-        let start_byte = local_idx * 0x10;
-        let vlen = u16::from_le_bytes([raw[start_byte + 4], raw[start_byte + 5]]) as usize;
+        let vlen = dbuf
+            .read_list_vlen(local_idx)
+            .map_err(|_| TurboError::CorruptedPayload("List item invalid index"))?;
 
         let val = dbuf
             .read_list_val_payload(local_idx, vlen)
@@ -1881,57 +1597,51 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let mut bucket_slot = ROOT_BUCKET_SLOT;
-        let mut depth = 0u8;
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+
+        let matched_idx = bucket
+            .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+
+        let target_entry_idx = match matched_idx {
+            Some(idx) => idx,
+            None => return Ok(None),
+        };
+
+        let entry = bucket.entry(target_entry_idx);
+        let mut curr_arr_idx = entry.adjarr_idx();
+        let mut current_offset = 0usize;
 
         loop {
-            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-            let probe_res = bucket
-                .probe(hash, depth, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+            let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
+            let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
+            let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
 
-            match probe_res {
-                ProbeResult::Found(entry_idx) => {
-                    let entry = bucket.entry(entry_idx);
-                    let mut curr_arr_idx = entry.adjarr_idx();
-                    let mut current_offset = 0usize;
+            let array = block.array(local_arr);
+            let array_len = array.len();
 
-                    loop {
-                        let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
-                        let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-                        let block =
-                            self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
-                        let array = block.array(local_arr);
-
-                        for i in 0..ADJ_ARRAY_ENTRIES {
-                            if let Some(e) = array.entry(i) {
-                                if !e.is_empty() {
-                                    if current_offset == idx {
-                                        return self.read_list_item_payload(e.buf_idx()).map(Some);
-                                    }
-                                    current_offset += 1;
-                                }
-                            }
-                        }
-
-                        let next = array.next_array();
-                        if next == 0 {
-                            break;
-                        }
-                        curr_arr_idx = next;
+            if idx < current_offset + array_len {
+                let local_entry_idx = idx - current_offset;
+                if let Some(e) = array.entry(local_entry_idx) {
+                    if !e.is_empty() {
+                        return self.read_list_item_payload(e.buf_idx()).map(Some);
                     }
+                }
 
-                    return Ok(None);
-                }
-                ProbeResult::Vacant(_) => return Ok(None),
-                ProbeResult::Overflow { next_bucket, .. } => {
-                    if next_bucket == 0 {
-                        return Ok(None);
-                    }
-                    bucket_slot = next_bucket;
-                    depth = depth.wrapping_add(1);
-                }
+                return Ok(None);
             }
+
+            current_offset += array_len;
+            let next = array.next_array();
+
+            if next == 0 {
+                break;
+            }
+
+            curr_arr_idx = next;
         }
+
+        Ok(None)
     }
 
     /// Ref: `DESIGN.md` §7.4
@@ -1941,104 +1651,86 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let mut bucket_slot = ROOT_BUCKET_SLOT;
-        let mut depth = 0u8;
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+
+        let matched_idx = bucket
+            .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+
+        let target_entry_idx = match matched_idx {
+            Some(idx) => idx,
+            None => return Ok(0),
+        };
+
+        let entry = bucket.entry(target_entry_idx);
+        let mut curr_arr_idx = entry.adjarr_idx();
+        let mut total_count = 0usize;
 
         loop {
-            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-            let probe_res = bucket
-                .probe(hash, depth, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+            let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
+            let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
+            let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
 
-            match probe_res {
-                ProbeResult::Found(entry_idx) => {
-                    let entry = bucket.entry(entry_idx);
-                    let mut curr_arr_idx = entry.adjarr_idx();
-                    let mut count = 0usize;
+            let array = block.array(local_arr);
 
-                    loop {
-                        let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
-                        let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-                        let block =
-                            self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
-                        let array = block.array(local_arr);
+            total_count += array.len();
+            let next = array.next_array();
 
-                        count += array.len();
-                        let next = array.next_array();
-                        if next == 0 {
-                            break;
-                        }
-                        curr_arr_idx = next;
-                    }
-
-                    return Ok(count);
-                }
-                ProbeResult::Vacant(_) => return Ok(0),
-                ProbeResult::Overflow { next_bucket, .. } => {
-                    if next_bucket == 0 {
-                        return Ok(0);
-                    }
-                    bucket_slot = next_bucket;
-                    depth = depth.wrapping_add(1);
-                }
+            if next == 0 {
+                break;
             }
+
+            curr_arr_idx = next;
         }
+
+        Ok(total_count)
     }
 
     /// Ref: `DESIGN.md` §7.4
     pub(crate) fn list_items(&self, key: &[u8]) -> TurboResult<Vec<Vec<u8>>> {
-        let mut items = Vec::new();
         if key.is_empty() || key.len() > MAX_KEY_LEN {
-            return Ok(items);
+            return Ok(Vec::new());
         }
 
         let hash = hash_key(key);
-        let mut bucket_slot = ROOT_BUCKET_SLOT;
-        let mut depth = 0u8;
+        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+
+        let matched_idx = bucket
+            .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+
+        let target_entry_idx = match matched_idx {
+            Some(idx) => idx,
+            None => return Ok(Vec::new()),
+        };
+
+        let entry = bucket.entry(target_entry_idx);
+        let mut curr_arr_idx = entry.adjarr_idx();
+        let mut items = Vec::new();
 
         loop {
-            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-            let probe_res = bucket
-                .probe(hash, depth, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
+            let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
+            let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
+            let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
 
-            match probe_res {
-                ProbeResult::Found(entry_idx) => {
-                    let entry = bucket.entry(entry_idx);
-                    let mut curr_arr_idx = entry.adjarr_idx();
-
-                    loop {
-                        let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
-                        let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-                        let block =
-                            self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
-                        let array = block.array(local_arr);
-
-                        for i in 0..ADJ_ARRAY_ENTRIES {
-                            if let Some(e) = array.entry(i) {
-                                if !e.is_empty() {
-                                    items.push(self.read_list_item_payload(e.buf_idx())?);
-                                }
-                            }
-                        }
-
-                        let next = array.next_array();
-                        if next == 0 {
-                            break;
-                        }
-                        curr_arr_idx = next;
+            let array = block.array(local_arr);
+            for i in 0..array.len() {
+                if let Some(e) = array.entry(i) {
+                    if !e.is_empty() {
+                        items.push(self.read_list_item_payload(e.buf_idx())?);
                     }
-
-                    return Ok(items);
-                }
-                ProbeResult::Vacant(_) => return Ok(items),
-                ProbeResult::Overflow { next_bucket, .. } => {
-                    if next_bucket == 0 {
-                        return Ok(items);
-                    }
-                    bucket_slot = next_bucket;
-                    depth = depth.wrapping_add(1);
                 }
             }
+
+            let next = array.next_array();
+            if next == 0 {
+                break;
+            }
+
+            curr_arr_idx = next;
         }
+
+        Ok(items)
     }
 
     /// Ref: `DESIGN.md` §7.4
@@ -2050,180 +1742,193 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let mut bucket_slot = ROOT_BUCKET_SLOT;
-            let mut depth = 0u8;
+            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-            let (target_bucket_slot, old_bucket, target_entry_idx) = loop {
-                let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
-                let res = bucket.probe(hash, depth, |entry_idx| {
-                    self.match_any_key(&bucket.entry(entry_idx), key)
-                });
+            let matched_idx = bucket
+                .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
 
-                match res {
-                    ProbeResult::Found(entry_idx) => {
-                        break (bucket_slot, bucket, entry_idx);
-                    }
-                    ProbeResult::Vacant(_) => return Ok(false),
-                    ProbeResult::Overflow { next_bucket, .. } => {
-                        if next_bucket == 0 {
-                            return Ok(false);
+            match matched_idx {
+                Some(target_entry_idx) => {
+                    let entry = bucket.entry(target_entry_idx);
+
+                    let (key_pool_hop, key_local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
+                    let key_dbuf_slot = self.locate_databuf_slot(key_pool_hop)? as usize;
+
+                    let orig_key_dbuf =
+                        self.mmap.read_exact::<DBuf, _, _>(key_dbuf_slot, |d| *d)?;
+
+                    let req_key = DBuf::required_list_key_buffers(key.len());
+
+                    let mut freed_key_dbuf = orig_key_dbuf;
+                    freed_key_dbuf.free_contiguous(key_local_idx, req_key);
+
+                    let mut curr_arr_idx = entry.adjarr_idx();
+                    let mut touched_blocks: Vec<(usize, AdjArrayBlock, AdjArrayBlock)> = Vec::new();
+                    let mut touched_item_dbufs: std::collections::HashMap<usize, (DBuf, DBuf)> =
+                        std::collections::HashMap::new();
+
+                    loop {
+                        let (block_hop, local_array) = decompose_relative_array_idx(curr_arr_idx);
+                        let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
+                        let orig_block = if let Some((_, _, mut_b)) =
+                            touched_blocks.iter().find(|(s, _, _)| *s == block_slot)
+                        {
+                            *mut_b
+                        } else {
+                            self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?
+                        };
+
+                        let mut mutated_block = orig_block;
+                        let next_arr = mutated_block.array(local_array).next_array();
+
+                        for item_e in mutated_block.array(local_array).entries {
+                            if !item_e.is_empty() {
+                                let (item_pool_hop, item_local_idx) =
+                                    DBuf::decompose_buf_idx(item_e.buf_idx());
+                                let item_dbuf_slot =
+                                    self.locate_databuf_slot(item_pool_hop)? as usize;
+
+                                let (_orig_d, mut_d) =
+                                    touched_item_dbufs.entry(item_dbuf_slot).or_insert_with(|| {
+                                        if item_dbuf_slot == key_dbuf_slot {
+                                            (orig_key_dbuf, freed_key_dbuf)
+                                        } else {
+                                            let d = self
+                                                .mmap
+                                                .read_exact::<DBuf, _, _>(item_dbuf_slot, |d| *d)
+                                                .unwrap();
+                                            (d, d)
+                                        }
+                                    });
+
+                                let vlen = mut_d.read_list_vlen(item_local_idx).unwrap_or(0);
+                                let req_item = DBuf::required_list_val_buffers(vlen);
+                                mut_d.free_contiguous(item_local_idx, req_item);
+                            }
                         }
-                        bucket_slot = next_bucket;
-                        depth = depth.wrapping_add(1);
+
+                        mutated_block.free_array(local_array);
+                        if let Some(pos) =
+                            touched_blocks.iter().position(|(s, _, _)| *s == block_slot)
+                        {
+                            touched_blocks[pos].2 = mutated_block;
+                        } else {
+                            let actual_orig =
+                                self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
+                            touched_blocks.push((block_slot, actual_orig, mutated_block));
+                        }
+
+                        if next_arr == 0 {
+                            break;
+                        }
+                        curr_arr_idx = next_arr;
                     }
-                }
-            };
 
-            let entry = old_bucket.entry(target_entry_idx);
-            let mut dbuf_diffs: std::collections::BTreeMap<usize, (DataBuf, DataBuf)> =
-                std::collections::BTreeMap::new();
-            let mut block_diffs: std::collections::BTreeMap<usize, (AdjArrayBlock, AdjArrayBlock)> =
-                std::collections::BTreeMap::new();
+                    let mut new_bucket = bucket;
+                    new_bucket.mark_tombstone(target_entry_idx);
 
-            let mut curr_arr_idx = entry.adjarr_idx();
-            while curr_arr_idx != 0 {
-                let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
-                let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
-
-                let (orig_block, mut mut_block) = match block_diffs.get(&block_slot) {
-                    Some((o, m)) => (*o, *m),
-                    None => {
-                        let b = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
-                        (b, b)
+                    let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
+                    for i in 0..BUCKET_SLOTS {
+                        let orig_s = bucket.as_slots()[i];
+                        let new_s = new_bucket.as_slots()[i];
+                        if orig_s != new_s {
+                            changes.push(((bucket_slot as usize) + i, orig_s, new_s));
+                        }
                     }
-                };
 
-                let array = mut_block.array(local_arr);
-                for i in 0..ADJ_ARRAY_ENTRIES {
-                    if let Some(e) = array.entry(i) {
-                        if !e.is_empty() {
-                            let (item_pool_hop, item_local_idx) =
-                                DataBuf::decompose_buf_idx(e.buf_idx());
-                            let item_dbuf_slot = self.locate_databuf_slot(item_pool_hop)? as usize;
+                    for (bs, orig_b, mut_b) in &touched_blocks {
+                        let orig_s = *orig_b.as_slot();
+                        let new_s = *mut_b.as_slot();
+                        if orig_s != new_s {
+                            changes.push((*bs, orig_s, new_s));
+                        }
+                    }
 
-                            let (orig_d, mut mut_d) = match dbuf_diffs.get(&item_dbuf_slot) {
-                                Some((o, m)) => (*o, *m),
-                                None => {
-                                    let d = self
-                                        .mmap
-                                        .read_exact::<DataBuf, _, _>(item_dbuf_slot, |d| *d)?;
-                                    (d, d)
-                                }
-                            };
+                    if !touched_item_dbufs.contains_key(&key_dbuf_slot) {
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = orig_key_dbuf.as_slots()[i];
+                            let new_s = freed_key_dbuf.as_slots()[i];
+                            if orig_s != new_s {
+                                changes.push((key_dbuf_slot + i, orig_s, new_s));
+                            }
+                        }
+                    }
 
-                            let start_byte = item_local_idx * 0x10;
-                            let vlen = u16::from_le_bytes([
-                                mut_d.payload_bytes()[start_byte + 4],
-                                mut_d.payload_bytes()[start_byte + 5],
-                            ]) as usize;
-                            let req = DataBuf::required_list_val_buffers(vlen);
-                            mut_d.free_contiguous(item_local_idx, req);
-                            let _ = dbuf_diffs.insert(item_dbuf_slot, (orig_d, mut_d));
+                    for (dbuf_slot, (orig_d, mut_d)) in &touched_item_dbufs {
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = orig_d.as_slots()[i];
+                            let new_s = mut_d.as_slots()[i];
+                            if orig_s != new_s {
+                                changes.push((dbuf_slot + i, orig_s, new_s));
+                            }
+                        }
+                    }
+
+                    changes.sort_by_key(|(s, _, _)| *s);
+                    let mut tx = self.mmap.new_tx();
+                    for (s, orig_s, new_s) in &changes {
+                        if let Err(e) = tx.write(orig_s, new_s, *s) {
+                            return Err(TurboError::from(e));
+                        }
+                    }
+
+                    match tx.commit() {
+                        Ok(_) => {
+                            let _ = self.total_entries.fetch_sub(1, Ordering::Relaxed);
+                            return Ok(true);
+                        }
+                        Err(_) => {
+                            Self::occ_backoff(attempt);
+                            continue;
                         }
                     }
                 }
-
-                let next = mut_block.array(local_arr).next_array();
-                mut_block.free_array(local_arr);
-                let _ = block_diffs.insert(block_slot, (orig_block, mut_block));
-                curr_arr_idx = next;
-            }
-
-            let req_k = DataBuf::required_list_key_buffers(key.len());
-            let (k_pool_hop, k_local_idx) = DataBuf::decompose_buf_idx(entry.buf_idx());
-            let k_dbuf_slot = self.locate_databuf_slot(k_pool_hop)? as usize;
-
-            let (orig_kd, mut mut_kd) = match dbuf_diffs.get(&k_dbuf_slot) {
-                Some((o, m)) => (*o, *m),
-                None => {
-                    let d = self.mmap.read_exact::<DataBuf, _, _>(k_dbuf_slot, |d| *d)?;
-                    (d, d)
-                }
-            };
-            mut_kd.free_contiguous(k_local_idx, req_k);
-            let _ = dbuf_diffs.insert(k_dbuf_slot, (orig_kd, mut_kd));
-
-            let mut new_bucket = old_bucket;
-            new_bucket.mark_tombstone(target_entry_idx);
-
-            let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
-            for i in 0..BUCKET_SLOTS {
-                let orig_s = old_bucket.as_slots()[i];
-                let new_s = new_bucket.as_slots()[i];
-                if orig_s != new_s {
-                    changes.push(((target_bucket_slot as usize) + i, orig_s, new_s));
-                }
-            }
-
-            for (bs, (orig_b, mut_b)) in &block_diffs {
-                let orig_s = *orig_b.as_slot();
-                let new_s = *mut_b.as_slot();
-                if orig_s != new_s {
-                    changes.push((*bs, orig_s, new_s));
-                }
-            }
-
-            for (ds, (orig_d, mut_d)) in &dbuf_diffs {
-                for i in 0..DATABUF_SLOTS {
-                    let orig_s = orig_d.as_slots()[i];
-                    let new_s = mut_d.as_slots()[i];
-                    if orig_s != new_s {
-                        changes.push((ds + i, orig_s, new_s));
-                    }
-                }
-            }
-
-            changes.sort_by_key(|(s, _, _)| *s);
-            let mut tx = self.mmap.new_tx();
-            for (s, orig_s, new_s) in &changes {
-                if let Err(e) = tx.write(orig_s, new_s, *s) {
-                    return Err(TurboError::from(e));
-                }
-            }
-
-            match tx.commit() {
-                Ok(_) => {
-                    let _ = self.total_entries.fetch_sub(1, Ordering::Relaxed);
-                    return Ok(true);
-                }
-                Err(_) => {
-                    Self::occ_backoff(attempt);
-                    continue;
-                }
+                None => return Ok(false),
             }
         }
 
         Err(TurboError::ResourceBusy("OCC write conflict limit reached"))
     }
 
-    /// Ref: `DESIGN.md` §3.1
-    #[inline(always)]
+    /// Ref: `DESIGN.md` §8.1
     pub(crate) fn total_entries(&self) -> u64 {
         self.total_entries.load(Ordering::Acquire)
     }
 
-    /// Ref: `DESIGN.md` §3.1
-    #[inline(always)]
+    /// Ref: `DESIGN.md` §8.1
     pub(crate) fn total_pages(&self) -> TurboResult<u32> {
         let meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
         Ok(meta.total_pages)
     }
 
-    /// Ref: `DESIGN.md` §9.1
-    #[inline(always)]
+    /// Ref: `DESIGN.md` §8.1
     pub(crate) fn remaining_pages(&self) -> TurboResult<u32> {
-        let page_size = self.sys_page_size.as_usize();
-        let curr_len = self.mmap.length();
-        let remaining_bytes = MAX_DB_LEN.saturating_sub(curr_len);
+        let meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
+        let used_slots = meta.free_slot_marker;
+        let total_slots = meta.total_slots;
 
-        Ok((remaining_bytes / page_size) as u32)
+        if used_slots >= total_slots {
+            return Ok(0);
+        }
+
+        let free_slots = total_slots - used_slots;
+        let page_slots = meta.page_size / (SLOT_SIZE as u32);
+
+        Ok(free_slots / page_slots)
     }
 
-    /// Ref: `DESIGN.md` §9.1
-    #[inline(always)]
+    /// Ref: `DESIGN.md` §8.1
     pub(crate) fn remaining_bytes(&self) -> TurboResult<u64> {
-        let curr_len = self.mmap.length();
-        Ok((MAX_DB_LEN.saturating_sub(curr_len)) as u64)
+        let meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
+        let used_slots = meta.free_slot_marker as u64;
+        let total_slots = meta.total_slots as u64;
+
+        if used_slots >= total_slots {
+            return Ok(0);
+        }
+
+        Ok((total_slots - used_slots) * (SLOT_SIZE as u64))
     }
 
     /// Ref: `DESIGN.md` §8.1
@@ -2254,7 +1959,7 @@ mod tests {
     #[test]
     fn ok_engine_create_and_reopen() {
         let dir = tempdir().unwrap();
-        let cfg = TurboCfg::manual(dir.path()).with_mem_index(true);
+        let cfg = TurboCfg::manual(dir.path());
 
         let engine = Engine::create(cfg.clone()).unwrap();
         assert_eq!(engine.total_entries(), 0);
@@ -2380,16 +2085,18 @@ mod tests {
         assert_eq!(engine.databuf_slot_to_hop(DATABUF_HEAD_SLOT).unwrap(), 0);
         assert_eq!(engine.locate_databuf_slot(0).unwrap(), DATABUF_HEAD_SLOT);
 
-        let second_slot = DATABUF_HEAD_SLOT + (DATABUF_SLOTS as u32);
+        let second_slot = DATABUF_HEAD_SLOT + (DBUF_SLOTS as u32);
         assert_eq!(engine.locate_databuf_slot(1).unwrap(), second_slot);
         assert_eq!(engine.databuf_slot_to_hop(second_slot).unwrap(), 1);
 
-        let third_slot = engine.expand_databuf(second_slot as usize).unwrap();
-        assert_eq!(engine.locate_databuf_slot(2).unwrap(), third_slot);
-        assert_eq!(engine.databuf_slot_to_hop(third_slot).unwrap(), 2);
+        let last_init_slot =
+            DATABUF_HEAD_SLOT + ((INITIAL_DATABUF_POOLS - 1) as u32) * (DBUF_SLOTS as u32);
+        let new_slot = engine.expand_databuf(last_init_slot as usize).unwrap();
+        assert_eq!(engine.locate_databuf_slot(INITIAL_DATABUF_POOLS as u32).unwrap(), new_slot);
+        assert_eq!(engine.databuf_slot_to_hop(new_slot).unwrap(), INITIAL_DATABUF_POOLS as u32);
 
         let plan = engine.find_free_databuf(0x04, 0).unwrap();
-        assert_eq!(plan.start_slot, third_slot as usize);
+        assert_eq!(plan.start_slot, new_slot as usize);
         assert_eq!(plan.local_idx, 0);
 
         engine.delete().unwrap();
@@ -2402,7 +2109,7 @@ mod tests {
         let engine = Engine::create(cfg).unwrap();
 
         // 1: Sever databuf chain
-        let _ = engine.mmap.write_exact::<DataBuf, _, _>(DATABUF_HEAD_SLOT as usize, |d| {
+        let _ = engine.mmap.write_exact::<DBuf, _, _>(DATABUF_HEAD_SLOT as usize, |d| {
             d.set_next_dbuf_index(0);
         });
         assert!(matches!(
@@ -2442,7 +2149,7 @@ mod tests {
         assert_eq!(hop, 0);
         assert_eq!(local, 0);
 
-        let new_block_slot = engine.expand_adjarr(INITIAL_ADJ_ARR_BLOCKS).unwrap();
+        let new_block_slot = engine.expand_adjarr(ADJ_ARR_TAIL_SLOT as usize).unwrap();
         assert!(new_block_slot > 0);
 
         engine.delete().unwrap();
@@ -2450,46 +2157,44 @@ mod tests {
 
     #[test]
     fn ok_engine_kv_crud_lifecycle() {
-        for mem_index in [false, true] {
-            let dir = tempdir().unwrap();
-            let cfg = TurboCfg::manual(dir.path()).with_mem_index(mem_index);
-            let engine = Engine::create(cfg).unwrap();
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
 
-            assert!(!engine.contains_key(b"key_alpha").unwrap());
-            assert_eq!(engine.get(b"key_alpha").unwrap(), None);
+        assert!(!engine.contains_key(b"key_alpha").unwrap());
+        assert_eq!(engine.get(b"key_alpha").unwrap(), None);
 
-            // 1: Insert new KV
-            let ticket = engine.set(b"key_alpha", b"val_init").unwrap();
-            assert!(ticket.epoch() > 0);
-            assert_eq!(engine.total_entries(), 1);
-            assert!(engine.contains_key(b"key_alpha").unwrap());
-            assert_eq!(engine.get(b"key_alpha").unwrap(), Some(b"val_init".to_vec()));
+        // 1: Insert new KV
+        let ticket = engine.set(b"key_alpha", b"val_init").unwrap();
+        assert!(ticket.epoch() > 0);
+        assert_eq!(engine.total_entries(), 1);
+        assert!(engine.contains_key(b"key_alpha").unwrap());
+        assert_eq!(engine.get(b"key_alpha").unwrap(), Some(b"val_init".to_vec()));
 
-            // 2: In-place overwrite (smaller or equal payload)
-            let _ = engine.set(b"key_alpha", b"v2").unwrap();
-            assert_eq!(engine.total_entries(), 1);
-            assert_eq!(engine.get(b"key_alpha").unwrap(), Some(b"v2".to_vec()));
+        // 2: In-place overwrite (smaller or equal payload)
+        let _ = engine.set(b"key_alpha", b"v2").unwrap();
+        assert_eq!(engine.total_entries(), 1);
+        assert_eq!(engine.get(b"key_alpha").unwrap(), Some(b"v2".to_vec()));
 
-            // 3: Growth overwrite (larger payload requiring buffer reallocation)
-            let large_val = vec![0x5A; 0x0120];
-            let _ = engine.set(b"key_alpha", &large_val).unwrap();
-            assert_eq!(engine.total_entries(), 1);
-            assert_eq!(engine.get(b"key_alpha").unwrap(), Some(large_val));
+        // 3: Growth overwrite
+        let large_val = vec![0x5A; 0x80];
+        let _ = engine.set(b"key_alpha", &large_val).unwrap();
+        assert_eq!(engine.total_entries(), 1);
+        assert_eq!(engine.get(b"key_alpha").unwrap(), Some(large_val));
 
-            // 4: Delete key
-            assert!(engine.del(b"key_alpha").unwrap());
-            assert_eq!(engine.total_entries(), 0);
-            assert!(!engine.contains_key(b"key_alpha").unwrap());
-            assert_eq!(engine.get(b"key_alpha").unwrap(), None);
-            assert!(!engine.del(b"key_alpha").unwrap());
+        // 4: Delete key
+        assert!(engine.del(b"key_alpha").unwrap());
+        assert_eq!(engine.total_entries(), 0);
+        assert!(!engine.contains_key(b"key_alpha").unwrap());
+        assert_eq!(engine.get(b"key_alpha").unwrap(), None);
+        assert!(!engine.del(b"key_alpha").unwrap());
 
-            // 5: Re-insert after tombstone
-            let _ = engine.set(b"key_alpha", b"revived").unwrap();
-            assert_eq!(engine.total_entries(), 1);
-            assert_eq!(engine.get(b"key_alpha").unwrap(), Some(b"revived".to_vec()));
+        // 5: Re-insert after tombstone
+        let _ = engine.set(b"key_alpha", b"revived").unwrap();
+        assert_eq!(engine.total_entries(), 1);
+        assert_eq!(engine.get(b"key_alpha").unwrap(), Some(b"revived".to_vec()));
 
-            engine.delete().unwrap();
-        }
+        engine.delete().unwrap();
     }
 
     #[test]
@@ -2574,7 +2279,6 @@ mod tests {
         let cfg = TurboCfg::manual(dir.path());
         let engine = Engine::create(cfg).unwrap();
 
-        // Exceed single array capacity (0x0E entries) by appending 0x14 items
         for i in 0..0x14 {
             let item_payload = format!("chained_elem_{i}");
             let _ = engine.list_append(b"chain_lst", item_payload.as_bytes()).unwrap();
@@ -2620,11 +2324,34 @@ mod tests {
         assert!(engine.list_items(b"clean_lst").unwrap().is_empty());
         assert!(!engine.list_del(b"clean_lst").unwrap());
 
-        // Del delegation via engine.del
         let _ = engine.list_append(b"clean_lst2", b"v").unwrap();
         assert!(engine.del(b"clean_lst2").unwrap());
         assert_eq!(engine.list_len(b"clean_lst2").unwrap(), 0);
         assert!(!engine.del(b"clean_lst2").unwrap());
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_trie_split_growth() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        // Inserting 50 keys will force multiple bucket splits across 30-way trie
+        for i in 0..0x32 {
+            let k = format!("trie_key_{i}").into_bytes();
+            let v = format!("trie_val_{i}").into_bytes();
+            let ticket = engine.set(&k, &v).unwrap();
+            assert!(ticket.epoch() > 0);
+        }
+
+        assert_eq!(engine.total_entries(), 0x32);
+        for i in 0..0x32 {
+            let k = format!("trie_key_{i}").into_bytes();
+            let expected = format!("trie_val_{i}").into_bytes();
+            assert_eq!(engine.get(&k).unwrap(), Some(expected));
+        }
 
         engine.delete().unwrap();
     }
@@ -2635,7 +2362,6 @@ mod tests {
         let cfg = TurboCfg::manual(dir.path());
         let engine = Engine::create(cfg).unwrap();
 
-        // 1: Empty key rejects append; read operations return vacant/zero
         assert!(matches!(engine.list_append(b"", b"item"), Err(TurboError::PayloadTooLarge)));
         assert_eq!(engine.list_pop(b"").unwrap(), None);
         assert_eq!(engine.list_first(b"").unwrap(), None);
@@ -2645,13 +2371,11 @@ mod tests {
         assert!(engine.list_items(b"").unwrap().is_empty());
         assert!(!engine.list_del(b"").unwrap());
 
-        // 2: Oversized key and item payloads
         let long_key = vec![0x41; MAX_KEY_LEN + 1];
         assert!(matches!(engine.list_append(&long_key, b"item"), Err(TurboError::PayloadTooLarge)));
         let long_val = vec![0x42; MAX_VAL_LEN + 1];
         assert!(matches!(engine.list_append(b"k", &long_val), Err(TurboError::PayloadTooLarge)));
 
-        // 3: Conflict with KV key
         let _ = engine.set(b"kv_entry_key", b"scalar_val").unwrap();
         assert!(matches!(
             engine.list_append(b"kv_entry_key", b"item"),
@@ -2687,7 +2411,6 @@ mod tests {
             assert!((0x4B..=0x7E).contains(&j));
         }
 
-        // Exercise spin, yield, and sleep branches
         Engine::occ_backoff(0);
         Engine::occ_backoff(4);
         Engine::occ_backoff(8);

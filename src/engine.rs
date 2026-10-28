@@ -81,6 +81,23 @@ impl Engine {
     }
 
     /// Ref: `DESIGN.md` §8.1
+    pub(crate) fn open_or_create(cfg: TurboCfg) -> TurboResult<Self> {
+        let memmap_cfg = MemMapCfg {
+            module_id: MODULE_ID,
+            path: cfg.resolve_dir(),
+            name: DB_NAME_TAG,
+            version: LAYOUT_VERSION,
+            initial_pages: 1,
+            max_len: MAX_DB_LEN,
+            sync_interval: cfg.sync_interval(),
+            memory_priority_hint: true,
+            sequential_access_hint: true,
+        };
+
+        if memmap_cfg.versioned_path().exists() { Self::open(cfg) } else { Self::create(cfg) }
+    }
+
+    /// Ref: `DESIGN.md` §8.1
     pub(crate) fn open(cfg: TurboCfg) -> TurboResult<Self> {
         let sys_page_size = MemMap::<Slot>::page_size()?;
         let initial_pages = match sys_page_size {

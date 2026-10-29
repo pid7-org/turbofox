@@ -2,7 +2,7 @@ use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
 use std::time::Duration;
 use tempfile::tempdir;
-use turbofox::{SyncMode, TurboCfg, TurboError, TurboFox};
+use turbofox::{CapacityHint, SyncMode, TurboCfg, TurboError, TurboFox};
 
 /// Ref: `DESIGN.md` §3.1, §8.1
 #[test]
@@ -154,4 +154,39 @@ fn err_turbofox_open_or_create_corrupt_fails_safely() {
 
     // open_or_create must return error and not overwrite the corrupt file
     assert!(matches!(TurboFox::open_or_create(cfg.clone()).unwrap_err(), TurboError::InvalidMagic));
+}
+
+/// Ref: `DESIGN.md` §5.4, §8.1
+#[test]
+fn ok_turbofox_capacity_hint_preallocation_and_reopen() {
+    let dir = tempdir().unwrap();
+    let hint = CapacityHint::new().with_kv(0x03E8, 0x10, 0x20).with_list(0x64, 0x05, 0x20);
+
+    let cfg = TurboCfg::manual(dir.path()).with_capacity_hint(hint);
+    let db = TurboFox::create(cfg.clone()).unwrap();
+
+    let initial_pages = db.total_pages().unwrap();
+    assert!(initial_pages >= 0x04);
+    let initial_remaining = db.remaining_bytes().unwrap();
+    assert!(initial_remaining > 0x4000);
+
+    // Verify operations work on pre-allocated storage
+    db.set(b"hint_key_1", b"hint_val_1").unwrap();
+    assert_eq!(db.get(b"hint_key_1").unwrap(), Some(b"hint_val_1".to_vec()));
+
+    let list = db.list(b"hint_list_1");
+    list.append(b"item_1").unwrap();
+    assert_eq!(list.len().unwrap(), 0x01);
+    drop(list);
+
+    db.sync().unwrap();
+    drop(db);
+
+    // Reopen and assert structure preserved
+    let reopened = TurboFox::open(cfg.clone()).unwrap();
+    assert_eq!(reopened.total_pages().unwrap(), initial_pages);
+    assert_eq!(reopened.get(b"hint_key_1").unwrap(), Some(b"hint_val_1".to_vec()));
+    assert_eq!(reopened.list(b"hint_list_1").len().unwrap(), 0x01);
+
+    reopened.delete().unwrap();
 }

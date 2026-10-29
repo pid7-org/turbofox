@@ -421,3 +421,68 @@ fn ok_stress_concurrent_iter_during_deletion_and_pop() {
     let _ = db.del(list_name);
     db.delete().unwrap();
 }
+
+/// Ref: `DESIGN.md` §6, §7.4
+#[test]
+fn ok_stress_high_contention_mpmc_multi_block() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::manual(dir.path());
+    let db = TurboFox::create(cfg).unwrap();
+
+    let queue_name = b"multi_block_stress_queue";
+    let running = Arc::new(AtomicBool::new(true));
+    let popped_count = Arc::new(AtomicUsize::new(0));
+    let mut pusher_handles = Vec::new();
+    let mut popper_handles = Vec::new();
+
+    // 0x04 pusher threads appending 0x40 items each = 0x0100 items total
+    for t in 0..0x04 {
+        let db_clone = db.clone();
+        pusher_handles.push(thread::spawn(move || {
+            let queue = db_clone.list(queue_name);
+            for i in 0..0x40 {
+                let item = format!("pusher_{:02x}_seq_{:04x}", t, i);
+                queue.append(item.as_bytes()).unwrap();
+            }
+        }));
+    }
+
+    // 0x04 popper threads concurrently draining items
+    for _ in 0..0x04 {
+        let db_clone = db.clone();
+        let running_clone = running.clone();
+        let count_clone = popped_count.clone();
+        popper_handles.push(thread::spawn(move || {
+            let queue = db_clone.list(queue_name);
+            while running_clone.load(Ordering::Relaxed) {
+                if let Ok(Some(_)) = queue.pop() {
+                    count_clone.fetch_add(1, Ordering::Relaxed);
+                } else {
+                    thread::yield_now();
+                }
+            }
+        }));
+    }
+
+    for h in pusher_handles {
+        h.join().unwrap();
+    }
+
+    running.store(false, Ordering::Relaxed);
+    for h in popper_handles {
+        h.join().unwrap();
+    }
+
+    // Drain remaining items from queue
+    {
+        let queue = db.list(queue_name);
+        while let Ok(Some(_)) = queue.pop() {
+            popped_count.fetch_add(1, Ordering::Relaxed);
+        }
+
+        assert_eq!(popped_count.load(Ordering::Relaxed), 0x0100);
+        assert_eq!(queue.len().unwrap(), 0);
+    }
+
+    db.delete().unwrap();
+}

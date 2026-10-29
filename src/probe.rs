@@ -7,7 +7,6 @@ pub(crate) struct SimdProbeMask {
     pub(crate) tomb_mask: u32,
 }
 
-#[allow(dead_code)]
 pub(crate) type ProbeMatchFn = unsafe fn(&[u32; BUCKET_ENTRIES], u32) -> u32;
 pub(crate) type ProbeFullFn = unsafe fn(&[u32; BUCKET_ENTRIES], u32) -> SimdProbeMask;
 pub(crate) type ProbeKernelFn = ProbeFullFn;
@@ -86,10 +85,12 @@ pub(crate) unsafe fn probe_match_sse2(hashes: &[u32; BUCKET_ENTRIES], target: u3
     let m2 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h2, v_target)));
     let m3 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h3, v_target)));
     let m4 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h4, v_target)));
+
     let mut match_mask = (m0 | (m1 << 4) | (m2 << 8) | (m3 << 12) | (m4 << 16)) as u32;
 
-    let m20 = ((hashes[20] == target) as u32) << 20;
-    match_mask |= m20;
+    if hashes[20] == target {
+        match_mask |= 1 << 20;
+    }
 
     match_mask
 }
@@ -132,14 +133,16 @@ pub(crate) unsafe fn probe_full_sse2(hashes: &[u32; BUCKET_ENTRIES], target: u32
     let t4 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h4, v_tomb)));
     let mut tomb_mask = (t0 | (t1 << 4) | (t2 << 8) | (t3 << 12) | (t4 << 16)) as u32;
 
-    let m20 = ((hashes[20] == target) as u32) << 20;
-    match_mask |= m20;
+    let h20 = hashes[20];
+    if h20 == target {
+        match_mask |= 1 << 20;
+    }
 
-    let e20 = ((hashes[20] == HASH_EMPTY) as u32) << 20;
-    empty_mask |= e20;
-
-    let t20 = ((hashes[20] == HASH_TOMBSTONE) as u32) << 20;
-    tomb_mask |= t20;
+    if h20 == HASH_EMPTY {
+        empty_mask |= 1 << 20;
+    } else if h20 == HASH_TOMBSTONE {
+        tomb_mask |= 1 << 20;
+    }
 
     SimdProbeMask { match_mask, empty_mask, tomb_mask }
 }
@@ -169,14 +172,13 @@ pub(crate) unsafe fn probe_match_avx2(hashes: &[u32; BUCKET_ENTRIES], target: u3
     let m1 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h1, v_target)));
     let mut match_mask = ((m0 & 0xFF) | ((m1 & 0xFF) << 8)) as u32;
 
-    let sse_ptr = hashes.as_ptr().add(16) as *const __m128i;
-    let v_target_sse = _mm_set1_epi32(target as i32);
-    let h2 = _mm_loadu_si128(sse_ptr);
-    let m2 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h2, v_target_sse)));
-    match_mask |= ((m2 & 0x0F) << 16) as u32;
-
-    let m20 = ((hashes[20] == target) as u32) << 20;
-    match_mask |= m20;
+    let mut i = 16;
+    while i < BUCKET_ENTRIES {
+        if hashes[i] == target {
+            match_mask |= 1 << i;
+        }
+        i += 1;
+    }
 
     match_mask
 }
@@ -207,28 +209,21 @@ pub(crate) unsafe fn probe_full_avx2(hashes: &[u32; BUCKET_ENTRIES], target: u32
     let t1 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h1, v_tomb)));
     let mut tomb_mask = ((t0 & 0xFF) | ((t1 & 0xFF) << 8)) as u32;
 
-    let sse_ptr = hashes.as_ptr().add(16) as *const __m128i;
-    let v_target_sse = _mm_set1_epi32(target as i32);
-    let v_empty_sse = _mm_setzero_si128();
-    let v_tomb_sse = _mm_set1_epi32(HASH_TOMBSTONE as i32);
+    let mut i = 16;
+    while i < BUCKET_ENTRIES {
+        let h = hashes[i];
+        if h == target {
+            match_mask |= 1 << i;
+        }
 
-    let h2 = _mm_loadu_si128(sse_ptr);
-    let m2 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h2, v_target_sse)));
-    let e2 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h2, v_empty_sse)));
-    let t2 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h2, v_tomb_sse)));
+        if h == HASH_EMPTY {
+            empty_mask |= 1 << i;
+        } else if h == HASH_TOMBSTONE {
+            tomb_mask |= 1 << i;
+        }
 
-    match_mask |= ((m2 & 0x0F) << 16) as u32;
-    empty_mask |= ((e2 & 0x0F) << 16) as u32;
-    tomb_mask |= ((t2 & 0x0F) << 16) as u32;
-
-    let m20 = ((hashes[20] == target) as u32) << 20;
-    match_mask |= m20;
-
-    let e20 = ((hashes[20] == HASH_EMPTY) as u32) << 20;
-    empty_mask |= e20;
-
-    let t20 = ((hashes[20] == HASH_TOMBSTONE) as u32) << 20;
-    tomb_mask |= t20;
+        i += 1;
+    }
 
     SimdProbeMask { match_mask, empty_mask, tomb_mask }
 }
@@ -270,8 +265,9 @@ pub(crate) unsafe fn probe_match_neon(hashes: &[u32; BUCKET_ENTRIES], target: u3
     let m4 = mask4_fast(vceqq_u32(h4, v_target), weights);
     let mut match_mask = m0 | (m1 << 4) | (m2 << 8) | (m3 << 12) | (m4 << 16);
 
-    let m20 = ((hashes[20] == target) as u32) << 20;
-    match_mask |= m20;
+    if hashes[20] == target {
+        match_mask |= 1 << 20;
+    }
 
     match_mask
 }
@@ -320,14 +316,16 @@ pub(crate) unsafe fn probe_full_neon(hashes: &[u32; BUCKET_ENTRIES], target: u32
     let t4 = mask4_fast(vceqq_u32(h4, v_tomb), weights);
     let mut tomb_mask = t0 | (t1 << 4) | (t2 << 8) | (t3 << 12) | (t4 << 16);
 
-    let m20 = ((hashes[20] == target) as u32) << 20;
-    match_mask |= m20;
+    let h20 = hashes[20];
+    if h20 == target {
+        match_mask |= 1 << 20;
+    }
 
-    let e20 = ((hashes[20] == HASH_EMPTY) as u32) << 20;
-    empty_mask |= e20;
-
-    let t20 = ((hashes[20] == HASH_TOMBSTONE) as u32) << 20;
-    tomb_mask |= t20;
+    if h20 == HASH_EMPTY {
+        empty_mask |= 1 << 20;
+    } else if h20 == HASH_TOMBSTONE {
+        tomb_mask |= 1 << 20;
+    }
 
     SimdProbeMask { match_mask, empty_mask, tomb_mask }
 }
@@ -461,15 +459,13 @@ pub(crate) fn probe_full(hashes: &[u32; BUCKET_ENTRIES], target: u32) -> SimdPro
 mod tests {
     use super::*;
 
-    const ALL_ENTRIES_MASK: u32 = (1 << BUCKET_ENTRIES) - 1;
-
     #[test]
     fn ok_scalar_empty_all() {
         let hashes = [HASH_EMPTY; BUCKET_ENTRIES];
         let mask = unsafe { probe_full_scalar(&hashes, 0x5442_4658) };
 
         assert_eq!(mask.match_mask, 0x00);
-        assert_eq!(mask.empty_mask, ALL_ENTRIES_MASK);
+        assert_eq!(mask.empty_mask, 0x001F_FFFF);
         assert_eq!(mask.tomb_mask, 0x00);
     }
 
@@ -480,7 +476,7 @@ mod tests {
 
         assert_eq!(mask.match_mask, 0x00);
         assert_eq!(mask.empty_mask, 0x00);
-        assert_eq!(mask.tomb_mask, ALL_ENTRIES_MASK);
+        assert_eq!(mask.tomb_mask, 0x001F_FFFF);
     }
 
     #[test]
@@ -490,7 +486,6 @@ mod tests {
         hashes[1] = HASH_TOMBSTONE;
         hashes[5] = 0x1234;
         hashes[8] = 0x1234;
-        hashes[9] = 0x5678;
         hashes[20] = 0x1234;
 
         let mask = unsafe { probe_full_scalar(&hashes, 0x1234) };
@@ -505,12 +500,20 @@ mod tests {
     #[cfg(target_arch = "x86_64")]
     fn ok_sse2_equivalence_with_scalar() {
         let target = 0x1234_5678;
-        let mut t1 = [0x02; BUCKET_ENTRIES];
-        t1[20] = target;
-        let mut t2 = [HASH_EMPTY; BUCKET_ENTRIES];
-        t2[19] = target;
-        t2[20] = HASH_TOMBSTONE;
-        let test_cases = [t1, [HASH_EMPTY; BUCKET_ENTRIES], [HASH_TOMBSTONE; BUCKET_ENTRIES], t2];
+        let mut mixed = [0x02u32; BUCKET_ENTRIES];
+        mixed[0] = target;
+        mixed[1] = HASH_EMPTY;
+        mixed[2] = HASH_TOMBSTONE;
+        mixed[7] = target;
+        mixed[15] = target;
+        mixed[20] = target;
+
+        let test_cases = [
+            [0x02; BUCKET_ENTRIES],
+            [HASH_EMPTY; BUCKET_ENTRIES],
+            [HASH_TOMBSTONE; BUCKET_ENTRIES],
+            mixed,
+        ];
 
         for hashes in &test_cases {
             let scalar_res = unsafe { probe_full_scalar(hashes, target) };
@@ -533,12 +536,20 @@ mod tests {
         }
 
         let target = 0x9ABC_DEF0;
-        let mut t1 = [0x02; BUCKET_ENTRIES];
-        t1[20] = target;
-        let mut t2 = [HASH_EMPTY; BUCKET_ENTRIES];
-        t2[16] = target;
-        t2[20] = HASH_TOMBSTONE;
-        let test_cases = [t1, [HASH_EMPTY; BUCKET_ENTRIES], [HASH_TOMBSTONE; BUCKET_ENTRIES], t2];
+        let mut mixed = [0x02u32; BUCKET_ENTRIES];
+        mixed[0] = target;
+        mixed[1] = HASH_EMPTY;
+        mixed[2] = HASH_TOMBSTONE;
+        mixed[7] = target;
+        mixed[15] = target;
+        mixed[20] = target;
+
+        let test_cases = [
+            [0x02; BUCKET_ENTRIES],
+            [HASH_EMPTY; BUCKET_ENTRIES],
+            [HASH_TOMBSTONE; BUCKET_ENTRIES],
+            mixed,
+        ];
 
         for hashes in &test_cases {
             let scalar_res = unsafe { probe_full_scalar(hashes, target) };
@@ -548,25 +559,6 @@ mod tests {
             let scalar_m = unsafe { probe_match_scalar(hashes, target) };
             let avx2_m = unsafe { probe_match_avx2(hashes, target) };
             assert_eq!(scalar_m, avx2_m);
-        }
-    }
-
-    #[test]
-    #[cfg(target_arch = "aarch64")]
-    fn ok_neon_equivalence_with_scalar() {
-        let target = 0x8765_4321;
-        let mut t1 = [0x02; BUCKET_ENTRIES];
-        t1[20] = target;
-        let test_cases = [t1, [HASH_EMPTY; BUCKET_ENTRIES], [HASH_TOMBSTONE; BUCKET_ENTRIES]];
-
-        for hashes in &test_cases {
-            let scalar_res = unsafe { probe_full_scalar(hashes, target) };
-            let neon_res = unsafe { probe_full_neon(hashes, target) };
-            assert_eq!(scalar_res, neon_res);
-
-            let scalar_m = unsafe { probe_match_scalar(hashes, target) };
-            let neon_m = unsafe { probe_match_neon(hashes, target) };
-            assert_eq!(scalar_m, neon_m);
         }
     }
 

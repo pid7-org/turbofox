@@ -3,7 +3,7 @@ use crate::common::{
     HASH_TOMBSTONE, LIST_FLAG_BE, LIST_FLAG_MASK, MIN_VALID_HASH, Slot,
 };
 
-/// Ref: `DESIGN.md` §3.2
+/// Ref: `DESIGN.md` §3.3
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub(crate) struct BucketEntry {
@@ -94,7 +94,7 @@ impl BucketEntry {
     }
 }
 
-/// Ref: `DESIGN.md` §3.2
+/// Ref: `DESIGN.md` §3.3
 #[inline(always)]
 pub(crate) const fn encode_kv_offset(klen: u8, vlen: u16, buf_idx: u32) -> u64 {
     let mut b = [0u8; 8];
@@ -114,7 +114,7 @@ pub(crate) const fn encode_kv_offset(klen: u8, vlen: u16, buf_idx: u32) -> u64 {
     u64::from_ne_bytes(b)
 }
 
-/// Ref: `DESIGN.md` §3.2
+/// Ref: `DESIGN.md` §3.3
 #[inline(always)]
 pub(crate) const fn encode_list_offset(adjarr_idx: u32, buf_idx: u32) -> u64 {
     let mut b = [0u8; 8];
@@ -156,7 +156,7 @@ const _: () = assert!(core::mem::align_of::<Bucket>() == 8);
 const _: () = assert!(core::mem::size_of::<Bucket>() == BUCKET_SIZE);
 const _: () = assert!(core::mem::offset_of!(Bucket, flag) == 0);
 const _: () = assert!(core::mem::offset_of!(Bucket, hashes) == 4);
-const _: () = assert!(core::mem::offset_of!(Bucket, offsets) == 0x58);
+const _: () = assert!(core::mem::offset_of!(Bucket, offsets) == 88);
 const _: () = assert!(core::mem::size_of::<[u32; BUCKET_ENTRIES]>() == 84);
 const _: () = assert!(core::mem::size_of::<[u64; BUCKET_ENTRIES]>() == 168);
 const _: () = assert!(core::mem::size_of::<Bucket>() == BUCKET_SLOTS * Slot::SIZE);
@@ -256,7 +256,6 @@ impl Bucket {
 
     #[inline(always)]
     pub(crate) fn entry(&self, idx: usize) -> BucketEntry {
-        // sanity check
         debug_assert!(idx < BUCKET_ENTRIES);
 
         BucketEntry { hash: self.hashes[idx], offset: self.offsets[idx] }
@@ -264,7 +263,6 @@ impl Bucket {
 
     #[inline(always)]
     pub(crate) fn set_entry(&mut self, idx: usize, entry: BucketEntry) {
-        // sanity check
         debug_assert!(idx < BUCKET_ENTRIES);
 
         self.hashes[idx] = entry.hash;
@@ -273,7 +271,6 @@ impl Bucket {
 
     #[inline(always)]
     pub(crate) fn set_kv(&mut self, idx: usize, hash: u32, klen: u8, vlen: u16, buf_idx: u32) {
-        // sanity check
         debug_assert!(idx < BUCKET_ENTRIES);
 
         self.hashes[idx] = hash;
@@ -282,7 +279,6 @@ impl Bucket {
 
     #[inline(always)]
     pub(crate) fn set_list(&mut self, idx: usize, hash: u32, adjarr_idx: u32, buf_idx: u32) {
-        // sanity check
         debug_assert!(idx < BUCKET_ENTRIES);
 
         self.hashes[idx] = hash;
@@ -291,7 +287,6 @@ impl Bucket {
 
     #[inline(always)]
     pub(crate) fn mark_tombstone(&mut self, idx: usize) {
-        // sanity check
         debug_assert!(idx < BUCKET_ENTRIES);
 
         self.hashes[idx] = HASH_TOMBSTONE;
@@ -337,7 +332,7 @@ mod tests {
         assert_eq!(core::mem::size_of::<Bucket>(), 0x0100);
         assert_eq!(core::mem::offset_of!(Bucket, flag), 0);
         assert_eq!(core::mem::offset_of!(Bucket, hashes), 4);
-        assert_eq!(core::mem::offset_of!(Bucket, offsets), 0x58);
+        assert_eq!(core::mem::offset_of!(Bucket, offsets), 88);
     }
 
     #[test]

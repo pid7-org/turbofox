@@ -125,7 +125,7 @@
 //! Unified single-file storage container managed across memory-mapped virtual address space:
 //!
 //! * Initial file footprint begins at only 16 KiB on standard host systems
-//! * Virtual memory space reserves up to `MAX_DB_LEN` (512 GiB) upfront while physical disk pages
+//! * Virtual memory space reserves up to `MAX_DB_LEN` (256 GiB) upfront while physical disk pages
 //!   back lazily as data is written
 //! * Allocations track 16-byte aligned units via bitmasks, avoiding external fragmentation
 //! * Backing files grow dynamically in uniform OS page increments, minimizing write amplification

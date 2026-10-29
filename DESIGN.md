@@ -344,9 +344,11 @@ When an insertion targets a Bucket containing 21 active entries:
      from `free_slot_marker`; advance `free_slot_marker += 4`;
      `new_node_slot` becomes the first allocated slot;
      push remaining 3 slots into `extra_nodes[0..2]`; set `extra_node_count = 3`
-3. **Contiguous Bucket Allocation**:
+3. **Contiguous Bucket Allocation & Storage Reservation**:
    Allocate 14 contiguous new Buckets (56 slots = 3584 B = 14 x 256 B) from `free_slot_marker`;
    advance `free_slot_marker += 56`;
+   Metadata slot reservations (`free_slot_marker`, `extra_nodes`) and new child component
+   headers are formatted in private space under `growth_mutex`;
    release `growth_mutex`
 4. **Pre-Formatting in Private Allocated Space**:
    Format all 14 new buckets as empty (`flag = 0x0000_0001`, zeroed hashes and offsets);
@@ -360,8 +362,7 @@ When an insertion targets a Bucket containing 21 active entries:
    Commit transaction validating and updating:
    - Parent Node slot: replace child pointer to existing bucket with `new_node_slot`
    - Existing Bucket (4 slots): overwrite with compacted `child_idx == 0` entries
-   - New Node (1 slot): write formatted `bucket_indices`
-   - Metadata (1 slot): record updated `extra_node_count`, `extra_nodes`, and `free_slot_marker`;
+   - DBuf slots: write allocated key/val payloads;
    readers transition atomically from reading the old bucket to traversing the new Node;
    guarantees zero partial states or torn reads without write-ahead logging
 
@@ -464,7 +465,7 @@ Reader:
   2. Non-blocking relative to other readers
 
 Writer (Atomic Multi-Slot OCC):
-  1. Read required Slots (Bucket hashes/offsets, DBuf bmap/payload, AdjArr, Node, Meta)
+  1. Read required Slots (Bucket hashes/offsets, DBuf bmap/payload, AdjArr, Node)
   2. Compute new Slot contents and bitstates
   3. tx = mmap.new_tx()
   4. Register expected vs new slot values: tx.write(&expected, &new_slot, slot_idx)
@@ -475,6 +476,10 @@ Writer (Atomic Multi-Slot OCC):
      d. If valid: copy new slots, advance epoch, release locks -> Ok(AckTicket)
      e. If conflict: release locks, abort -> backoff (50 us..10 ms, +/-25% jitter), retry
 ```
+
+Active entry counts (`total_entries`) are maintained in memory via `AtomicU64` to prevent
+Slot 0 OCC write contention and cache-line bouncing across concurrent transactions;
+Slot 0 `Metadata.total_entries` is flushed on `sync()`
 
 ## 7. Operational Workflows
 
@@ -523,7 +528,8 @@ Writer (Atomic Multi-Slot OCC):
 2. Atomic OCC commit:
    - Set `hashes[i] = 1` (tombstone)
    - Clear occupied bits in DBuf `bmap`
-   - Decrement `Metadata.total_entries`
+   - Decrement in-memory `total_entries` (`AtomicU64`); Slot 0 `Metadata.total_entries`
+     is flushed on `sync()` to avoid writer cache-line contention on Slot 0
 3. Return `Ok(true)`
 
 ### 7.4 List Operations (`TurboList`)
@@ -572,7 +578,8 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 64]`):
    - Slots 64..123: 15x DBuf pools on Page 1 (chained `64 -> 68 -> ... -> 120 -> 0`)
    - Slots 124..127: 4x Pre-allocated spare Nodes (`flag = 0x0`, zeroed child indices)
 6. Flush initial state via `mmap.sync()?` to guarantee disk persistence
-7. Populate in-memory `DBufSlotCache` with initial 15 DBuf pools (slots 64, 68, ..., 120)
+7. Anchor pool 0 (`DATABUF_HEAD_SLOT`) in in-memory `DBufSlotCache`;
+   subsequent hops resolve, validate on disk, and cache dynamically on demand
 8. Construct and return `TurboFox` engine handle
 
 #### `open(cfg: TurboCfg) -> TurboResult<TurboFox>`
@@ -590,8 +597,8 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 64]`):
    - Assert `meta.total_slots == (mmap.length() / 64) as u32`; error if corrupt
    - Assert `meta.total_pages == (mmap.length() / sys_page_size.as_usize()) as u32`
    - Assert `meta.free_slot_marker <= meta.total_slots`; error if corrupt
-5. Sequentially traverse persistent `next_dbuf` chain once from `DATABUF_HEAD_SLOT`
-   to populate in-memory `DBufSlotCache`
+5. Anchor pool 0 (`DATABUF_HEAD_SLOT`) in in-memory `DBufSlotCache`;
+   subsequent hops resolve, validate on disk for broken chain detection, and cache dynamically
 6. Construct and return `TurboFox` engine handle
 
 #### `open_or_create(cfg: TurboCfg) -> TurboResult<TurboFox>`

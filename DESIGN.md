@@ -7,56 +7,56 @@ TurboFox is a single-file embedded KV storage engine
 ```
 Unit                 Size      Slots      Alignment  Purpose
 -------------------+---------+----------+----------+--------------------------------
-Slot (T)           128 B     1          8 B        Base IO / spinlock concurrency
-AdjArrayBlock      128 B     1          8 B        1-to-N list index block
-Metadata           128 B     1          8 B        Engine configuration and heads
-Node               128 B     1          8 B        Internal 30-way trie routing node
-Bucket             128 B     1          8 B        10-entry leaf bucket
-DBuf               256 B     2          8 B        Contiguous payload buffer pool
-Physical Page 4K   4096 B    32         4096 B     Host filesystem growth quantum
-Physical Page 16K  16384 B   128        16384 B    Host filesystem growth quantum
-Physical Page 64K  65536 B   512        65536 B    Host filesystem growth quantum
+Slot (T)           64 B      1          8 B        Base IO / spinlock concurrency
+AdjArrayBlock      128 B     2          8 B        1-to-N list index block
+Metadata           64 B      1          8 B        Engine configuration, heads, and spare nodes
+Node               64 B      1          8 B        Internal 15-way trie routing node
+Bucket             256 B     4          8 B        21-entry leaf bucket
+DBuf               256 B     4          8 B        Contiguous payload buffer pool
+Physical Page 4K   4096 B    64         4096 B     Host filesystem growth quantum
+Physical Page 16K  16384 B   256        16384 B    Host filesystem growth quantum
+Physical Page 64K  65536 B   1024       65536 B    Host filesystem growth quantum
 ```
 
 Following invariants must be preserved;
 
-- All disk structures are strictly `#[repr(C)]`, integer multiples of `Slot` (128 B), and 8B aligned
+- All disk structures are strictly `#[repr(C)]`, integer multiples of `Slot` (64 B), and 8B aligned
 - File growth is strictly quantized to physical OS pages (4 KiB, 16 KiB, or 64 KiB)
-- Slot (128 B) is the atomic transaction boundary;
+- Slot (64 B) is the atomic transaction boundary;
   concurrency uses Optimistic Concurrency Control (OCC);
   ordered multi-slot lock acquisition and validation guarantee deadlock-free transactions
 - No virtual page layer exists; all component addressing resolves to absolute slot indices
 - Memory allocation inside the mapped file is strictly monotonic bump-pointer allocation;
-  bump allocations are quantized to multiples of 256 B (2 slots) to eliminate fragmentation;
-  in-place mutation is strictly restricted to atomic Bucket-to-Node split publication
+  bump allocations are quantized to multiples of 256 B (4 slots) to eliminate fragmentation;
+  in-place mutation is restricted to atomic Bucket-to-Node split publication and OCC slot writes
 
 ## 2. File Topography (Initial Footprint)
 
-Initial structure occupies exactly 6144 B (0x30 slots / 48 slots);
-backing file maps 16 KiB (0x80 slots) on 4 KiB and 16 KiB systems, or 64 KiB (0x0200 slots) on 64K
+Initial structure occupies exactly 8192 B (0x80 slots / 128 slots);
+backing file maps 16 KiB (0x0100 slots) on 4 KiB and 16 KiB systems, or 64 KiB (0x0400 slots) on 64K
 
 ```
 Slot Range   Byte Range     Size     Component
 -----------+--------------+--------+--------------------------------------------------
-0            0x0000..0x007F 128 B    Slot 0: Metadata
-1            0x0080..0x00FF 128 B    Slot 1: AdjArrayBlock head (ADJ_ARR_HEAD_SLOT)
-2..15        0x0100..0x07FF 1792 B   7x DBuf pools (256 B each, 2 slots each)
-16           0x0800..0x087F 128 B    Slot 16: Root Node (ROOT_NODE_SLOT)
-17..31       0x0880..0x0FFF 1920 B   15x Initial Buckets (child indices 0x00..0x0E)
-32..46       0x1000..0x177F 1920 B   15x Initial Buckets (child indices 0x0F..0x1D)
-47           0x1780..0x17FF 128 B    Slot 47: AdjArrayBlock tail (linked from Slot 1)
-48..N        0x1800..EOF    Rest     Unallocated slots managed by free_slot_marker
+0            0x0000..0x003F 64 B     Slot 0: Metadata
+1            0x0040..0x007F 64 B     Slot 1: Root Node (ROOT_NODE_SLOT)
+2..3         0x0080..0x00FF 128 B    Slots 2..3: AdjArrayBlock head (ADJ_ARR_HEAD_SLOT)
+4..63        0x0100..0x0FFF 3840 B   15x Initial Buckets (child indices 0x00..0x0E, 256 B each)
+64..123      0x1000..0x1EFF 3840 B   15x DBuf pools (DATABUF_HEAD_SLOT, 256 B each)
+124..127     0x1F00..0x1FFF 256 B    4x Pre-allocated spare Nodes (64 B each)
+128..N       0x2000..EOF    Rest     Unallocated slots managed by free_slot_marker
 ```
 
-- Initial Index: 1 Root Node at Slot 16 (`ROOT_NODE_SLOT = 0x10`), routing to 30 Buckets
-- Initial Payloads: 7 DBuf pools = 217 buffers of 8 B (head `DATABUF_HEAD_SLOT = 0x02`)
-- Initial Lists: 2 AdjArray blocks = 12 list arrays (head `ADJ_ARR_HEAD_SLOT = 0x01`)
-- Initial Unallocated: Slots 0x30..0x7F (16 KiB mapping) or Slots 0x30..0x01FF (64 KiB mapping);
-  `free_slot_marker` initializes to 48 (`0x30`), perfectly aligned to 256 B multiples
+- Initial Index: 1 Root Node at Slot 1 (`ROOT_NODE_SLOT = 0x01`), routing to 15 Buckets
+- Initial Payloads: 15 DBuf pools = 465 buffers of 8 B (head `DATABUF_HEAD_SLOT = 0x40`)
+- Initial Lists: 1 AdjArray block = 6 list arrays (head `ADJ_ARR_HEAD_SLOT = 0x02`)
+- Initial Spare Nodes: 4 pre-allocated Nodes at Slots 124..127 tracked in Metadata
+- Initial Unallocated: Slots 0x80..0xFF (16 KiB mapping) or Slots 0x80..0x03FF (64 KiB mapping);
+  `free_slot_marker` initializes to 128 (`0x80`), perfectly aligned to 256 B multiples
 
 ## 3. Component Memory Layouts
 
-### 3.1 Static Topography Constants & Metadata (Slot 0, 128 Bytes, `align(8)`)
+### 3.1 Static Topography Constants & Metadata (Slot 0, 64 Bytes, `align(8)`)
 
 #### Engine Static Head Constants
 
@@ -64,10 +64,10 @@ Base component head slot indices remain constant across the database lifetime;
 hardcoded as immutable compile-time constants:
 
 ```rs
-pub const ROOT_NODE_SLOT: u32 = 0x10;    // Slot 16 (Byte offset 0x0800)
-pub const ADJ_ARR_HEAD_SLOT: u32 = 0x01; // Slot 1  (Byte offset 0x0080)
-pub const DATABUF_HEAD_SLOT: u32 = 0x02; // Slot 2  (Byte offset 0x0100)
-pub const MAX_TRIE_DEPTH: usize = 0x07;  // Depth ceiling guarding hash collisions
+pub const ROOT_NODE_SLOT: u32 = 0x01;    // Slot 1  (Byte offset 0x0040)
+pub const ADJ_ARR_HEAD_SLOT: u32 = 0x02; // Slot 2  (Byte offset 0x0080)
+pub const DATABUF_HEAD_SLOT: u32 = 0x40; // Slot 64 (Byte offset 0x1000)
+pub const MAX_TRIE_DEPTH: usize = 0x08;  // Depth ceiling guarding hash collisions
 ```
 
 #### Metadata Layout
@@ -80,39 +80,39 @@ Offset   Type      Field             Description
 8..11    u32       page_size         Host OS page size (4096, 16384, or 65536)
 12..15   u32       total_pages       Total allocated physical OS pages
 16..19   u32       total_slots       Total addressable slots in mapped file
-20..23   u32       free_slot_marker  Next unallocated slot index (starts at 48 / 0x30)
+20..23   u32       free_slot_marker  Next unallocated slot index (starts at 128 / 0x80)
 24..31   u64       total_entries     Active key count (KV + List)
-32..127  [u8; 96]  reserved          Zero-padded reserved space
+32..47   [u32; 4]  extra_nodes       Pre-allocated spare Node slot stack
+48..51   u32       extra_node_count  Active spare Node count in stack (starts at 4)
+52..63   [u8; 12]  reserved          Zero-padded reserved space
 ```
 
-### 3.2 Node (128 Bytes, 1 Slot, `align(8)`)
+### 3.2 Node (64 Bytes, 1 Slot, `align(8)`)
 
-Internal trie node indexing up to 30 child buckets or lower-level nodes;
-occupies exactly 1 slot (128 B):
+Internal trie node indexing up to 15 child buckets or lower-level nodes;
+occupies exactly 1 slot (64 B):
 
 ```
 Offset   Type        Field           Description
 -------+-----------+---------------+--------------------------------------------------
 0..3     u32         flag            Discriminator flag (0x0000_0000 = Node)
-4..7     [u8; 4]     padding         Zero alignment padding to 8 B
-8..127   [u32; 30]   bucket_indices  Slot indices of 30 child Buckets or Nodes
+4..63    [u32; 15]   bucket_indices  Slot indices of 15 child Buckets or Nodes
 ```
 
 - `flag`: Always `0x0000_0000` for `Node`; identifies node type during branch traversal
-- `bucket_indices[i]`: Absolute slot index of child component for slice $i \in [0, 29]$
+- `bucket_indices[i]`: Absolute slot index of child component for slice $i \in [0, 14]$
 
-### 3.3 Bucket (128 Bytes, 1 Slot, `align(8)`)
+### 3.3 Bucket (256 Bytes, 4 Slots, `align(8)`)
 
-Leaf hash table slot holding up to 10 entries;
-occupies exactly 1 slot (128 B):
+Leaf hash table slot holding up to 21 entries;
+occupies exactly 4 slots (256 B):
 
 ```
 Offset   Type        Field    Description
 -------+-----------+--------+---------------------------------------------------------
 0..3     u32         flag     Discriminator flag (0x0000_0001 = Bucket)
-4..7     [u8; 4]     padding  Zero alignment padding to 8 B
-8..47    [u32; 10]   hashes   Normalized key hashes (0 = empty, 1 = tombstone, >= 2)
-48..127  [u64; 10]   offsets  Packed entry metadata (flags, lengths, buffer index)
+4..87    [u32; 21]   hashes   Normalized key hashes (0 = empty, 1 = tombstone, >= 2)
+88..255  [u64; 21]   offsets  Packed entry metadata (flags, lengths, buffer index)
 ```
 
 #### Hash Sentinels (`hashes[i]`)
@@ -153,10 +153,10 @@ Bytes 0..3 (Big-Endian u32)                    Bytes 4..7 (LE)
   evaluates identically as `(bytes[0] & 0x80) != 0`
 - `Bytes 4..7 (global_buf_idx)`: Global 8 B DBuf buffer index holding key framing
 
-### 3.4 DBuf (256 Bytes, 2 Slots, `align(8)`)
+### 3.4 DBuf (256 Bytes, 4 Slots, `align(8)`)
 
 Contiguous pool of 31 8-byte payload buffers;
-occupies exactly 2 slots (256 B):
+occupies exactly 4 slots (256 B):
 
 ```
 Offset    Type            Field      Description
@@ -212,10 +212,40 @@ for global buffer index $B$:
 $$\text{pool\\_hop} = \lfloor B / 31 \rfloor$$
 $$\text{local\\_buf} = B \pmod{31}$$
 
-### 3.5 Adjacent Array Block (128 Bytes, 1 Slot, `align(8)`)
+#### In-Memory DBuf Slot Cache (Wait-Free $O(1)$ Hop Resolution)
+
+Translating `pool_hop` to a physical slot index via the persistent `next_dbuf` pointer
+chain requires $O(\text{pool\_hop})$ sequential disk/memory loads;
+an in-memory append-only chunked array provides wait-free $O(1)$ resolution:
+
+```rs
+const CHUNK_SHIFT: usize = 0x0C; // 4096 entries per chunk (16 KiB chunk)
+const CHUNK_SIZE: usize = 1 << CHUNK_SHIFT;
+const CHUNK_MASK: usize = CHUNK_SIZE - 1;
+const MAX_CHUNKS: usize = 0x0400; // 1024 chunks covers 4,194,304 DBuf pools (1 GiB DB)
+
+pub(crate) struct DBufSlotCache {
+    chunks: [AtomicPtr<u32>; MAX_CHUNKS],
+}
+```
+
+- **Read Path**:
+  Chunk index and intra-chunk offset resolved via bitwise shifts:
+  `chunk_idx = (hop as usize) >> CHUNK_SHIFT;`
+  `offset = (hop as usize) & CHUNK_MASK;`
+  Loads chunk pointer with `Ordering::Acquire`; reads slot with zero locks or refcounts;
+  wait-free execution prevents cache-line bouncing across concurrent transactions
+- **Write Path (Growth)**:
+  Under `growth_mutex`, when crossing chunk boundary, allocates 16 KiB boxed chunk;
+  publishes pointer with `Ordering::Release`; writes slot indices with monotonic stores
+- **Footprint**:
+  8 KiB outer pointer array (`1024 * 8 B`); allocates 16 KiB lazily per 4096 DBuf pools;
+  consumes exactly 4 B per DBuf pool (1.56% of raw DBuf storage)
+
+### 3.5 Adjacent Array Block (128 Bytes, 2 Slots, `align(8)`)
 
 Index structure for 1-to-N list pointer chains;
-occupies exactly 1 slot (128 B)
+occupies exactly 2 slots (128 B)
 
 ```
 Offset    Type                 Field            Description
@@ -259,63 +289,79 @@ let hash = if h < 2 { h + 2 } else { h };
 - `1`: Tombstone (deleted) sentinel
 - `>= 2`: Valid normalized key hash
 
-### 4.2 Hash Bit-Slicing & 30-Way Folding
+### 4.2 Hash Bit-Slicing & 15-Way Folding
 
-Key hashes route through trie levels via 5-bit slices (bits 0..29 across 6 primary levels);
-raw 5-bit slices yield values $S \in [0, 31]$;
-values 30 and 31 fold into slots 0 and 1, eliminating integer division:
+Key hashes route through trie levels via 4-bit slices across 8 primary levels (`depth % 8`);
+raw 4-bit slices yield values $S \in [0, 15]$;
+value 15 folds into child slot 0, eliminating integer division:
 
 ```rs
-let raw_slice = (hash >> (5 * (depth % 6))) & 0x1F;
-let child_idx = if raw_slice >= 30 { raw_slice - 30 } else { raw_slice };
+let raw_slice = (hash >> (4 * (depth % 8))) & 0x0F;
+let child_idx = if raw_slice >= 15 { 0 } else { raw_slice };
 ```
 
 ```
-Depth 0: bits  0..4  -> raw slice 0..31 -> fold (30,31 -> 0,1) -> child_idx 0..29
-Depth 1: bits  5..9  -> raw slice 0..31 -> fold (30,31 -> 0,1) -> child_idx 0..29
-Depth 2: bits 10..14 -> raw slice 0..31 -> fold (30,31 -> 0,1) -> child_idx 0..29
-Depth 3: bits 15..19 -> raw slice 0..31 -> fold (30,31 -> 0,1) -> child_idx 0..29
-Depth 4: bits 20..24 -> raw slice 0..31 -> fold (30,31 -> 0,1) -> child_idx 0..29
-Depth 5: bits 25..29 -> raw slice 0..31 -> fold (30,31 -> 0,1) -> child_idx 0..29
-Depth 6+: (depth % 6) cyclically wraps back to bits 0..4
+Depth 0: bits  0..3  -> raw slice 0..15 -> fold (15 -> 0) -> child_idx 0..14
+Depth 1: bits  4..7  -> raw slice 0..15 -> fold (15 -> 0) -> child_idx 0..14
+Depth 2: bits  8..11 -> raw slice 0..15 -> fold (15 -> 0) -> child_idx 0..14
+Depth 3: bits 12..15 -> raw slice 0..15 -> fold (15 -> 0) -> child_idx 0..14
+Depth 4: bits 16..19 -> raw slice 0..15 -> fold (15 -> 0) -> child_idx 0..14
+Depth 5: bits 20..23 -> raw slice 0..15 -> fold (15 -> 0) -> child_idx 0..14
+Depth 6: bits 24..27 -> raw slice 0..15 -> fold (15 -> 0) -> child_idx 0..14
+Depth 7: bits 28..31 -> raw slice 0..15 -> fold (15 -> 0) -> child_idx 0..14
+Depth 8+: (depth % 8) cyclically wraps back to bits 0..3
 ```
 
-### 4.3 Trie Traversal & 10-Entry Leaf Probing
+### 4.3 Trie Traversal & 21-Entry Leaf Probing
 
-Every lookup, insert, and delete begins at `ROOT_NODE_SLOT` (16 / `0x10`) at `depth = 0`:
+Every lookup, insert, and delete begins at `ROOT_NODE_SLOT` (1 / `0x01`) at `depth = 0`:
 
 1. Read current Node slot; extract `target_slot = bucket_indices[child_idx]`
 2. Read slot at `target_slot`; inspect `flag` at Byte 0:
    - If `flag == 0x0000_0000` (`Node`):
      Advance `depth += 1`; repeat step 1 at child Node
    - If `flag == 0x0000_0001` (`Bucket`):
-     Scan all 10 candidate hashes (`hashes[0..9]`) directly:
-     - 10 `u32` hashes span exactly 40 bytes (resides entirely within one 64 B cache line);
-       probed via unrolled scalar scan or 128-bit vector comparisons without branch penalties
+     Scan all 21 candidate hashes (`hashes[0..20]`) directly:
+     - 21 `u32` hashes span 84 bytes; evaluated via vectorized or unrolled scalar scanning
      - Match: compare key bytes in DBuf; if identical, key found
      - Sentinel `0x0000_0000`: unallocated slot; key is missing
      - Sentinel `0x0000_0001`: tombstone encountered; record first free index for insertion
 
 ### 4.4 Bucket Splitting, Atomic Re-hashing & Depth Guard
 
-When an insertion targets a Bucket containing 10 active entries:
+When an insertion targets a Bucket containing 21 active entries:
 
 1. **Depth Ceiling Guard**:
-   Assert `depth < MAX_TRIE_DEPTH` (`0x07`);
+   Assert `depth < MAX_TRIE_DEPTH` (`0x08`);
    if depth ceiling is reached, fail with `err::COL` (hash collision limit);
    prevents runaway recursive allocation loops on degenerate identical hashes
-2. **Contiguous Allocation**:
-   Acquire `growth_mutex`; allocate 30 contiguous slots (3840 B) from `free_slot_marker`;
-   advance `free_slot_marker += 30`;
+2. **Node Sourcing & Extra Node Stack**:
+   Acquire `growth_mutex`;
+   inspect Metadata `extra_node_count`:
+   - If `extra_node_count > 0`: pop `new_node_slot = extra_nodes[extra_node_count - 1]`;
+     decrement `extra_node_count`
+   - If `extra_node_count == 0`: allocate 4 new Node slots (256 B / 4 slots)
+     from `free_slot_marker`; advance `free_slot_marker += 4`;
+     `new_node_slot` becomes the first allocated slot;
+     push remaining 3 slots into `extra_nodes[0..2]`; set `extra_node_count = 3`
+3. **Contiguous Bucket Allocation**:
+   Allocate 14 contiguous new Buckets (56 slots = 3584 B = 14 x 256 B) from `free_slot_marker`;
+   advance `free_slot_marker += 56`;
    release `growth_mutex`
-3. **Pre-Formatting in Private Allocated Space**:
-   Format all 30 new slots as empty Buckets (`flag = 0x0000_0001`, `padding = 0`, zeroed hashes);
-   rehash the 10 existing entries plus the new 11th entry using `depth + 1` 5-bit folded slice;
-   write entries into target child buckets;
+4. **Pre-Formatting in Private Allocated Space**:
+   Format all 14 new buckets as empty (`flag = 0x0000_0001`, zeroed hashes and offsets);
+   new Node assigns `bucket_indices[0] = existing_bucket_slot`;
+   `bucket_indices[1..14] = new_bucket_slots[0..13]`;
+   rehash the 21 existing entries plus the new 22nd entry using `depth + 1` 4-bit folded slice;
+   entries with `child_idx == 0` are compacted into the existing bucket;
+   entries with `child_idx in 1..14` write into target newly allocated buckets;
    new child slots reside beyond original `free_slot_marker`, invisible to concurrent readers
-4. **Atomic OCC Node Publication**:
-   Construct new Node contents: `flag = 0x0000_0000`, `padding = 0`, `bucket_indices = new_slots`;
-   commit transaction replacing target Bucket slot with Node slot;
+5. **Atomic OCC Publication**:
+   Commit transaction validating and updating:
+   - Parent Node slot: replace child pointer to existing bucket with `new_node_slot`
+   - Existing Bucket (4 slots): overwrite with compacted `child_idx == 0` entries
+   - New Node (1 slot): write formatted `bucket_indices`
+   - Metadata (1 slot): record updated `extra_node_count`, `extra_nodes`, and `free_slot_marker`;
    readers transition atomically from reading the old bucket to traversing the new Node;
    guarantees zero partial states or torn reads without write-ahead logging
 
@@ -323,7 +369,7 @@ When an insertion targets a Bucket containing 10 active entries:
 
 ### 5.1 Monotonic Slot Allocation (256-Byte Quantum)
 
-All internal allocations consume uniform integer multiples of 256 B (2 slots);
+All internal allocations consume uniform integer multiples of 256 B (4 slots);
 managed by `free_slot_marker` in Metadata (Slot 0):
 
 ```
@@ -336,7 +382,7 @@ managed by `free_slot_marker` in Metadata (Slot 0):
                    free_slot_marker                 total_slots
 ```
 
-To allocate $K$ slots (where $K$ is an even multiple of 2):
+To allocate $K$ slots (where $K$ is an even multiple of 4):
 1. Acquire engine `growth_mutex`
 2. Assert `free_slot_marker + K <= total_slots`;
    if capacity exceeded, invoke physical OS page growth first
@@ -351,7 +397,7 @@ Concurrent writers handle capacity exhaustion via Double-Checked Locking;
 prevents allocation stampedes and duplicate file expansion:
 
 ```
-Transaction detects capacity exhaustion (DBuf, AdjArr, or Bucket)
+Transaction detects capacity exhaustion (DBuf, AdjArr, Node, or Bucket)
   │
   ▼
 Acquire engine `growth_mutex`
@@ -375,14 +421,19 @@ Acquire engine `growth_mutex`
 Every internal expansion strictly preserves 256 B alignment:
 
 - **Bucket Split Expansion**:
-  Allocates 30 new Buckets (30 slots = 3840 B = 15 x 256 B);
-  formats child buckets and converts target slot to Node
+  Allocates 14 new Buckets (56 slots = 3584 B = 14 x 256 B);
+  reuses existing bucket as child index 0;
+  links 14 new child buckets to newly acquired Node
+- **Node Stack Replenishment**:
+  When `extra_node_count == 0`, allocates 4 new Nodes (4 slots = 256 B = 1 x 256 B);
+  uses 1 immediately and caches 3 in Metadata stack
 - **DBuf Expansion**:
-  Allocates 4 new DBuf pools (8 slots = 1024 B = 4 x 256 B = 124 buffers of 8 B);
+  Allocates 4 new DBuf pools (16 slots = 1024 B = 4 x 256 B = 124 buffers of 8 B);
   zero-initializes bitmaps and buffers;
-  appends to DBuf allocation chain via `next_dbuf`
+  appends to DBuf allocation chain via `next_dbuf`;
+  registers new slot indices into in-memory `DBufSlotCache` under `growth_mutex`
 - **AdjArray Expansion**:
-  Allocates 2 contiguous AdjArray blocks (2 slots = 256 B = 12 list arrays);
+  Allocates 2 contiguous AdjArray blocks (4 slots = 256 B = 12 list arrays);
   zero-initializes array bitmaps;
   links blocks together via `next_adjarr_idx`;
   appends to active AdjArray chain originating at `ADJ_ARR_HEAD_SLOT`
@@ -392,20 +443,20 @@ Every internal expansion strictly preserves 256 B alignment:
 When `free_slot_marker + K > total_slots`, backing file expands:
 
 - **64 KiB OS Page Systems**:
-  Expand by 1 physical page: `mmap.grow(1)` (64 KiB = 0x0200 slots = 512 slots)
+  Expand by 1 physical page: `mmap.grow(1)` (64 KiB = 0x0400 slots = 1024 slots)
 - **16 KiB OS Page Systems**:
-  Expand by 1 physical page: `mmap.grow(1)` (16 KiB = 0x80 slots = 128 slots)
+  Expand by 1 physical page: `mmap.grow(1)` (16 KiB = 0x0100 slots = 256 slots)
 - **4 KiB OS Page Systems**:
-  Expand by 4 physical pages: `mmap.grow(4)` (16 KiB = 0x80 slots = 128 slots)
+  Expand by 4 physical pages: `mmap.grow(4)` (16 KiB = 0x0100 slots = 256 slots)
 
-Each expansion appends 128 slots (or 512 slots);
-`MemMap::grow` validates that `new_length <= MAX_DB_LEN` (`0x80_0000_0000`);
-fails with `err::GRW` if the 512 GiB ceiling is breached;
+Each expansion appends 256 slots (or 1024 slots);
+`MemMap::grow` validates that `new_length <= MAX_DB_LEN` (`0x40_0000_0000`);
+fails with `err::GRW` if the 256 GiB ceiling is breached;
 advances `total_pages` and `total_slots` atomically in Slot 0 via `mmap.write(0, ...)`
 
 ## 6. Concurrency & Transaction Model (OCC)
 
-Concurrency executes at Slot granularity (128 B) using Optimistic Concurrency Control:
+Concurrency executes at Slot granularity (64 B) using Optimistic Concurrency Control:
 
 ```
 Reader:
@@ -413,7 +464,7 @@ Reader:
   2. Non-blocking relative to other readers
 
 Writer (Atomic Multi-Slot OCC):
-  1. Read required Slots (Bucket hashes, Bucket offsets, DBuf bmap, Payload, AdjArr)
+  1. Read required Slots (Bucket hashes/offsets, DBuf bmap/payload, AdjArr, Node, Meta)
   2. Compute new Slot contents and bitstates
   3. tx = mmap.new_tx()
   4. Register expected vs new slot values: tx.write(&expected, &new_slot, slot_idx)
@@ -430,13 +481,13 @@ Writer (Atomic Multi-Slot OCC):
 ### 7.1 `get(key: &[u8]) -> Result<Option<Vec<u8>>>`
 
 1. Compute `hash = hash_key(key)`; initialize `curr_slot = ROOT_NODE_SLOT`, `depth = 0`
-2. At `curr_slot`, evaluate `raw = (hash >> (5 * (depth % 6))) & 0x1F`
-3. `child_idx = if raw >= 30 { raw - 30 } else { raw }`
+2. At `curr_slot`, evaluate `raw = (hash >> (4 * (depth % 8))) & 0x0F`
+3. `child_idx = if raw >= 15 { 0 } else { raw }`
 4. Read slot at `next_slot = node.bucket_indices[child_idx]`
 5. If `flag == 0x0000_0000` (`Node`):
    Set `curr_slot = next_slot`, `depth = depth + 1`, loop to step 2
 6. If `flag == 0x0000_0001` (`Bucket`):
-   Scan `hashes[0..9]`:
+   Scan `hashes[0..20]`:
    - If `hashes[i] == hash`:
      Inspect `offsets[i]`:
      if byte 0 bit 7 is set (`offsets[i][0] & 0x80 != 0`):
@@ -446,7 +497,7 @@ Writer (Atomic Multi-Slot OCC):
      return `Ok(Some(value_bytes))`
    - If `hashes[i] == 0`:
      Return `Ok(None)`
-   Return `Ok(None)` if all 10 slots scanned without match
+   Return `Ok(None)` if all 21 slots scanned without match
 
 ### 7.2 `set(key: &[u8], val: &[u8]) -> Result<TurboTicket>`
 
@@ -461,9 +512,9 @@ Writer (Atomic Multi-Slot OCC):
      Allocate contiguous 8 B buffers in active DBuf chain;
      write payload frame `[ CRC32 ][ Key ][ Val ][ Pad ]`;
      commit OCC tx writing DBuf bitmap, DBuf buffer slots, Bucket hash, Bucket offset
-   - If Bucket is full (10 active entries):
+   - If Bucket is full (21 active entries):
      Execute Section 4.4 atomic bucket split;
-     allocates 30 child buckets, rehashes entries, publishes new Node, and inserts key
+     allocates 14 child buckets, rehashes entries, publishes new Node, and inserts key
 
 ### 7.3 `del(key: &[u8]) -> Result<bool>`
 
@@ -497,31 +548,32 @@ Writer (Atomic Multi-Slot OCC):
 ### 8.1 Database Instantiation Workflows
 
 Initialization delegates OS mapping, file creation, descriptor locking,
-and page validation to `MemMap<Slot>` (`Slot: [u8; 128]`):
+and page validation to `MemMap<Slot>` (`Slot: [u8; 64]`):
 
 #### `create(cfg: TurboCfg) -> TurboResult<TurboFox>`
 
 1. Query host OS page size via `page_size = MemMap::<Slot>::page_size()?`
 2. Determine initial allocation pages:
-   - `PageSize::K4` (4096 B): `initial_pages = 4` (16 KiB = 0x80 slots)
-   - `PageSize::K16` (16384 B): `initial_pages = 1` (16 KiB = 0x80 slots)
-   - `PageSize::K64` (65536 B): `initial_pages = 1` (64 KiB = 0x0200 slots)
+   - `PageSize::K4` (4096 B): `initial_pages = 4` (16 KiB = 0x0100 slots)
+   - `PageSize::K16` (16384 B): `initial_pages = 1` (16 KiB = 0x0100 slots)
+   - `PageSize::K64` (65536 B): `initial_pages = 1` (64 KiB = 0x0400 slots)
 3. Construct `MemMapCfg` using `cfg.path`, `DB_NAME_TAG`, and `MAX_DB_LEN`
 4. Call `mmap = MemMap::<Slot>::new(memmap_cfg)?`:
    - Fails if backing file already exists (`err::EXS`) or directory is invalid (`err::DIR`)
    - Acquires exclusive filesystem advisory lock on file descriptor
    - Reserves virtual address space up to `MAX_DB_LEN`
-5. Format initial 6144 B topography (Slots 0..0x2F) directly into mapped memory:
+5. Format initial 8192 B topography (Slots 0..0x7F) directly into mapped memory:
    - Slot 0: Metadata (`magic = 0x54424658`, `version = 3`, `page_size`, `total_pages`,
-     `total_slots`, `free_slot_marker = 0x30`, `total_entries = 0`)
-   - Slot 1: AdjArr head block (zeroed headers, bitmaps, and `next_adjarr_idx = 47`)
-   - Slots 2..15: 7x DBuf pools (zeroed bitmaps, buffers, and next pointers)
-   - Slot 16: Root Node (`flag = 0x0`, `padding = 0`, `bucket_indices = [17..46]`)
-   - Slots 17..31: 15x Buckets on Page 0 (`flag = 0x1`, zeroed hashes and offsets)
-   - Slots 32..46: 15x Buckets on Page 1 (`flag = 0x1`, zeroed hashes and offsets)
-   - Slot 47: AdjArr tail block (zeroed headers, bitmaps, `next_adjarr_idx = 0`)
+     `total_slots`, `free_slot_marker = 0x80`, `total_entries = 0`,
+     `extra_nodes = [124, 125, 126, 127]`, `extra_node_count = 4`)
+   - Slot 1: Root Node (`flag = 0x0`, `bucket_indices = [4, 8, 12, ..., 60]`)
+   - Slots 2..3: AdjArr head block (zeroed headers, bitmaps, and `next_adjarr_idx = 0`)
+   - Slots 4..63: 15x Buckets on Page 0 (`flag = 0x1`, zeroed hashes and offsets)
+   - Slots 64..123: 15x DBuf pools on Page 1 (chained `64 -> 68 -> ... -> 120 -> 0`)
+   - Slots 124..127: 4x Pre-allocated spare Nodes (`flag = 0x0`, zeroed child indices)
 6. Flush initial state via `mmap.sync()?` to guarantee disk persistence
-7. Construct and return `TurboFox` engine handle
+7. Populate in-memory `DBufSlotCache` with initial 15 DBuf pools (slots 64, 68, ..., 120)
+8. Construct and return `TurboFox` engine handle
 
 #### `open(cfg: TurboCfg) -> TurboResult<TurboFox>`
 
@@ -535,10 +587,12 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 128]`):
    - Assert `meta.version == cfg.version`; error on schema version mismatch
    - Assert `meta.page_size == sys_page_size.as_u32()`; error on divergence
    - Assert `mmap.length() % sys_page_size.as_usize() == 0`; error if unpadded
-   - Assert `meta.total_slots == (mmap.length() / 128) as u32`; error if corrupt
+   - Assert `meta.total_slots == (mmap.length() / 64) as u32`; error if corrupt
    - Assert `meta.total_pages == (mmap.length() / sys_page_size.as_usize()) as u32`
    - Assert `meta.free_slot_marker <= meta.total_slots`; error if corrupt
-5. Construct and return `TurboFox` engine handle
+5. Sequentially traverse persistent `next_dbuf` chain once from `DATABUF_HEAD_SLOT`
+   to populate in-memory `DBufSlotCache`
+6. Construct and return `TurboFox` engine handle
 
 #### `open_or_create(cfg: TurboCfg) -> TurboResult<TurboFox>`
 
@@ -558,7 +612,7 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 128]`):
 ```rs
 pub const DB_NAME_TAG: [u8; 4] = *b"tbfx";
 pub const MODULE_ID: u8 = 0x46;
-pub const MAX_DB_LEN: usize = 0x80_0000_0000; // 549,755,813,888 B (512 GiB)
+pub const MAX_DB_LEN: usize = 0x40_0000_0000; // 274,877,906,944 B (256 GiB)
 ```
 
 #### Configuration Mapping
@@ -571,7 +625,7 @@ version       u32              version                 Compiled constant (LAYOUT
 sync_mode     SyncMode         sync_interval           Mapped to Periodic(Duration) or Manual
 (constant)    [u8; 4]          name                    DB_NAME_TAG (*b"tbfx")
 (constant)    u8               module_id               MODULE_ID (0x46)
-(constant)    usize            max_len                 MAX_DB_LEN (0x80_0000_0000)
+(constant)    usize            max_len                 MAX_DB_LEN (0x40_0000_0000)
 (computed)    usize            initial_pages           4 on 4 KiB OS; 1 on 16 KiB / 64 KiB
 (flag)        bool             memory_priority_hint    true (Windows memory priority advice)
 (flag)        bool             sequential_access_hint  true (POSIX_FADV / SEQUENTIAL_SCAN)
@@ -584,19 +638,19 @@ sync_mode     SyncMode         sync_interval           Mapped to Periodic(Durati
 The primary architectural ceiling stems from 32-bit slot addressing (`u32`):
 
 - 32 bits address up to $2^{32} = 4{,}294{,}967{,}296$ slots (`0..=0xFFFF_FFFF`)
-- At 128 bytes per slot, maximum addressable database file size is 512 GiB (`0x80_0000_0000`):
-  $$\text{bytes} = 2^{32} \times 128 = 2^{39} \text{ B} = 549{,}755{,}813{,}888 \text{ B}$$
+- At 64 bytes per slot, maximum addressable database file size is 256 GiB (`0x40_0000_0000`):
+  $$\text{bytes} = 2^{32} \times 64 = 2^{38} \text{ B} = 274{,}877{,}906{,}944 \text{ B}$$
 - Quantized to physical OS pages:
-  - 4 KiB pages: $2^{39} / 4096 = 2^{27} = 134{,}217{,}728$ pages (`0x0800_0000`)
-  - 16 KiB pages: $2^{39} / 16384 = 2^{25} = 33{,}554{,}432$ pages (`0x0200_0000`)
-  - 64 KiB pages: $2^{39} / 65536 = 2^{23} = 8{,}388{,}608$ pages (`0x0080_0000`)
+  - 4 KiB pages: $2^{38} / 4096 = 2^{26} = 67{,}108{,}864$ pages (`0x0400_0000`)
+  - 16 KiB pages: $2^{38} / 16384 = 2^{24} = 16{,}777{,}216$ pages (`0x0100_0000`)
+  - 64 KiB pages: $2^{38} / 65536 = 2^{22} = 4{,}194{,}304$ pages (`0x0040_0000`)
 
 ### 9.2 Capacity Bounds for Common Payload Formats
 
-- **DBuf Pools (2 slots / 256 B per DBuf, 31 buffers of 8 B)**:
-  - If entire 512 GiB space were dedicated to DBuf pools:
-    $$2^{32} / 2 = 2^{31} = 2{,}147{,}483{,}648 \text{ pools}$$
-    $$2{,}147{,}483{,}648 \times 31 = 66{,}572{,}000{,}000 \text{ buffers}$$
+- **DBuf Pools (4 slots / 256 B per DBuf, 31 buffers of 8 B)**:
+  - If entire 256 GiB space were dedicated to DBuf pools:
+    $$2^{32} / 4 = 2^{30} = 1{,}073{,}741{,}824 \text{ pools}$$
+    $$1{,}073{,}741{,}824 \times 31 = 33{,}285{,}996{,}544 \text{ buffers}$$
 - **KV Entries (12 B key + 48 B value $\implies$ 64 B frame $\implies$ 8 buffers)**:
   - Each DBuf fits $\lfloor 31 / 8 \rfloor = 3$ entries (7 slack buffers)
 - **List Items (20 B value $\implies$ 28 B frame $\implies$ 4 buffers)**:
@@ -606,5 +660,5 @@ The primary architectural ceiling stems from 32-bit slot addressing (`u32`):
 ### 9.3 Capacity Derivation
 
 $$
-\text{Capacity} = 2^{32} \times 128 \text{ B} = 512 \text{ GiB} = 0\text{x}80\_0000\_0000 \text{ B}
+\text{Capacity} = 2^{32} \times 64 \text{ B} = 256 \text{ GiB} = 0\text{x}40\_0000\_0000 \text{ B}
 $$

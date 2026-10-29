@@ -212,9 +212,9 @@ Sustained key-value operations per second across single-thread and 2-thread work
 
 | Workload               | 1 Thread Throughput | 2 Thread Throughput | Scaling Ratio |
 |:-----------------------|:--------------------|:--------------------|:--------------|
-| SET (60/40 New/Update) | 4.21 kops/s         | 3.69 kops/s         | 0.88x         |
-| GET (60/40 Hit/Miss)   | 4.47 kops/s         | 4.91 kops/s         | 1.10x         |
-| DEL (60/40 Hit/Miss)   | 4.46 kops/s         | 4.93 kops/s         | 1.11x         |
+| SET (60/40 New/Update) | 11.66 kops/s        | 6.60 kops/s         | 0.57x         |
+| GET (60/40 Hit/Miss)   | 1.13 Mops/s         | 1.45 Mops/s         | 1.28x         |
+| DEL (60/40 Hit/Miss)   | 925.51 kops/s       | 1.23 Mops/s         | 1.33x         |
 
 ### Tail Latency Profile Under Concurrency
 
@@ -222,17 +222,17 @@ Percentile latency distributions (p50 to p99.9) comparing 1T baseline against 2T
 
 <img src="assets/kv_tail_latency.svg" width="100%" alt="KV Tail Latency Profile" />
 
-| Workload              | Threads | p50     | p90     | p99     | p99.9    |
-|:----------------------|:--------|:--------|:--------|:--------|:---------|
-| SET: 60/40 New/Update | 1T      | 0.21 ms | 0.38 ms | 0.49 ms | 5.48 ms  |
-| SET: 60/40 New/Update | 2T      | 0.44 ms | 0.97 ms | 1.84 ms | 20.27 ms |
-| GET: 60/40 Hit/Miss   | 1T      | 0.12 ms | 0.62 ms | 0.75 ms | 0.76 ms  |
-| GET: 60/40 Hit/Miss   | 2T      | 0.22 ms | 1.13 ms | 1.33 ms | 1.35 ms  |
-| DEL: 60/40 Hit/Miss   | 1T      | 0.12 ms | 0.62 ms | 0.75 ms | 0.76 ms  |
-| DEL: 60/40 Hit/Miss   | 2T      | 0.22 ms | 1.12 ms | 1.32 ms | 1.35 ms  |
+| Workload              | Threads | p50     | p90     | p99       | p99.9    |
+|:----------------------|:--------|:--------|:--------|:----------|:---------|
+| SET: 60/40 New/Update | 1T      | 1.27 µs | 4.46 µs | 131.84 µs | 50.59 ms |
+| SET: 60/40 New/Update | 2T      | 1.97 µs | 7.89 µs | 1.36 ms   | 63.11 ms |
+| GET: 60/40 Hit/Miss   | 1T      | 0.84 µs | 0.98 µs | 1.25 µs   | 5.35 µs  |
+| GET: 60/40 Hit/Miss   | 2T      | 1.32 µs | 1.53 µs | 1.81 µs   | 13.78 µs |
+| DEL: 60/40 Hit/Miss   | 1T      | 1.11 µs | 1.25 µs | 3.12 µs   | 8.89 µs  |
+| DEL: 60/40 Hit/Miss   | 2T      | 1.67 µs | 1.91 µs | 4.66 µs   | 14.34 µs |
 
 > [!TIP]
-> Sub-millisecond median latencies (p50 <= 0.22 ms for reads and deletes) sustained across 1T and 2T
+> Sub-2 µs median latencies (p50 <= 1.67 µs for reads and deletes) sustained across 1T and 2T
 
 ### Database Init Latency Scaling
 

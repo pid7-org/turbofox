@@ -46,7 +46,9 @@ impl Metadata {
     /// Ref: `DESIGN.md` §3.1
     #[inline(always)]
     pub(crate) const fn new(page_size: u32, version: u32, total_pages: u32) -> Self {
-        let total_slots = (total_pages * page_size) / (SLOT_SIZE as u32);
+        let computed = ((total_pages as u64) * (page_size as u64)) / (SLOT_SIZE as u64);
+        let total_slots =
+            if computed > (0xFFFF_FFFFu64) { 0xFFFF_FFFFu32 } else { computed as u32 };
 
         Self {
             magic: Self::MAGIC,
@@ -70,6 +72,10 @@ impl Metadata {
     /// Ref: `DESIGN.md` §8.1
     #[inline(always)]
     pub(crate) fn validate(&self, expected_page_size: u32, expected_version: u32) -> bool {
+        let computed = ((self.total_pages as u64) * (self.page_size as u64)) / (SLOT_SIZE as u64);
+        let expected_slots =
+            if computed > (0xFFFF_FFFFu64) { 0xFFFF_FFFFu32 } else { computed as u32 };
+
         self.magic == Self::MAGIC
             && self.version == expected_version
             && self.page_size == expected_page_size
@@ -77,7 +83,7 @@ impl Metadata {
                 || self.page_size == (PAGE_SIZE_16K as u32)
                 || self.page_size == (PAGE_SIZE_64K as u32))
             && self.total_pages > 0
-            && self.total_slots == (self.total_pages * self.page_size) / (SLOT_SIZE as u32)
+            && self.total_slots == expected_slots
             && self.free_slot_marker >= INITIAL_FREE_SLOT_MARKER
             && self.free_slot_marker <= self.total_slots
             && (self.extra_node_count as usize) <= self.extra_nodes.len()
@@ -110,7 +116,9 @@ impl Metadata {
     #[inline(always)]
     pub(crate) fn record_growth(&mut self, added_pages: u32) {
         self.total_pages = self.total_pages.saturating_add(added_pages);
-        self.total_slots = (self.total_pages * self.page_size) / (SLOT_SIZE as u32);
+        let computed = ((self.total_pages as u64) * (self.page_size as u64)) / (SLOT_SIZE as u64);
+        self.total_slots =
+            if computed > (0xFFFF_FFFFu64) { 0xFFFF_FFFFu32 } else { computed as u32 };
     }
 
     #[allow(dead_code)]
@@ -182,6 +190,17 @@ mod tests {
         assert_eq!(meta.total_pages, 8);
         assert_eq!(meta.total_slots, 0x0200);
         assert!(meta.validate(PAGE_SIZE_4K as u32, LAYOUT_VERSION));
+
+        // Growth past 4 GiB (0x0010_0000 pages = 4 GiB)
+        meta.record_growth(0x0010_0000);
+        assert_eq!(meta.total_pages, 0x0010_0008);
+        assert_eq!(meta.total_slots, 0x0010_0008 * 0x40);
+        assert!(meta.validate(PAGE_SIZE_4K as u32, LAYOUT_VERSION));
+
+        // Growth up to 256 GiB ceiling (0x0400_0000 4K pages) saturates total_slots to 0xFFFF_FFFF
+        let max_meta = Metadata::new(PAGE_SIZE_4K as u32, LAYOUT_VERSION, 0x0400_0000);
+        assert_eq!(max_meta.total_slots, 0xFFFF_FFFF);
+        assert!(max_meta.validate(PAGE_SIZE_4K as u32, LAYOUT_VERSION));
     }
 
     #[test]

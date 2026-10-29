@@ -711,16 +711,20 @@ impl Engine {
         let (new_node_slot, new_buckets_start) = {
             let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
 
-            let mut meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
-            let node_slot = if let Some(slot) = meta.pop_extra_node() {
-                let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
+            let mut popped = None;
+            let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| {
+                popped = m.pop_extra_node();
+            })?;
+
+            let node_slot = if let Some(slot) = popped {
                 slot
             } else {
                 let allocated = self.alloc_uniform_slots_locked(ALLOC_SLOT_QUANTUM)?;
-                let _ = meta.push_extra_node(allocated + 1);
-                let _ = meta.push_extra_node(allocated + 2);
-                let _ = meta.push_extra_node(allocated + 3);
-                let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
+                let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| {
+                    let _ = m.push_extra_node(allocated + 1);
+                    let _ = m.push_extra_node(allocated + 2);
+                    let _ = m.push_extra_node(allocated + 3);
+                })?;
                 allocated
             };
 

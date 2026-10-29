@@ -1,6 +1,7 @@
 use crate::common::{
     CRC_SIZE, DBUF_BUF_COUNT, DBUF_BUF_SIZE, DBUF_FULL_BIT, DBUF_OCCUPANCY_MASK, DBUF_PAYLOAD_SIZE,
-    DBUF_SIZE, DBUF_SLOTS, KV_HEADER_SIZE, LIST_KEY_HEADER_SIZE, LIST_VAL_HEADER_SIZE, Slot,
+    DBUF_SIZE, DBUF_SLOTS, KV_HEADER_SIZE, LIST_KEY_HEADER_SIZE, LIST_VAL_HEADER_SIZE, MAX_VAL_LEN,
+    Slot,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,9 +103,7 @@ impl DBuf {
     }
 
     pub(crate) fn free_contiguous(&mut self, start_idx: usize, count: usize) {
-        debug_assert!(start_idx + count <= DBUF_BUF_COUNT);
-
-        if count == 0 {
+        if count == 0 || start_idx + count > DBUF_BUF_COUNT {
             return;
         }
 
@@ -368,6 +367,11 @@ impl DBuf {
         let vlen = u16::from_le_bytes([raw[start_byte + CRC_SIZE], raw[start_byte + CRC_SIZE + 1]])
             as usize;
 
+        let req = Self::required_list_val_buffers(vlen);
+        if vlen > MAX_VAL_LEN || start_idx + req > DBUF_BUF_COUNT {
+            return Err(DBufError::InvalidIndex);
+        }
+
         Ok(vlen)
     }
 
@@ -558,6 +562,6 @@ mod tests {
         let mut dbuf = DBuf::new();
         dbuf.set_next_dbuf_index(0x42);
         assert_eq!(dbuf.next_dbuf_index(), 0x42);
-        assert_eq!(dbuf.as_slots().len(), 2);
+        assert_eq!(dbuf.as_slots().len(), 4);
     }
 }

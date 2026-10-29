@@ -14,13 +14,13 @@ pub(crate) fn hash_key(key: &[u8]) -> u32 {
     if hints::unlikely(h < MIN_VALID_HASH) { h + MIN_VALID_HASH } else { h }
 }
 
-/// Trie child index calculation via folded 5-bit slicing
+/// Trie child index calculation via folded 4-bit slicing
 ///
-/// Ref: `DESIGN.md` §4.1
+/// Ref: `DESIGN.md` §4.2
 #[inline(always)]
 pub(crate) const fn trie_child_idx(hash: u32, depth: usize) -> usize {
-    let raw_slice = (hash >> (5 * (depth % 6))) & 0x1F;
-    if raw_slice >= 0x1E { (raw_slice - 0x1E) as usize } else { raw_slice as usize }
+    let raw_slice = (hash >> (4 * (depth % 8))) & 0x0F;
+    if raw_slice >= 15 { 0 } else { raw_slice as usize }
 }
 
 #[cfg(test)]
@@ -145,17 +145,16 @@ mod tests {
     #[test]
     fn ok_trie_depth_slicing_and_folding_invariant() {
         let h = hash_key(b"trie_routing_key");
-        for depth in 0..0x0C {
+        for depth in 0..0x10 {
             let child_idx = trie_child_idx(h, depth);
-            assert!(child_idx < 0x1E, "Trie child index must be in 0..29");
+            assert!(child_idx < 15, "Trie child index must be in 0..14");
         }
 
         // Test folding edge cases
-        let mock_h30 = 30u32;
-        let mock_h31 = 31u32;
+        let mock_h15 = 15u32;
+        let mock_h14 = 14u32;
 
-        assert_eq!(trie_child_idx(mock_h30, 0), 0);
-        assert_eq!(trie_child_idx(mock_h31, 0), 1);
-        assert_eq!(trie_child_idx(29, 0), 29);
+        assert_eq!(trie_child_idx(mock_h15, 0), 0);
+        assert_eq!(trie_child_idx(mock_h14, 0), 14);
     }
 }

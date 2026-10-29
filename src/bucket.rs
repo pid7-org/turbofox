@@ -143,12 +143,11 @@ pub(crate) enum ProbeResult {
     Vacant(usize),
 }
 
-/// Ref: `DESIGN.md` §1, §3.2
+/// Ref: `DESIGN.md` §1, §3.3
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Bucket {
     flag: u32,
-    padding: [u8; 4],
     hashes: [u32; BUCKET_ENTRIES],
     offsets: [u64; BUCKET_ENTRIES],
 }
@@ -156,17 +155,16 @@ pub(crate) struct Bucket {
 const _: () = assert!(core::mem::align_of::<Bucket>() == 8);
 const _: () = assert!(core::mem::size_of::<Bucket>() == BUCKET_SIZE);
 const _: () = assert!(core::mem::offset_of!(Bucket, flag) == 0);
-const _: () = assert!(core::mem::offset_of!(Bucket, hashes) == 8);
-const _: () = assert!(core::mem::offset_of!(Bucket, padding) == 4);
-const _: () = assert!(core::mem::offset_of!(Bucket, offsets) == 0x30);
-const _: () = assert!(core::mem::size_of::<[u32; BUCKET_ENTRIES]>() == 40);
-const _: () = assert!(core::mem::size_of::<[u64; BUCKET_ENTRIES]>() == 80);
+const _: () = assert!(core::mem::offset_of!(Bucket, hashes) == 4);
+const _: () = assert!(core::mem::offset_of!(Bucket, offsets) == 0x58);
+const _: () = assert!(core::mem::size_of::<[u32; BUCKET_ENTRIES]>() == 84);
+const _: () = assert!(core::mem::size_of::<[u64; BUCKET_ENTRIES]>() == 168);
 const _: () = assert!(core::mem::size_of::<Bucket>() == BUCKET_SLOTS * Slot::SIZE);
 
 const _: () = assert!(HASH_EMPTY == 0);
 const _: () = assert!(HASH_TOMBSTONE == 1);
 const _: () = assert!(MIN_VALID_HASH == 2);
-const _: () = assert!(BUCKET_ENTRIES == 10);
+const _: () = assert!(BUCKET_ENTRIES == 21);
 const _: () = assert!(LIST_FLAG_MASK == 0x80);
 const _: () = assert!(LIST_FLAG_BE == 0x8000_0000);
 const _: () = assert!(BUCKET_SIZE % Slot::SIZE == 0);
@@ -189,7 +187,6 @@ impl Bucket {
     pub(crate) const fn new() -> Self {
         Self {
             flag: BUCKET_FLAG,
-            padding: [0u8; 4],
             hashes: [HASH_EMPTY; BUCKET_ENTRIES],
             offsets: [0; BUCKET_ENTRIES],
         }
@@ -228,7 +225,7 @@ impl Bucket {
         };
 
         let valid_match_mask = if let Some(empty_idx) = first_empty {
-            mask.match_mask & ((0x01u16 << empty_idx) - 0x01)
+            mask.match_mask & ((0x01u32 << empty_idx) - 0x01)
         } else {
             mask.match_mask
         };
@@ -307,6 +304,7 @@ impl Bucket {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn as_slot(&self) -> &Slot {
         unsafe { &*core::ptr::from_ref(self).cast() }
     }
@@ -336,11 +334,10 @@ mod tests {
     #[test]
     fn ok_bucket_layout_invariants() {
         assert_eq!(core::mem::align_of::<Bucket>(), 8);
-        assert_eq!(core::mem::size_of::<Bucket>(), 0x80);
+        assert_eq!(core::mem::size_of::<Bucket>(), 0x0100);
         assert_eq!(core::mem::offset_of!(Bucket, flag), 0);
-        assert_eq!(core::mem::offset_of!(Bucket, hashes), 8);
-        assert_eq!(core::mem::offset_of!(Bucket, padding), 4);
-        assert_eq!(core::mem::offset_of!(Bucket, offsets), 0x30);
+        assert_eq!(core::mem::offset_of!(Bucket, hashes), 4);
+        assert_eq!(core::mem::offset_of!(Bucket, offsets), 0x58);
     }
 
     #[test]
@@ -412,8 +409,8 @@ mod tests {
         let mut b = Bucket::new();
         b.set_kv(0, 0x5000, 4, 4, 1);
 
-        assert_eq!(b.as_slot().len(), 0x80);
-        assert_eq!(b.as_slots().len(), 1);
-        assert_eq!(b.as_slots_mut().len(), 1);
+        assert_eq!(b.as_slot().len(), 0x40);
+        assert_eq!(b.as_slots().len(), 4);
+        assert_eq!(b.as_slots_mut().len(), 4);
     }
 }

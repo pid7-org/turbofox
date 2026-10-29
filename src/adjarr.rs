@@ -188,7 +188,7 @@ const _: () = assert!(core::mem::offset_of!(AdjArrayBlock, next_adjarr_idx) == 0
 const _: () = assert!(core::mem::size_of::<AdjArrayBlock>() == ADJ_ARR_SLOTS * Slot::SIZE);
 const _: () = assert!(core::mem::size_of::<[AdjArrayList; ADJ_ARRAYS_PER_BLOCK]>() == 0x78);
 
-const _: () = assert!(ADJ_ARR_SIZE == Slot::SIZE);
+const _: () = assert!(ADJ_ARR_SIZE == ADJ_ARR_SLOTS * Slot::SIZE);
 const _: () = assert!(ADJ_ARR_SIZE % Slot::SIZE == 0);
 const _: () = assert!(ADJ_ARR_OCCUPIED_MASK == 0x003F);
 const _: () = assert!(ADJ_ARRAYS_PER_BLOCK * ADJ_LIST_SIZE == 0x78);
@@ -293,6 +293,7 @@ impl AdjArrayBlock {
     }
 
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn as_slot(&self) -> &Slot {
         unsafe { &*core::ptr::from_ref(self).cast() }
     }
@@ -300,6 +301,17 @@ impl AdjArrayBlock {
     #[inline(always)]
     #[allow(dead_code)]
     pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
+        unsafe { &mut *core::ptr::from_mut(self).cast() }
+    }
+
+    #[inline(always)]
+    pub(crate) fn as_slots(&self) -> &[Slot; ADJ_ARR_SLOTS] {
+        unsafe { &*core::ptr::from_ref(self).cast() }
+    }
+
+    #[inline(always)]
+    #[allow(dead_code)]
+    pub(crate) fn as_slots_mut(&mut self) -> &mut [Slot; ADJ_ARR_SLOTS] {
         unsafe { &mut *core::ptr::from_mut(self).cast() }
     }
 }
@@ -429,7 +441,7 @@ mod tests {
         let _ = block.array_mut(0).push(0x0ABC_DEF0);
 
         let slot = block.as_slot();
-        assert_eq!(slot.0.len(), 0x80);
-        assert_eq!(block.as_slot_mut().0.len(), 0x80);
+        assert_eq!(slot.0.len(), 0x40);
+        assert_eq!(block.as_slots().len(), 2);
     }
 }

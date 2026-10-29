@@ -2,11 +2,12 @@ use crate::adjarr::{AdjArrayBlock, decompose_relative_array_idx, relative_array_
 use crate::bucket::{Bucket, BucketEntry, ProbeResult};
 use crate::cfg::TurboCfg;
 use crate::common::{
-    ADJ_ARR_HEAD_SLOT, ADJ_ARR_TAIL_SLOT, ALLOC_SLOT_QUANTUM, BUCKET_ENTRIES, BUCKET_FLAG,
+    ADJ_ARR_HEAD_SLOT, ADJ_ARR_SLOTS, ALLOC_SLOT_QUANTUM, BUCKET_ENTRIES, BUCKET_FLAG,
     BUCKET_SLOTS, DATABUF_HEAD_SLOT, DB_NAME_TAG, DBUF_BUF_COUNT, DBUF_SLOTS, INITIAL_BUCKET_COUNT,
-    INITIAL_BUCKET_START_SLOT, INITIAL_DATABUF_POOLS, INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION,
-    MAGIC, MAX_DB_LEN, MAX_KEY_LEN, MAX_TRIE_DEPTH, MAX_VAL_LEN, MODULE_ID, NODE_CHILDREN,
-    NODE_FLAG, NODE_SLOTS, OCC_MAX_RETRIES, ROOT_NODE_SLOT, SLOT_SIZE, Slot,
+    INITIAL_BUCKET_START_SLOT, INITIAL_DATABUF_POOLS, INITIAL_EXTRA_NODES_COUNT,
+    INITIAL_EXTRA_NODES_START_SLOT, INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION, MAGIC, MAX_DB_LEN,
+    MAX_KEY_LEN, MAX_TRIE_DEPTH, MAX_VAL_LEN, MODULE_ID, NODE_CHILDREN, NODE_FLAG, NODE_SLOTS,
+    OCC_MAX_RETRIES, ROOT_NODE_SLOT, SLOT_SIZE, Slot,
 };
 use crate::dbuf::DBuf;
 use crate::error::{TurboError, TurboResult};
@@ -19,6 +20,23 @@ use std::sync::{
     Mutex,
     atomic::{AtomicU32, AtomicU64, Ordering},
 };
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LeafLocation {
+    pub(crate) bucket_slot: u32,
+    pub(crate) depth: usize,
+    pub(crate) parent_slot: u32,
+    pub(crate) parent_child_idx: usize,
+    pub(crate) parent_node: Node,
+}
+
+#[derive(Clone, Debug)]
+struct SplitResult {
+    #[allow(dead_code)]
+    new_node_slot: u32,
+    mutated_parent: Node,
+    compacted_bucket_slots: [Slot; BUCKET_SLOTS],
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct DbufAllocPlan {
@@ -181,12 +199,25 @@ impl Engine {
         let meta = Metadata::new(self.sys_page_size.as_u32(), version, initial_pages);
         let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
 
-        let mut block_head = AdjArrayBlock::new();
-        block_head.set_next_block(ADJ_ARR_TAIL_SLOT);
-
+        let block_head = AdjArrayBlock::new();
         let _ = self
             .mmap
             .write_exact::<AdjArrayBlock, _, _>(ADJ_ARR_HEAD_SLOT as usize, |b| *b = block_head)?;
+
+        let mut children = [0u32; NODE_CHILDREN];
+        for (i, child) in children.iter_mut().enumerate() {
+            *child = INITIAL_BUCKET_START_SLOT + (i as u32) * (BUCKET_SLOTS as u32);
+        }
+
+        let root_node = Node::with_children(children);
+        let _ = self.mmap.write_exact::<Node, _, _>(ROOT_NODE_SLOT as usize, |n| *n = root_node)?;
+
+        for s in 0..INITIAL_BUCKET_COUNT {
+            let bucket_slot = INITIAL_BUCKET_START_SLOT + (s as u32) * (BUCKET_SLOTS as u32);
+            let bucket = Bucket::new();
+
+            let _ = self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b = bucket)?;
+        }
 
         for i in 0..INITIAL_DATABUF_POOLS {
             let pool_slot = DATABUF_HEAD_SLOT + (i as u32) * (DBUF_SLOTS as u32);
@@ -199,25 +230,11 @@ impl Engine {
             let _ = self.mmap.write_exact::<DBuf, _, _>(pool_slot as usize, |d| *d = dbuf)?;
         }
 
-        let mut children = [0u32; NODE_CHILDREN];
-        for (i, child) in children.iter_mut().enumerate() {
-            *child = INITIAL_BUCKET_START_SLOT + (i as u32);
+        for i in 0..INITIAL_EXTRA_NODES_COUNT {
+            let node_slot = INITIAL_EXTRA_NODES_START_SLOT + (i as u32);
+            let node = Node::new();
+            let _ = self.mmap.write_exact::<Node, _, _>(node_slot as usize, |n| *n = node)?;
         }
-
-        let root_node = Node::with_children(children);
-        let _ = self.mmap.write_exact::<Node, _, _>(ROOT_NODE_SLOT as usize, |n| *n = root_node)?;
-
-        for s in 0..INITIAL_BUCKET_COUNT {
-            let bucket_slot = INITIAL_BUCKET_START_SLOT + (s as u32);
-            let bucket = Bucket::new();
-
-            let _ = self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b = bucket)?;
-        }
-
-        let block_tail = AdjArrayBlock::new();
-        let _ = self
-            .mmap
-            .write_exact::<AdjArrayBlock, _, _>(ADJ_ARR_TAIL_SLOT as usize, |b| *b = block_tail)?;
 
         Ok(())
     }
@@ -278,10 +295,19 @@ impl Engine {
     }
 
     fn expand_databuf_locked(&self, tail_slot: usize) -> TurboResult<u32> {
-        let new_slot = self.alloc_uniform_slots_locked(DBUF_SLOTS as u32)?;
-        let new_dbuf = DBuf::new();
+        const POOLS_TO_ALLOC: u32 = 4;
+        let total_slots = POOLS_TO_ALLOC * (DBUF_SLOTS as u32);
+        let new_slot = self.alloc_uniform_slots_locked(total_slots)?;
 
-        let _ = self.mmap.write_exact::<DBuf, _, _>(new_slot as usize, |d| *d = new_dbuf)?;
+        for i in 0..POOLS_TO_ALLOC {
+            let pool_slot = new_slot + i * (DBUF_SLOTS as u32);
+            let next_slot =
+                if i + 1 < POOLS_TO_ALLOC { pool_slot + (DBUF_SLOTS as u32) } else { 0 };
+            let mut new_dbuf = DBuf::new();
+            new_dbuf.set_next_dbuf_index(next_slot);
+            let _ = self.mmap.write_exact::<DBuf, _, _>(pool_slot as usize, |d| *d = new_dbuf)?;
+        }
+
         let _ = self.mmap.write_exact::<DBuf, _, _>(tail_slot, |d| {
             d.set_next_dbuf_index(new_slot);
         })?;
@@ -303,9 +329,9 @@ impl Engine {
     pub(crate) fn expand_adjarr(&self, tail_slot: usize) -> TurboResult<u32> {
         let new_slot = self.alloc_uniform_slots(ALLOC_SLOT_QUANTUM)?;
 
-        for i in 0..ALLOC_SLOT_QUANTUM {
-            let s = (new_slot + i) as usize;
-            let next = if i + 1 < ALLOC_SLOT_QUANTUM { new_slot + i + 1 } else { 0 };
+        for i in 0..2 {
+            let s = (new_slot + (i as u32) * (ADJ_ARR_SLOTS as u32)) as usize;
+            let next = if i + 1 < 2 { new_slot + (ADJ_ARR_SLOTS as u32) } else { 0 };
 
             let mut block = AdjArrayBlock::new();
             block.set_next_block(next);
@@ -523,7 +549,7 @@ impl Engine {
     }
 
     /// Traverse trie to leaf bucket
-    fn traverse_to_leaf(&self, hash: u32) -> TurboResult<(u32, usize)> {
+    fn traverse_to_leaf(&self, hash: u32) -> TurboResult<LeafLocation> {
         let mut curr_slot = ROOT_NODE_SLOT;
         let mut depth = 0usize;
 
@@ -537,22 +563,32 @@ impl Engine {
                 curr_slot = target_slot;
                 depth += 1;
             } else if flag == BUCKET_FLAG {
-                return Ok((target_slot, depth));
+                return Ok(LeafLocation {
+                    bucket_slot: target_slot,
+                    depth,
+                    parent_slot: curr_slot,
+                    parent_child_idx: child_idx,
+                    parent_node: node,
+                });
             } else {
                 return Err(TurboError::InvalidRootNode);
             }
         }
     }
 
-    /// Recursively format split subtree for overflowing entries
-    fn format_split_subtree(&self, entries: &[BucketEntry], depth: usize) -> TurboResult<Node> {
+    fn format_split_subtree_locked(
+        &self,
+        entries: &[BucketEntry],
+        depth: usize,
+    ) -> TurboResult<Node> {
         if depth >= MAX_TRIE_DEPTH {
             return Err(TurboError::CollisionLimit);
         }
 
-        let start_slot = self.alloc_uniform_slots(NODE_CHILDREN as u32)?;
-        let mut groups: [Vec<BucketEntry>; NODE_CHILDREN] = Default::default();
+        let allocated_buckets =
+            self.alloc_uniform_slots_locked(NODE_CHILDREN as u32 * (BUCKET_SLOTS as u32))?;
 
+        let mut groups: [Vec<BucketEntry>; NODE_CHILDREN] = Default::default();
         for e in entries {
             let c_idx = trie_child_idx(e.hash(), depth + 1);
             groups[c_idx].push(*e);
@@ -560,7 +596,7 @@ impl Engine {
 
         let mut child_slots = [0u32; NODE_CHILDREN];
         for i in 0..NODE_CHILDREN {
-            let child_slot = start_slot + (i as u32);
+            let child_slot = allocated_buckets + (i as u32) * (BUCKET_SLOTS as u32);
             child_slots[i] = child_slot;
 
             if groups[i].len() <= BUCKET_ENTRIES {
@@ -572,7 +608,7 @@ impl Engine {
                 let _ =
                     self.mmap.write_exact::<Bucket, _, _>(child_slot as usize, |b| *b = child_b)?;
             } else {
-                let child_node = self.format_split_subtree(&groups[i], depth + 1)?;
+                let child_node = self.format_split_subtree_locked(&groups[i], depth + 1)?;
                 let _ = self
                     .mmap
                     .write_exact::<Node, _, _>(child_slot as usize, |n| *n = child_node)?;
@@ -582,6 +618,87 @@ impl Engine {
         Ok(Node::with_children(child_slots))
     }
 
+    fn execute_bucket_split(
+        &self,
+        parent_slot: u32,
+        parent_child_idx: usize,
+        bucket_slot: u32,
+        depth: usize,
+        entries: &[BucketEntry],
+    ) -> TurboResult<SplitResult> {
+        if depth >= MAX_TRIE_DEPTH {
+            return Err(TurboError::CollisionLimit);
+        }
+
+        let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
+
+        let mut meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
+        let new_node_slot = if let Some(slot) = meta.pop_extra_node() {
+            slot
+        } else {
+            let allocated = self.alloc_uniform_slots_locked(ALLOC_SLOT_QUANTUM)?;
+            meta.push_extra_nodes(&[allocated + 1, allocated + 2, allocated + 3]);
+            for s in 1..4 {
+                let n = Node::new();
+                let _ = self
+                    .mmap
+                    .write_exact::<Node, _, _>((allocated + s) as usize, |slot| *slot = n)?;
+            }
+            allocated
+        };
+        let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
+
+        let new_buckets_slots = 14 * (BUCKET_SLOTS as u32);
+        let new_buckets_start = self.alloc_uniform_slots_locked(new_buckets_slots)?;
+
+        let mut groups: [Vec<BucketEntry>; NODE_CHILDREN] = Default::default();
+        for e in entries {
+            let c_idx = trie_child_idx(e.hash(), depth + 1);
+            groups[c_idx].push(*e);
+        }
+
+        let compacted_bucket_slots = if groups[0].len() <= BUCKET_ENTRIES {
+            let mut compacted_bucket = Bucket::new();
+            for (idx, e) in groups[0].iter().enumerate() {
+                compacted_bucket.set_entry(idx, *e);
+            }
+            *compacted_bucket.as_slots()
+        } else {
+            let child_node = self.format_split_subtree_locked(&groups[0], depth + 1)?;
+            [*child_node.as_slot(), Slot::default(), Slot::default(), Slot::default()]
+        };
+
+        let mut new_node_children = [0u32; NODE_CHILDREN];
+        new_node_children[0] = bucket_slot;
+
+        for i in 1..NODE_CHILDREN {
+            let child_slot = new_buckets_start + ((i - 1) as u32) * (BUCKET_SLOTS as u32);
+            new_node_children[i] = child_slot;
+
+            if groups[i].len() <= BUCKET_ENTRIES {
+                let mut child_b = Bucket::new();
+                for (idx, e) in groups[i].iter().enumerate() {
+                    child_b.set_entry(idx, *e);
+                }
+                let _ =
+                    self.mmap.write_exact::<Bucket, _, _>(child_slot as usize, |b| *b = child_b)?;
+            } else {
+                let child_node = self.format_split_subtree_locked(&groups[i], depth + 1)?;
+                let _ = self
+                    .mmap
+                    .write_exact::<Node, _, _>(child_slot as usize, |n| *n = child_node)?;
+            }
+        }
+
+        let new_node = Node::with_children(new_node_children);
+        let _ = self.mmap.write_exact::<Node, _, _>(new_node_slot as usize, |n| *n = new_node)?;
+
+        let mut parent = self.mmap.read_exact::<Node, _, _>(parent_slot as usize, |n| *n)?;
+        parent.set_child_slot(parent_child_idx, new_node_slot);
+
+        Ok(SplitResult { new_node_slot, mutated_parent: parent, compacted_bucket_slots })
+    }
+
     /// Ref: `DESIGN.md` §7.1
     pub(crate) fn get(&self, key: &[u8]) -> TurboResult<Option<Vec<u8>>> {
         if key.is_empty() || key.len() > MAX_KEY_LEN {
@@ -589,8 +706,8 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        let loc = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
 
         let matched_idx =
             bucket.probe_match(hash, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
@@ -622,8 +739,8 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        let loc = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
 
         let matched_idx =
             bucket.probe_match(hash, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
@@ -683,7 +800,9 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let (bucket_slot, depth) = self.traverse_to_leaf(hash)?;
+            let loc = self.traverse_to_leaf(hash)?;
+            let bucket_slot = loc.bucket_slot;
+            let depth = loc.depth;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let probe_res =
@@ -882,12 +1001,31 @@ impl Engine {
                     }
 
                     all_entries.push(new_entry);
-                    let split_node = self.format_split_subtree(&all_entries, depth)?;
+                    let split_res = self.execute_bucket_split(
+                        loc.parent_slot,
+                        loc.parent_child_idx,
+                        loc.bucket_slot,
+                        loc.depth,
+                        &all_entries,
+                    )?;
 
                     let mut changes: Vec<(usize, Slot, Slot)> =
-                        Vec::with_capacity(NODE_SLOTS + DBUF_SLOTS);
+                        Vec::with_capacity(NODE_SLOTS + BUCKET_SLOTS + DBUF_SLOTS);
 
-                    changes.push((bucket_slot as usize, *bucket.as_slot(), *split_node.as_slot()));
+                    changes.push((
+                        loc.parent_slot as usize,
+                        *loc.parent_node.as_slot(),
+                        *split_res.mutated_parent.as_slot(),
+                    ));
+
+                    for i in 0..BUCKET_SLOTS {
+                        let orig_s = bucket.as_slots()[i];
+                        let new_s = split_res.compacted_bucket_slots[i];
+
+                        if orig_s != new_s {
+                            changes.push(((bucket_slot as usize) + i, orig_s, new_s));
+                        }
+                    }
 
                     for i in 0..DBUF_SLOTS {
                         let orig_s = plan.orig.as_slots()[i];
@@ -933,7 +1071,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let loc = self.traverse_to_leaf(hash)?;
+            let bucket_slot = loc.bucket_slot;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let matched_idx = bucket
@@ -1020,7 +1159,9 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let (bucket_slot, depth) = self.traverse_to_leaf(hash)?;
+            let loc = self.traverse_to_leaf(hash)?;
+            let bucket_slot = loc.bucket_slot;
+            let depth = loc.depth;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let probe_res =
@@ -1097,11 +1238,13 @@ impl Engine {
 
                     let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
                     for (bs, orig_b, mut_b) in &touched_blocks {
-                        let orig_s = *orig_b.as_slot();
-                        let new_s = *mut_b.as_slot();
+                        for i in 0..ADJ_ARR_SLOTS {
+                            let orig_s = orig_b.as_slots()[i];
+                            let new_s = mut_b.as_slots()[i];
 
-                        if orig_s != new_s {
-                            changes.push((*bs, orig_s, new_s));
+                            if orig_s != new_s {
+                                changes.push((*bs + i, orig_s, new_s));
+                            }
                         }
                     }
 
@@ -1171,7 +1314,14 @@ impl Engine {
                         }
                     }
 
-                    changes.push((block_slot, *orig_block.as_slot(), *mut_block.as_slot()));
+                    for i in 0..ADJ_ARR_SLOTS {
+                        let orig_s = orig_block.as_slots()[i];
+                        let new_s = mut_block.as_slots()[i];
+
+                        if orig_s != new_s {
+                            changes.push((block_slot + i, orig_s, new_s));
+                        }
+                    }
                     if key_plan.start_slot == item_plan.start_slot {
                         for i in 0..DBUF_SLOTS {
                             let orig_s = key_plan.orig.as_slots()[i];
@@ -1260,12 +1410,38 @@ impl Engine {
                     }
 
                     all_entries.push(new_entry);
-                    let split_node = self.format_split_subtree(&all_entries, depth)?;
+                    let split_res = self.execute_bucket_split(
+                        loc.parent_slot,
+                        loc.parent_child_idx,
+                        loc.bucket_slot,
+                        loc.depth,
+                        &all_entries,
+                    )?;
 
                     let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
-                    changes.push((bucket_slot as usize, *bucket.as_slot(), *split_node.as_slot()));
+                    changes.push((
+                        loc.parent_slot as usize,
+                        *loc.parent_node.as_slot(),
+                        *split_res.mutated_parent.as_slot(),
+                    ));
 
-                    changes.push((block_slot, *orig_block.as_slot(), *mut_block.as_slot()));
+                    for i in 0..BUCKET_SLOTS {
+                        let orig_s = bucket.as_slots()[i];
+                        let new_s = split_res.compacted_bucket_slots[i];
+
+                        if orig_s != new_s {
+                            changes.push(((bucket_slot as usize) + i, orig_s, new_s));
+                        }
+                    }
+
+                    for i in 0..ADJ_ARR_SLOTS {
+                        let orig_s = orig_block.as_slots()[i];
+                        let new_s = mut_block.as_slots()[i];
+
+                        if orig_s != new_s {
+                            changes.push((block_slot + i, orig_s, new_s));
+                        }
+                    }
                     if key_plan.start_slot == item_plan.start_slot {
                         for i in 0..DBUF_SLOTS {
                             let orig_s = key_plan.orig.as_slots()[i];
@@ -1388,7 +1564,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let loc = self.traverse_to_leaf(hash)?;
+            let bucket_slot = loc.bucket_slot;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let matched_idx = bucket
@@ -1428,14 +1605,21 @@ impl Engine {
             let item_dbuf_slot = self.locate_databuf_slot(item_pool_hop)? as usize;
             let orig_item_dbuf = self.mmap.read_exact::<DBuf, _, _>(item_dbuf_slot, |d| *d)?;
 
-            let vlen = orig_item_dbuf
-                .read_list_vlen(item_local_idx)
-                .map_err(|_| TurboError::CorruptedPayload("List item invalid index"))?;
+            let vlen = match orig_item_dbuf.read_list_vlen(item_local_idx) {
+                Ok(v) => v,
+                Err(_) => {
+                    Self::occ_backoff(attempt);
+                    continue;
+                }
+            };
 
-            let val_bytes = orig_item_dbuf
-                .read_list_val_payload(item_local_idx, vlen)
-                .map_err(|_| TurboError::CorruptedPayload("List item CRC mismatch"))?
-                .to_vec();
+            let val_bytes = match orig_item_dbuf.read_list_val_payload(item_local_idx, vlen) {
+                Ok(v) => v.to_vec(),
+                Err(_) => {
+                    Self::occ_backoff(attempt);
+                    continue;
+                }
+            };
 
             let req_item = DBuf::required_list_val_buffers(vlen);
             let mut freed_item_dbuf = orig_item_dbuf;
@@ -1468,11 +1652,13 @@ impl Engine {
 
             let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
             for (bs, orig_b, mut_b) in &touched_blocks {
-                let orig_s = *orig_b.as_slot();
-                let new_s = *mut_b.as_slot();
+                for i in 0..ADJ_ARR_SLOTS {
+                    let orig_s = orig_b.as_slots()[i];
+                    let new_s = mut_b.as_slots()[i];
 
-                if orig_s != new_s {
-                    changes.push((*bs, orig_s, new_s));
+                    if orig_s != new_s {
+                        changes.push((*bs + i, orig_s, new_s));
+                    }
                 }
             }
 
@@ -1512,8 +1698,8 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        let loc = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
 
         let matched_idx = bucket
             .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
@@ -1547,8 +1733,8 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        let loc = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
 
         let matched_idx = bucket
             .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
@@ -1616,8 +1802,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-            let orig_bucket_slot = bucket_slot as usize;
+            let loc = self.traverse_to_leaf(hash)?;
+            let orig_bucket_slot = loc.bucket_slot as usize;
             let orig_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(orig_bucket_slot, |b| *b)?;
 
@@ -1692,8 +1878,8 @@ impl Engine {
             Self::occ_backoff(attempt);
         }
 
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        let loc = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
         if bucket.probe_match(hash, |i| self.match_list_key(&bucket.entry(i), key)).is_none() {
             Ok(None)
         } else {
@@ -1710,8 +1896,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-            let orig_bucket_slot = bucket_slot as usize;
+            let loc = self.traverse_to_leaf(hash)?;
+            let orig_bucket_slot = loc.bucket_slot as usize;
             let orig_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(orig_bucket_slot, |b| *b)?;
 
@@ -1764,8 +1950,8 @@ impl Engine {
             Self::occ_backoff(attempt);
         }
 
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        let loc = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
         if bucket.probe_match(hash, |idx| self.match_list_key(&bucket.entry(idx), key)).is_none() {
             Ok(0)
         } else {
@@ -1782,8 +1968,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-            let orig_bucket_slot = bucket_slot as usize;
+            let loc = self.traverse_to_leaf(hash)?;
+            let orig_bucket_slot = loc.bucket_slot as usize;
             let orig_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(orig_bucket_slot, |b| *b)?;
 
@@ -1852,8 +2038,8 @@ impl Engine {
             Self::occ_backoff(attempt);
         }
 
-        let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        let loc = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
         if bucket.probe_match(hash, |idx| self.match_list_key(&bucket.entry(idx), key)).is_none() {
             Ok(Vec::new())
         } else {
@@ -1870,7 +2056,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let (bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let loc = self.traverse_to_leaf(hash)?;
+            let bucket_slot = loc.bucket_slot;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let matched_idx = bucket
@@ -1966,10 +2153,12 @@ impl Engine {
                     }
 
                     for (bs, orig_b, mut_b) in &touched_blocks {
-                        let orig_s = *orig_b.as_slot();
-                        let new_s = *mut_b.as_slot();
-                        if orig_s != new_s {
-                            changes.push((*bs, orig_s, new_s));
+                        for i in 0..ADJ_ARR_SLOTS {
+                            let orig_s = orig_b.as_slots()[i];
+                            let new_s = mut_b.as_slots()[i];
+                            if orig_s != new_s {
+                                changes.push((*bs + i, orig_s, new_s));
+                            }
                         }
                     }
 
@@ -2277,7 +2466,7 @@ mod tests {
         assert_eq!(hop, 0);
         assert_eq!(local, 0);
 
-        let new_block_slot = engine.expand_adjarr(ADJ_ARR_TAIL_SLOT as usize).unwrap();
+        let new_block_slot = engine.expand_adjarr(ADJ_ARR_HEAD_SLOT as usize).unwrap();
         assert!(new_block_slot > 0);
 
         engine.delete().unwrap();

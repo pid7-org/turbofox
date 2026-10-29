@@ -7,7 +7,7 @@ use common::{
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
-use turbofox::{TurboCfg, TurboFox};
+use turbofox::{CapacityHint, TurboCfg, TurboFox};
 
 const TOTAL_OPS: usize = 0x0004_0000;
 const THREAD_CONFIGS: [usize; 0x02] = [0x01, 0x02];
@@ -43,7 +43,8 @@ fn generate_set_60_40_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]
 fn run_tier(thread_count: usize, is_first: &mut bool) {
     let (bench_dir, db_path) = BenchDir::new(None, "kv_perf");
 
-    let turbo_cfg = TurboCfg::manual(&db_path);
+    let hint = CapacityHint::new().with_kv(TOTAL_OPS, KEY_SIZE, VAL_SIZE);
+    let turbo_cfg = TurboCfg::manual(&db_path).with_capacity_hint(hint);
     let db = Arc::new(TurboFox::create(turbo_cfg).expect("failed to create db"));
 
     let ops_per_thread = TOTAL_OPS / thread_count;

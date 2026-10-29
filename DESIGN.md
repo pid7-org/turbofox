@@ -453,7 +453,11 @@ When `free_slot_marker + K > total_slots`, backing file expands:
 Each expansion appends 256 slots (or 1024 slots);
 `MemMap::grow` validates that `new_length <= MAX_DB_LEN` (`0x40_0000_0000`);
 fails with `err::GRW` if the 256 GiB ceiling is breached;
-advances `total_pages` and `total_slots` atomically in Slot 0 via `mmap.write(0, ...)`
+advances `total_pages` and `total_slots` atomically in Slot 0 via `mmap.write(0, ...)`;
+
+Pre-allocation through `CapacityHint` aligns upfront backing storage allocations to identical
+growth quanta (16 KiB on 4 KiB/16 KiB OS systems; 64 KiB on 64 KiB OS systems), eliminating
+runtime `mmap.grow` invocations during expected workload operations
 
 ## 6. Concurrency & Transaction Model (OCC)
 
@@ -560,9 +564,12 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 64]`):
 
 1. Query host OS page size via `page_size = MemMap::<Slot>::page_size()?`
 2. Determine initial allocation pages:
-   - `PageSize::K4` (4096 B): `initial_pages = 4` (16 KiB = 0x0100 slots)
-   - `PageSize::K16` (16384 B): `initial_pages = 1` (16 KiB = 0x0100 slots)
-   - `PageSize::K64` (65536 B): `initial_pages = 1` (64 KiB = 0x0400 slots)
+   - When `cfg.capacity_hint` is provided: evaluate `hint.compute_initial_pages(page_size)`;
+     fails with `err::FUL` if computed footprint exceeds `MAX_DB_LEN`
+   - Otherwise, default to baseline:
+     - `PageSize::K4` (4096 B): `initial_pages = 4` (16 KiB = 0x0100 slots)
+     - `PageSize::K16` (16384 B): `initial_pages = 1` (16 KiB = 0x0100 slots)
+     - `PageSize::K64` (65536 B): `initial_pages = 1` (64 KiB = 0x0400 slots)
 3. Construct `MemMapCfg` using `cfg.path`, `DB_NAME_TAG`, and `MAX_DB_LEN`
 4. Call `mmap = MemMap::<Slot>::new(memmap_cfg)?`:
    - Fails if backing file already exists (`err::EXS`) or directory is invalid (`err::DIR`)
@@ -625,17 +632,18 @@ pub const MAX_DB_LEN: usize = 0x40_0000_0000; // 274,877,906,944 B (256 GiB)
 #### Configuration Mapping
 
 ```
-TurboCfg Field  Type             MemMapCfg Target        Resolution Logic
---------------+----------------+-----------------------+--------------------------------------
-path          PathBuf          path                    Forwarded directly; MemMap checks dir
-version       u32              version                 Compiled constant (LAYOUT_VERSION = 3)
-sync_mode     SyncMode         sync_interval           Mapped to Periodic(Duration) or Manual
-(constant)    [u8; 4]          name                    DB_NAME_TAG (*b"tbfx")
-(constant)    u8               module_id               MODULE_ID (0x46)
-(constant)    usize            max_len                 MAX_DB_LEN (0x40_0000_0000)
-(computed)    usize            initial_pages           4 on 4 KiB OS; 1 on 16 KiB / 64 KiB
-(flag)        bool             memory_priority_hint    true (Windows memory priority advice)
-(flag)        bool             sequential_access_hint  true (POSIX_FADV / SEQUENTIAL_SCAN)
+TurboCfg Field  Type                  MemMapCfg Target        Resolution Logic
+--------------+---------------------+-----------------------+--------------------------------------
+path          PathBuf               path                    Forwarded directly; MemMap checks dir
+version       u32                   version                 Compiled constant (LAYOUT_VERSION = 3)
+sync_mode     SyncMode              sync_interval           Mapped to Periodic(Duration) or Manual
+capacity_hint Option<CapacityHint>  initial_pages           Evaluates quantum-aligned initial pages
+(constant)    [u8; 4]               name                    DB_NAME_TAG (*b"tbfx")
+(constant)    u8                    module_id               MODULE_ID (0x46)
+(constant)    usize                 max_len                 MAX_DB_LEN (0x40_0000_0000)
+(computed)    usize                 initial_pages           From capacity_hint or default baseline
+(flag)        bool                  memory_priority_hint    true (Windows memory priority advice)
+(flag)        bool                  sequential_access_hint  true (POSIX_FADV / SEQUENTIAL_SCAN)
 ```
 
 ## 9. Architectural Upper Bounds & Capacity Proof

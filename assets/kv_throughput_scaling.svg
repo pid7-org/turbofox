@@ -22,21 +22,21 @@
 <line x1="80" y1="85.0" x2="960" y2="85.0" stroke="#bcc0cc" stroke-dasharray="3,3" stroke-width="1"/>
 <text x="70" y="89.0" fill="#6c6f85" font-size="10" text-anchor="end">6.0 kops/s</text>
 <rect x="164.7" y="85.0" width="56" height="347.0" rx="4" fill="#1e66f5"/>
-<text x="192.7" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">7.9 kops/s</text>
-<rect x="232.7" y="100.9" width="56" height="331.1" rx="4" fill="#8839ef"/>
-<text x="260.7" y="94.9" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">5.7 kops/s</text>
+<text x="192.7" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">11.7 kops/s</text>
+<rect x="232.7" y="85.0" width="56" height="347.0" rx="4" fill="#8839ef"/>
+<text x="260.7" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">6.6 kops/s</text>
 <text x="226.7" y="452.0" fill="#4c4f69" font-size="12" font-weight="bold" text-anchor="middle">SET (60/40 New/Update)</text>
-<text x="226.7" y="468.0" fill="#6c6f85" font-size="11" text-anchor="middle">Speedup: 0.72x</text>
+<text x="226.7" y="468.0" fill="#6c6f85" font-size="11" text-anchor="middle">Speedup: 0.57x</text>
 <rect x="458.0" y="85.0" width="56" height="347.0" rx="4" fill="#1e66f5"/>
-<text x="486.0" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">1.17 Mops/s</text>
+<text x="486.0" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">1.13 Mops/s</text>
 <rect x="526.0" y="85.0" width="56" height="347.0" rx="4" fill="#8839ef"/>
-<text x="554.0" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">1.56 Mops/s</text>
+<text x="554.0" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">1.45 Mops/s</text>
 <text x="520.0" y="452.0" fill="#4c4f69" font-size="12" font-weight="bold" text-anchor="middle">GET (60/40 Hit/Miss)</text>
-<text x="520.0" y="468.0" fill="#6c6f85" font-size="11" text-anchor="middle">Speedup: 1.33x</text>
+<text x="520.0" y="468.0" fill="#6c6f85" font-size="11" text-anchor="middle">Speedup: 1.28x</text>
 <rect x="751.3" y="85.0" width="56" height="347.0" rx="4" fill="#1e66f5"/>
-<text x="779.3" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">982.1 kops/s</text>
+<text x="779.3" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">925.5 kops/s</text>
 <rect x="819.3" y="85.0" width="56" height="347.0" rx="4" fill="#8839ef"/>
-<text x="847.3" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">1.32 Mops/s</text>
+<text x="847.3" y="79.0" fill="#4c4f69" font-size="10" font-weight="bold" text-anchor="middle">1.23 Mops/s</text>
 <text x="813.3" y="452.0" fill="#4c4f69" font-size="12" font-weight="bold" text-anchor="middle">DEL (60/40 Hit/Miss)</text>
-<text x="813.3" y="468.0" fill="#6c6f85" font-size="11" text-anchor="middle">Speedup: 1.34x</text>
+<text x="813.3" y="468.0" fill="#6c6f85" font-size="11" text-anchor="middle">Speedup: 1.33x</text>
 </svg>

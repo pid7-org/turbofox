@@ -12,8 +12,8 @@ use turbofox::{CapacityHint, TurboCfg, TurboFox};
 const TOTAL_OPS: usize = 0x0004_0000;
 const THREAD_CONFIGS: [usize; 0x02] = [0x01, 0x02];
 
-fn generate_set_60_40_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]> {
-    let new_target = (count * 0x3C) / 0x64;
+fn generate_set_80_20_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]> {
+    let new_target = (count * 0x50) / 0x64;
     let mut new_count = 0x00;
     let mut update_count = 0x00;
     let mut keys = Vec::with_capacity(count);
@@ -22,7 +22,7 @@ fn generate_set_60_40_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]
         let is_new = if new_count < new_target {
             let remaining_total = count - i;
             let remaining_news = new_target - new_count;
-            (i * 0x3C) % 0x64 < 0x3C || remaining_news >= remaining_total
+            (i * 0x50) % 0x64 < 0x50 || remaining_news >= remaining_total
         } else {
             false
         };
@@ -50,11 +50,11 @@ fn run_tier(thread_count: usize, is_first: &mut bool) {
     let ops_per_thread = TOTAL_OPS / thread_count;
 
     // -------------------------------------------------------------
-    // Phase 1: SET (60/40 New/Update)
+    // Phase 1: SET (80/20 New/Update)
     // -------------------------------------------------------------
     let mut set_keys = Vec::with_capacity(thread_count);
     for tid in 0x00..thread_count {
-        set_keys.push(generate_set_60_40_keys(tid, ops_per_thread));
+        set_keys.push(generate_set_80_20_keys(tid, ops_per_thread));
     }
 
     let barrier_set = Arc::new(Barrier::new(thread_count));
@@ -211,7 +211,7 @@ fn run_tier(thread_count: usize, is_first: &mut bool) {
     // -------------------------------------------------------------
     let summary_set = BenchSummary {
         benchmark: "set_perf",
-        workload: "mixed_60_40_new_update",
+        workload: "mixed_80_20_new_update",
         total_ops: TOTAL_OPS,
         threads: thread_count,
         total_elapsed: elapsed_set,

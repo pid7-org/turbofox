@@ -3,11 +3,11 @@ use crate::bucket::{Bucket, BucketEntry, ProbeResult};
 use crate::cfg::TurboCfg;
 use crate::common::{
     ADJ_ARR_HEAD_SLOT, ADJ_ARR_SLOTS, ALLOC_SLOT_QUANTUM, BUCKET_ENTRIES, BUCKET_FLAG,
-    BUCKET_SLOTS, DATABUF_HEAD_SLOT, DB_NAME_TAG, DBUF_BUF_COUNT, DBUF_SLOTS, INITIAL_BUCKET_COUNT,
-    INITIAL_BUCKET_START_SLOT, INITIAL_DATABUF_POOLS, INITIAL_EXTRA_NODES_COUNT,
-    INITIAL_EXTRA_NODES_START_SLOT, INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION, MAGIC, MAX_DB_LEN,
-    MAX_KEY_LEN, MAX_TRIE_DEPTH, MAX_VAL_LEN, MODULE_ID, NODE_CHILDREN, NODE_FLAG, NODE_SLOTS,
-    OCC_MAX_RETRIES, ROOT_NODE_SLOT, SLOT_SIZE, Slot,
+    BUCKET_SLOTS, DATABUF_HEAD_SLOT, DB_NAME_TAG, DBUF_BUF_COUNT, DBUF_SLOTS,
+    EXTRA_NODE_START_SLOT, INITIAL_BUCKET_COUNT, INITIAL_BUCKET_START_SLOT, INITIAL_DATABUF_POOLS,
+    INITIAL_EXTRA_NODES, INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION, MAGIC, MAX_DB_LEN, MAX_KEY_LEN,
+    MAX_TRIE_DEPTH, MAX_VAL_LEN, MODULE_ID, NODE_CHILDREN, NODE_FLAG, OCC_MAX_RETRIES,
+    ROOT_NODE_SLOT, SLOT_SIZE, Slot,
 };
 use crate::dbuf::DBuf;
 use crate::error::{TurboError, TurboResult};
@@ -18,29 +18,108 @@ use crate::ticket::TurboTicket;
 use frozen_core::memmap::{MemMap, MemMapCfg, PageSize};
 use std::sync::{
     Mutex,
-    atomic::{AtomicU32, AtomicU64, Ordering},
+    atomic::{AtomicPtr, AtomicU32, AtomicU64, Ordering},
 };
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct LeafLocation {
-    pub(crate) bucket_slot: u32,
-    pub(crate) depth: usize,
-    pub(crate) parent_slot: u32,
-    pub(crate) parent_child_idx: usize,
-    pub(crate) parent_node: Node,
+pub(crate) struct DBufSlotCache {
+    chunks: [AtomicPtr<[AtomicU32; 0x1000]>; 0x0400],
 }
 
-#[derive(Clone, Debug)]
-struct SplitResult {
-    #[allow(dead_code)]
-    new_node_slot: u32,
-    mutated_parent: Node,
-    compacted_bucket_slots: [Slot; BUCKET_SLOTS],
+impl std::fmt::Debug for DBufSlotCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DBufSlotCache").finish()
+    }
+}
+
+unsafe impl Send for DBufSlotCache {}
+unsafe impl Sync for DBufSlotCache {}
+
+impl DBufSlotCache {
+    pub(crate) const CHUNK_SHIFT: usize = 0x0C;
+    pub(crate) const CHUNK_MASK: usize = 0x0FFF;
+    pub(crate) const CHUNK_SIZE: usize = 0x1000;
+    pub(crate) const MAX_CHUNKS: usize = 0x0400;
+
+    pub(crate) fn new() -> Self {
+        Self { chunks: std::array::from_fn(|_| AtomicPtr::new(std::ptr::null_mut())) }
+    }
+
+    pub(crate) fn get(&self, pool_hop: u32) -> Option<u32> {
+        let chunk_idx = (pool_hop as usize) >> Self::CHUNK_SHIFT;
+        let offset = (pool_hop as usize) & Self::CHUNK_MASK;
+        if chunk_idx >= Self::MAX_CHUNKS {
+            return None;
+        }
+        let chunk_ptr = self.chunks[chunk_idx].load(Ordering::Acquire);
+        if chunk_ptr.is_null() {
+            return None;
+        }
+        let slot = unsafe { (*chunk_ptr)[offset].load(Ordering::Acquire) };
+        if slot == 0 { None } else { Some(slot) }
+    }
+
+    pub(crate) fn push(&self, pool_hop: u32, slot: u32) {
+        let chunk_idx = (pool_hop as usize) >> Self::CHUNK_SHIFT;
+        let offset = (pool_hop as usize) & Self::CHUNK_MASK;
+
+        if chunk_idx >= Self::MAX_CHUNKS {
+            return;
+        }
+
+        let mut chunk_ptr = self.chunks[chunk_idx].load(Ordering::Acquire);
+        if chunk_ptr.is_null() {
+            let mut v = Vec::with_capacity(Self::CHUNK_SIZE);
+            for _ in 0..Self::CHUNK_SIZE {
+                v.push(AtomicU32::new(0));
+            }
+
+            let boxed: Box<[AtomicU32]> = v.into_boxed_slice();
+            let boxed_arr: Box<[AtomicU32; 0x1000]> = match boxed.try_into() {
+                Ok(b) => b,
+                Err(_) => unreachable!(),
+            };
+
+            let new_ptr = Box::into_raw(boxed_arr);
+            match self.chunks[chunk_idx].compare_exchange(
+                std::ptr::null_mut(),
+                new_ptr,
+                Ordering::Release,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    chunk_ptr = new_ptr;
+                }
+                Err(existing) => {
+                    unsafe { drop(Box::from_raw(new_ptr)) };
+
+                    chunk_ptr = existing;
+                }
+            }
+        }
+
+        unsafe {
+            (*chunk_ptr)[offset].store(slot, Ordering::Release);
+        }
+    }
+}
+
+impl Drop for DBufSlotCache {
+    fn drop(&mut self) {
+        for chunk in &self.chunks {
+            let ptr = chunk.load(Ordering::Relaxed);
+            if !ptr.is_null() {
+                unsafe {
+                    drop(Box::from_raw(ptr));
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct DbufAllocPlan {
     start_slot: usize,
+    pool_hop: u32,
     local_idx: usize,
     orig: DBuf,
     mutated: DBuf,
@@ -55,6 +134,7 @@ pub(crate) struct Engine {
     free_slot_marker: AtomicU32,
     active_dbuf_hint: AtomicU32,
     sys_page_size: PageSize,
+    dbuf_slot_cache: DBufSlotCache,
 }
 
 impl Engine {
@@ -88,11 +168,13 @@ impl Engine {
             total_slots: AtomicU32::new(initial_slots as u32),
             total_entries: AtomicU64::new(0),
             free_slot_marker: AtomicU32::new(INITIAL_FREE_SLOT_MARKER),
-            active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
+            active_dbuf_hint: AtomicU32::new(0),
             sys_page_size: page_size,
+            dbuf_slot_cache: DBufSlotCache::new(),
         };
 
         engine.format_initial_topography(LAYOUT_VERSION, initial_pages as u32)?;
+        engine.dbuf_slot_cache.push(0, DATABUF_HEAD_SLOT);
         engine.sync()?;
 
         Ok(engine)
@@ -187,9 +269,12 @@ impl Engine {
             total_slots: AtomicU32::new(meta.total_slots),
             total_entries: AtomicU64::new(meta.total_entries),
             free_slot_marker: AtomicU32::new(meta.free_slot_marker),
-            active_dbuf_hint: AtomicU32::new(DATABUF_HEAD_SLOT),
+            active_dbuf_hint: AtomicU32::new(0),
             sys_page_size,
+            dbuf_slot_cache: DBufSlotCache::new(),
         };
+
+        engine.dbuf_slot_cache.push(0, DATABUF_HEAD_SLOT);
 
         Ok(engine)
     }
@@ -203,6 +288,17 @@ impl Engine {
         let _ = self
             .mmap
             .write_exact::<AdjArrayBlock, _, _>(ADJ_ARR_HEAD_SLOT as usize, |b| *b = block_head)?;
+
+        for i in 0..INITIAL_DATABUF_POOLS {
+            let pool_slot = DATABUF_HEAD_SLOT + (i as u32) * (DBUF_SLOTS as u32);
+            let next_slot =
+                if i + 1 < INITIAL_DATABUF_POOLS { pool_slot + (DBUF_SLOTS as u32) } else { 0 };
+
+            let mut dbuf = DBuf::new();
+            dbuf.set_next_dbuf_index(next_slot);
+
+            let _ = self.mmap.write_exact::<DBuf, _, _>(pool_slot as usize, |d| *d = dbuf)?;
+        }
 
         let mut children = [0u32; NODE_CHILDREN];
         for (i, child) in children.iter_mut().enumerate() {
@@ -219,21 +315,12 @@ impl Engine {
             let _ = self.mmap.write_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b = bucket)?;
         }
 
-        for i in 0..INITIAL_DATABUF_POOLS {
-            let pool_slot = DATABUF_HEAD_SLOT + (i as u32) * (DBUF_SLOTS as u32);
-            let next_slot =
-                if i + 1 < INITIAL_DATABUF_POOLS { pool_slot + (DBUF_SLOTS as u32) } else { 0 };
+        for i in 0..INITIAL_EXTRA_NODES {
+            let spare_slot = EXTRA_NODE_START_SLOT + (i as u32);
+            let spare_node = Node::new();
 
-            let mut dbuf = DBuf::new();
-            dbuf.set_next_dbuf_index(next_slot);
-
-            let _ = self.mmap.write_exact::<DBuf, _, _>(pool_slot as usize, |d| *d = dbuf)?;
-        }
-
-        for i in 0..INITIAL_EXTRA_NODES_COUNT {
-            let node_slot = INITIAL_EXTRA_NODES_START_SLOT + (i as u32);
-            let node = Node::new();
-            let _ = self.mmap.write_exact::<Node, _, _>(node_slot as usize, |n| *n = node)?;
+            let _ =
+                self.mmap.write_exact::<Node, _, _>(spare_slot as usize, |n| *n = spare_node)?;
         }
 
         Ok(())
@@ -256,12 +343,6 @@ impl Engine {
         })?;
 
         Ok(allocated)
-    }
-
-    /// Ref: `DESIGN.md` §5.1
-    pub(crate) fn alloc_uniform_slots(&self, count: u32) -> TurboResult<u32> {
-        let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
-        self.alloc_uniform_slots_locked(count)
     }
 
     /// Ref: `DESIGN.md` §5.4
@@ -295,43 +376,44 @@ impl Engine {
     }
 
     fn expand_databuf_locked(&self, tail_slot: usize) -> TurboResult<u32> {
-        const POOLS_TO_ALLOC: u32 = 4;
-        let total_slots = POOLS_TO_ALLOC * (DBUF_SLOTS as u32);
-        let new_slot = self.alloc_uniform_slots_locked(total_slots)?;
+        let pool_count = 4usize;
+        let needed_slots = (pool_count * DBUF_SLOTS) as u32;
+        let new_slot = self.alloc_uniform_slots_locked(needed_slots)?;
 
-        for i in 0..POOLS_TO_ALLOC {
-            let pool_slot = new_slot + i * (DBUF_SLOTS as u32);
-            let next_slot =
-                if i + 1 < POOLS_TO_ALLOC { pool_slot + (DBUF_SLOTS as u32) } else { 0 };
-            let mut new_dbuf = DBuf::new();
-            new_dbuf.set_next_dbuf_index(next_slot);
-            let _ = self.mmap.write_exact::<DBuf, _, _>(pool_slot as usize, |d| *d = new_dbuf)?;
+        for i in 0..pool_count {
+            let s = (new_slot as usize) + i * DBUF_SLOTS;
+            let next =
+                if i + 1 < pool_count { new_slot + ((i + 1) * DBUF_SLOTS) as u32 } else { 0 };
+
+            let mut dbuf = DBuf::new();
+            dbuf.set_next_dbuf_index(next);
+
+            let _ = self.mmap.write_exact::<DBuf, _, _>(s, |d| *d = dbuf)?;
         }
 
         let _ = self.mmap.write_exact::<DBuf, _, _>(tail_slot, |d| {
             d.set_next_dbuf_index(new_slot);
         })?;
 
+        let tail_hop = self.databuf_slot_to_hop(tail_slot as u32)?;
+        for i in 0..pool_count {
+            let s = new_slot + (i * DBUF_SLOTS) as u32;
+            let hop = tail_hop + 1 + (i as u32);
+            self.dbuf_slot_cache.push(hop, s);
+        }
+
         Ok(new_slot)
     }
 
     /// Ref: `DESIGN.md` §5.3
-    #[allow(dead_code)]
-    pub(crate) fn expand_databuf(&self, tail_slot: usize) -> TurboResult<u32> {
-        let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
-        let new_slot = self.expand_databuf_locked(tail_slot)?;
+    fn expand_adjarr_locked(&self, tail_slot: usize) -> TurboResult<u32> {
+        let new_slot = self.alloc_uniform_slots_locked(ALLOC_SLOT_QUANTUM)?;
+        let block_count = (ALLOC_SLOT_QUANTUM as usize) / ADJ_ARR_SLOTS;
 
-        self.active_dbuf_hint.store(new_slot, Ordering::Relaxed);
-        Ok(new_slot)
-    }
-
-    /// Ref: `DESIGN.md` §5.3
-    pub(crate) fn expand_adjarr(&self, tail_slot: usize) -> TurboResult<u32> {
-        let new_slot = self.alloc_uniform_slots(ALLOC_SLOT_QUANTUM)?;
-
-        for i in 0..2 {
-            let s = (new_slot + (i as u32) * (ADJ_ARR_SLOTS as u32)) as usize;
-            let next = if i + 1 < 2 { new_slot + (ADJ_ARR_SLOTS as u32) } else { 0 };
+        for i in 0..block_count {
+            let s = (new_slot as usize) + i * ADJ_ARR_SLOTS;
+            let next =
+                if i + 1 < block_count { new_slot + ((i + 1) * ADJ_ARR_SLOTS) as u32 } else { 0 };
 
             let mut block = AdjArrayBlock::new();
             block.set_next_block(next);
@@ -348,8 +430,21 @@ impl Engine {
 
     /// Ref: `DESIGN.md` §3.3
     pub(crate) fn locate_databuf_slot(&self, pool_hop: u32) -> TurboResult<u32> {
+        if let Some(slot) = self.dbuf_slot_cache.get(pool_hop) {
+            return Ok(slot);
+        }
+
+        let mut start_hop = 0u32;
         let mut curr = DATABUF_HEAD_SLOT;
-        for _ in 0..pool_hop {
+        for h in (1..pool_hop).rev() {
+            if let Some(slot) = self.dbuf_slot_cache.get(h) {
+                start_hop = h;
+                curr = slot;
+                break;
+            }
+        }
+
+        for h in (start_hop + 1)..=pool_hop {
             let next =
                 self.mmap.read_exact::<DBuf, _, _>(curr as usize, |d| d.next_dbuf_index())?;
 
@@ -358,6 +453,7 @@ impl Engine {
             }
 
             curr = next;
+            self.dbuf_slot_cache.push(h, curr);
         }
 
         Ok(curr)
@@ -386,11 +482,14 @@ impl Engine {
         needed: usize,
         exclude_slot: usize,
     ) -> TurboResult<DbufAllocPlan> {
-        let hint = self.active_dbuf_hint.load(Ordering::Relaxed) as usize;
-        let start_slot = if hint == 0 { DATABUF_HEAD_SLOT as usize } else { hint };
+        let hint_hop = self.active_dbuf_hint.load(Ordering::Relaxed);
+        let start_slot = self.locate_databuf_slot(hint_hop).unwrap_or(DATABUF_HEAD_SLOT) as usize;
+        let start_hop = if start_slot == (DATABUF_HEAD_SLOT as usize) { 0 } else { hint_hop };
 
         let mut curr = start_slot;
+        let mut curr_hop = start_hop;
         let mut tail_slot = start_slot;
+        let mut tail_hop = start_hop;
         let mut wrapped = false;
 
         loop {
@@ -400,13 +499,16 @@ impl Engine {
 
                 if next != 0 {
                     curr = next;
+                    curr_hop += 1;
                 } else {
                     tail_slot = curr;
+                    tail_hop = curr_hop;
                     if wrapped || start_slot == (DATABUF_HEAD_SLOT as usize) {
                         break;
                     }
                     wrapped = true;
                     curr = DATABUF_HEAD_SLOT as usize;
+                    curr_hop = 0;
                 }
             } else {
                 let (next, alloc_opt) = self.mmap.read_exact::<DBuf, _, _>(curr, |d| {
@@ -421,26 +523,35 @@ impl Engine {
 
                 if let Some((local_idx, orig, mutated)) = alloc_opt {
                     if wrapped {
-                        self.active_dbuf_hint.store(curr as u32, Ordering::Relaxed);
+                        self.active_dbuf_hint.store(curr_hop, Ordering::Relaxed);
                     }
 
-                    return Ok(DbufAllocPlan { start_slot: curr, local_idx, orig, mutated });
+                    return Ok(DbufAllocPlan {
+                        start_slot: curr,
+                        pool_hop: curr_hop,
+                        local_idx,
+                        orig,
+                        mutated,
+                    });
                 }
 
                 if next != 0 {
                     if !wrapped {
-                        self.active_dbuf_hint.store(next as u32, Ordering::Relaxed);
+                        self.active_dbuf_hint.store(curr_hop + 1, Ordering::Relaxed);
                     }
 
                     curr = next;
+                    curr_hop += 1;
                 } else {
                     tail_slot = curr;
+                    tail_hop = curr_hop;
                     if wrapped || start_slot == (DATABUF_HEAD_SLOT as usize) {
                         break;
                     }
 
                     wrapped = true;
                     curr = DATABUF_HEAD_SLOT as usize;
+                    curr_hop = 0;
                 }
             }
 
@@ -452,6 +563,7 @@ impl Engine {
         let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
 
         let mut actual_tail = tail_slot;
+        let mut actual_tail_hop = tail_hop;
         loop {
             let next = self
                 .mmap
@@ -462,6 +574,7 @@ impl Engine {
             }
 
             actual_tail = next;
+            actual_tail_hop += 1;
             if actual_tail != exclude_slot {
                 let (_, alloc_opt) = self.mmap.read_exact::<DBuf, _, _>(actual_tail, |d| {
                     let next = d.next_dbuf_index() as usize;
@@ -474,33 +587,46 @@ impl Engine {
                 })?;
 
                 if let Some((local_idx, orig, mutated)) = alloc_opt {
-                    self.active_dbuf_hint.store(actual_tail as u32, Ordering::Relaxed);
-                    return Ok(DbufAllocPlan { start_slot: actual_tail, local_idx, orig, mutated });
+                    self.active_dbuf_hint.store(actual_tail_hop, Ordering::Relaxed);
+                    return Ok(DbufAllocPlan {
+                        start_slot: actual_tail,
+                        pool_hop: actual_tail_hop,
+                        local_idx,
+                        orig,
+                        mutated,
+                    });
                 }
             }
         }
 
         let new_slot = self.expand_databuf_locked(actual_tail)? as usize;
-        self.active_dbuf_hint.store(new_slot as u32, Ordering::Relaxed);
+        let new_hop = actual_tail_hop + 1;
+        self.active_dbuf_hint.store(new_hop, Ordering::Relaxed);
 
         let mut dbuf = self.mmap.read_exact::<DBuf, _, _>(new_slot, |d| *d)?;
         let orig = dbuf;
         let local_idx = dbuf.alloc_contiguous(needed).ok_or(TurboError::DatabaseFull)?;
 
-        Ok(DbufAllocPlan { start_slot: new_slot, local_idx, orig, mutated: dbuf })
+        Ok(DbufAllocPlan {
+            start_slot: new_slot,
+            pool_hop: new_hop,
+            local_idx,
+            orig,
+            mutated: dbuf,
+        })
     }
 
     /// Ref: `DESIGN.md` §3.3
     pub(crate) fn databuf_slot_to_hop(&self, slot: u32) -> TurboResult<u32> {
         let mut curr = DATABUF_HEAD_SLOT;
-        let mut hop = 0;
+        let mut hop = 0u32;
 
         while curr != 0 {
             if curr == slot {
                 return Ok(hop);
             }
 
-            curr = self.mmap.read_exact::<DBuf, _, _>(curr as usize, |d| d.next_dbuf_index())?;
+            curr = self.locate_databuf_slot(hop + 1).unwrap_or(0);
             hop += 1;
         }
 
@@ -549,7 +675,7 @@ impl Engine {
     }
 
     /// Traverse trie to leaf bucket
-    fn traverse_to_leaf(&self, hash: u32) -> TurboResult<LeafLocation> {
+    fn traverse_to_leaf(&self, hash: u32) -> TurboResult<(u32, usize, u32, usize)> {
         let mut curr_slot = ROOT_NODE_SLOT;
         let mut depth = 0usize;
 
@@ -563,140 +689,85 @@ impl Engine {
                 curr_slot = target_slot;
                 depth += 1;
             } else if flag == BUCKET_FLAG {
-                return Ok(LeafLocation {
-                    bucket_slot: target_slot,
-                    depth,
-                    parent_slot: curr_slot,
-                    parent_child_idx: child_idx,
-                    parent_node: node,
-                });
+                return Ok((curr_slot, child_idx, target_slot, depth));
             } else {
                 return Err(TurboError::InvalidRootNode);
             }
         }
     }
 
-    fn format_split_subtree_locked(
-        &self,
-        entries: &[BucketEntry],
-        depth: usize,
-    ) -> TurboResult<Node> {
-        if depth >= MAX_TRIE_DEPTH {
-            return Err(TurboError::CollisionLimit);
-        }
-
-        let allocated_buckets =
-            self.alloc_uniform_slots_locked(NODE_CHILDREN as u32 * (BUCKET_SLOTS as u32))?;
-
-        let mut groups: [Vec<BucketEntry>; NODE_CHILDREN] = Default::default();
-        for e in entries {
-            let c_idx = trie_child_idx(e.hash(), depth + 1);
-            groups[c_idx].push(*e);
-        }
-
-        let mut child_slots = [0u32; NODE_CHILDREN];
-        for i in 0..NODE_CHILDREN {
-            let child_slot = allocated_buckets + (i as u32) * (BUCKET_SLOTS as u32);
-            child_slots[i] = child_slot;
-
-            if groups[i].len() <= BUCKET_ENTRIES {
-                let mut child_b = Bucket::new();
-                for (idx, e) in groups[i].iter().enumerate() {
-                    child_b.set_entry(idx, *e);
-                }
-
-                let _ =
-                    self.mmap.write_exact::<Bucket, _, _>(child_slot as usize, |b| *b = child_b)?;
-            } else {
-                let child_node = self.format_split_subtree_locked(&groups[i], depth + 1)?;
-                let _ = self
-                    .mmap
-                    .write_exact::<Node, _, _>(child_slot as usize, |n| *n = child_node)?;
-            }
-        }
-
-        Ok(Node::with_children(child_slots))
-    }
-
-    fn execute_bucket_split(
+    fn split_and_rehash(
         &self,
         parent_slot: u32,
         parent_child_idx: usize,
         bucket_slot: u32,
         depth: usize,
-        entries: &[BucketEntry],
-    ) -> TurboResult<SplitResult> {
+        all_entries: &[BucketEntry],
+    ) -> TurboResult<(u32, Bucket, Node)> {
         if depth >= MAX_TRIE_DEPTH {
             return Err(TurboError::CollisionLimit);
         }
 
-        let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
+        let (new_node_slot, new_buckets_start) = {
+            let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
 
-        let mut meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
-        let new_node_slot = if let Some(slot) = meta.pop_extra_node() {
-            slot
-        } else {
-            let allocated = self.alloc_uniform_slots_locked(ALLOC_SLOT_QUANTUM)?;
-            meta.push_extra_nodes(&[allocated + 1, allocated + 2, allocated + 3]);
-            for s in 1..4 {
-                let n = Node::new();
-                let _ = self
-                    .mmap
-                    .write_exact::<Node, _, _>((allocated + s) as usize, |slot| *slot = n)?;
-            }
-            allocated
+            let mut meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
+            let node_slot = if let Some(slot) = meta.pop_extra_node() {
+                let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
+                slot
+            } else {
+                let allocated = self.alloc_uniform_slots_locked(ALLOC_SLOT_QUANTUM)?;
+                let _ = meta.push_extra_node(allocated + 1);
+                let _ = meta.push_extra_node(allocated + 2);
+                let _ = meta.push_extra_node(allocated + 3);
+                let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
+                allocated
+            };
+
+            let buckets_start = self.alloc_uniform_slots_locked((0x0E * BUCKET_SLOTS) as u32)?;
+            (node_slot, buckets_start)
         };
-        let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| *m = meta)?;
-
-        let new_buckets_slots = 14 * (BUCKET_SLOTS as u32);
-        let new_buckets_start = self.alloc_uniform_slots_locked(new_buckets_slots)?;
 
         let mut groups: [Vec<BucketEntry>; NODE_CHILDREN] = Default::default();
-        for e in entries {
+        for e in all_entries {
             let c_idx = trie_child_idx(e.hash(), depth + 1);
             groups[c_idx].push(*e);
         }
 
-        let compacted_bucket_slots = if groups[0].len() <= BUCKET_ENTRIES {
-            let mut compacted_bucket = Bucket::new();
-            for (idx, e) in groups[0].iter().enumerate() {
-                compacted_bucket.set_entry(idx, *e);
-            }
-            *compacted_bucket.as_slots()
-        } else {
-            let child_node = self.format_split_subtree_locked(&groups[0], depth + 1)?;
-            [*child_node.as_slot(), Slot::default(), Slot::default(), Slot::default()]
-        };
-
-        let mut new_node_children = [0u32; NODE_CHILDREN];
-        new_node_children[0] = bucket_slot;
-
-        for i in 1..NODE_CHILDREN {
-            let child_slot = new_buckets_start + ((i - 1) as u32) * (BUCKET_SLOTS as u32);
-            new_node_children[i] = child_slot;
-
-            if groups[i].len() <= BUCKET_ENTRIES {
-                let mut child_b = Bucket::new();
-                for (idx, e) in groups[i].iter().enumerate() {
-                    child_b.set_entry(idx, *e);
-                }
-                let _ =
-                    self.mmap.write_exact::<Bucket, _, _>(child_slot as usize, |b| *b = child_b)?;
-            } else {
-                let child_node = self.format_split_subtree_locked(&groups[i], depth + 1)?;
-                let _ = self
-                    .mmap
-                    .write_exact::<Node, _, _>(child_slot as usize, |n| *n = child_node)?;
+        for g in &groups {
+            if g.len() > BUCKET_ENTRIES {
+                return Err(TurboError::CollisionLimit);
             }
         }
 
-        let new_node = Node::with_children(new_node_children);
+        let mut compacted_bucket = Bucket::new();
+        for (idx, e) in groups[0].iter().enumerate() {
+            compacted_bucket.set_entry(idx, *e);
+        }
+
+        let mut child_slots = [0u32; NODE_CHILDREN];
+        child_slots[0] = bucket_slot;
+
+        for i in 1..NODE_CHILDREN {
+            let child_slot = new_buckets_start + (((i - 1) * BUCKET_SLOTS) as u32);
+            child_slots[i] = child_slot;
+
+            let mut child_b = Bucket::new();
+            for (idx, e) in groups[i].iter().enumerate() {
+                child_b.set_entry(idx, *e);
+            }
+
+            let _ = self.mmap.write_exact::<Bucket, _, _>(child_slot as usize, |b| *b = child_b)?;
+        }
+
+        let new_node = Node::with_children(child_slots);
         let _ = self.mmap.write_exact::<Node, _, _>(new_node_slot as usize, |n| *n = new_node)?;
 
-        let mut parent = self.mmap.read_exact::<Node, _, _>(parent_slot as usize, |n| *n)?;
-        parent.set_child_slot(parent_child_idx, new_node_slot);
+        let orig_parent = self.mmap.read_exact::<Node, _, _>(parent_slot as usize, |n| *n)?;
+        let mut mutated_parent = orig_parent;
+        mutated_parent.bucket_indices[parent_child_idx] = new_node_slot;
 
-        Ok(SplitResult { new_node_slot, mutated_parent: parent, compacted_bucket_slots })
+        Ok((new_node_slot, compacted_bucket, mutated_parent))
     }
 
     /// Ref: `DESIGN.md` §7.1
@@ -706,8 +777,8 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let loc = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
+        let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
         let matched_idx =
             bucket.probe_match(hash, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
@@ -739,8 +810,8 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let loc = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
+        let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
         let matched_idx =
             bucket.probe_match(hash, |entry_idx| self.match_any_key(&bucket.entry(entry_idx), key));
@@ -800,9 +871,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let loc = self.traverse_to_leaf(hash)?;
-            let bucket_slot = loc.bucket_slot;
-            let depth = loc.depth;
+            let (parent_slot, parent_child_idx, bucket_slot, depth) =
+                self.traverse_to_leaf(hash)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let probe_res =
@@ -859,8 +929,7 @@ impl Engine {
                                 .write_kv_payload(plan.local_idx, key, val)
                                 .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                            let new_pool_hop = self.databuf_slot_to_hop(plan.start_slot as u32)?;
-                            target_global_buf = DBuf::global_buf_idx(new_pool_hop, plan.local_idx);
+                            target_global_buf = DBuf::global_buf_idx(plan.pool_hop, plan.local_idx);
 
                             touched_dbufs.push((old_dbuf_slot, orig_old_dbuf, freed_old));
                             touched_dbufs.push((plan.start_slot, plan.orig, plan.mutated));
@@ -922,8 +991,7 @@ impl Engine {
                         .write_kv_payload(plan.local_idx, key, val)
                         .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    let pool_hop = self.databuf_slot_to_hop(plan.start_slot as u32)?;
-                    let target_global_buf = DBuf::global_buf_idx(pool_hop, plan.local_idx);
+                    let target_global_buf = DBuf::global_buf_idx(plan.pool_hop, plan.local_idx);
 
                     let mut new_bucket = bucket;
                     new_bucket.set_kv(
@@ -985,8 +1053,7 @@ impl Engine {
                         .write_kv_payload(plan.local_idx, key, val)
                         .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    let pool_hop = self.databuf_slot_to_hop(plan.start_slot as u32)?;
-                    let target_global_buf = DBuf::global_buf_idx(pool_hop, plan.local_idx);
+                    let target_global_buf = DBuf::global_buf_idx(plan.pool_hop, plan.local_idx);
 
                     let new_entry = BucketEntry::pack_kv(
                         hash,
@@ -1001,26 +1068,30 @@ impl Engine {
                     }
 
                     all_entries.push(new_entry);
-                    let split_res = self.execute_bucket_split(
-                        loc.parent_slot,
-                        loc.parent_child_idx,
-                        loc.bucket_slot,
-                        loc.depth,
-                        &all_entries,
-                    )?;
+
+                    let orig_parent =
+                        self.mmap.read_exact::<Node, _, _>(parent_slot as usize, |n| *n)?;
+                    let (_new_node_slot, compacted_bucket, mutated_parent) = self
+                        .split_and_rehash(
+                            parent_slot,
+                            parent_child_idx,
+                            bucket_slot,
+                            depth,
+                            &all_entries,
+                        )?;
 
                     let mut changes: Vec<(usize, Slot, Slot)> =
-                        Vec::with_capacity(NODE_SLOTS + BUCKET_SLOTS + DBUF_SLOTS);
+                        Vec::with_capacity(1 + BUCKET_SLOTS + DBUF_SLOTS);
 
                     changes.push((
-                        loc.parent_slot as usize,
-                        *loc.parent_node.as_slot(),
-                        *split_res.mutated_parent.as_slot(),
+                        parent_slot as usize,
+                        *orig_parent.as_slot(),
+                        *mutated_parent.as_slot(),
                     ));
 
                     for i in 0..BUCKET_SLOTS {
                         let orig_s = bucket.as_slots()[i];
-                        let new_s = split_res.compacted_bucket_slots[i];
+                        let new_s = compacted_bucket.as_slots()[i];
 
                         if orig_s != new_s {
                             changes.push(((bucket_slot as usize) + i, orig_s, new_s));
@@ -1071,8 +1142,7 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let loc = self.traverse_to_leaf(hash)?;
-            let bucket_slot = loc.bucket_slot;
+            let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let matched_idx = bucket
@@ -1159,9 +1229,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let loc = self.traverse_to_leaf(hash)?;
-            let bucket_slot = loc.bucket_slot;
-            let depth = loc.depth;
+            let (parent_slot, parent_child_idx, bucket_slot, depth) =
+                self.traverse_to_leaf(hash)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let probe_res =
@@ -1180,24 +1249,37 @@ impl Engine {
                         .write_list_val_payload(item_plan.local_idx, item)
                         .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    let item_pool_hop = self.databuf_slot_to_hop(item_plan.start_slot as u32)?;
-                    let item_buf_idx = DBuf::global_buf_idx(item_pool_hop, item_plan.local_idx);
+                    let item_buf_idx =
+                        DBuf::global_buf_idx(item_plan.pool_hop, item_plan.local_idx);
 
                     let mut curr_arr_idx = entry.adjarr_idx();
-                    let (last_block_slot, last_orig_block, last_local_array) = loop {
+                    let mut prev_info: Option<(u32, usize, AdjArrayBlock, usize)> = None;
+                    let mut is_unoccupied = false;
+                    let (prev_opt, last_block_slot, last_orig_block, last_local_array) = loop {
                         let (block_hop, local_array) = decompose_relative_array_idx(curr_arr_idx);
                         let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
 
                         let block =
                             self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
 
-                        let next = block.array(local_array).next_array();
-                        if next == 0 {
-                            break (block_slot, block, local_array);
+                        if !block.is_array_occupied(local_array) {
+                            is_unoccupied = true;
+                            break (None, 0, block, 0);
                         }
 
+                        let next = block.array(local_array).next_array();
+                        if next == 0 {
+                            break (prev_info, block_slot, block, local_array);
+                        }
+
+                        prev_info = Some((curr_arr_idx, block_slot, block, local_array));
                         curr_arr_idx = next;
                     };
+
+                    if is_unoccupied {
+                        Self::occ_backoff(attempt);
+                        continue;
+                    }
 
                     let mut touched_blocks: Vec<(usize, AdjArrayBlock, AdjArrayBlock)> = Vec::new();
 
@@ -1207,18 +1289,15 @@ impl Engine {
 
                         touched_blocks.push((last_block_slot, last_orig_block, mutated_block));
                     } else {
-                        let (new_arr_idx, new_block_slot, new_orig_block, mut new_mut_block) =
-                            self.find_free_adjarr_array(last_block_slot)?;
-
-                        let (_, new_local_arr) = decompose_relative_array_idx(new_arr_idx);
-                        let _ = new_mut_block.array_mut(new_local_arr).push(item_buf_idx);
-
                         let mut mutated_last_block = last_orig_block;
-                        mutated_last_block.array_mut(last_local_array).set_next_array(new_arr_idx);
+                        if let Some(free_local_arr) = mutated_last_block.alloc_array() {
+                            let (last_hop, _) = decompose_relative_array_idx(curr_arr_idx);
+                            let new_arr_idx = relative_array_idx(last_hop, free_local_arr);
 
-                        if last_block_slot == new_block_slot {
-                            let _ = mutated_last_block.array_mut(new_local_arr).push(item_buf_idx);
-                            mutated_last_block.set_array_occupied(new_local_arr, true);
+                            mutated_last_block
+                                .array_mut(last_local_array)
+                                .set_next_array(new_arr_idx);
+                            let _ = mutated_last_block.array_mut(free_local_arr).push(item_buf_idx);
 
                             touched_blocks.push((
                                 last_block_slot,
@@ -1226,6 +1305,16 @@ impl Engine {
                                 mutated_last_block,
                             ));
                         } else {
+                            let (new_arr_idx, new_block_slot, new_orig_block, mut new_mut_block) =
+                                self.find_free_adjarr_array(last_block_slot)?;
+
+                            let (_, new_local_arr) = decompose_relative_array_idx(new_arr_idx);
+                            let _ = new_mut_block.array_mut(new_local_arr).push(item_buf_idx);
+
+                            mutated_last_block
+                                .array_mut(last_local_array)
+                                .set_next_array(new_arr_idx);
+
                             touched_blocks.push((
                                 last_block_slot,
                                 last_orig_block,
@@ -1236,15 +1325,29 @@ impl Engine {
                         }
                     }
 
+                    if let Some((_, prev_block_slot, prev_orig_block, _)) = prev_opt {
+                        if prev_block_slot != last_block_slot
+                            && !touched_blocks.iter().any(|(s, _, _)| *s == prev_block_slot)
+                        {
+                            touched_blocks.push((
+                                prev_block_slot,
+                                prev_orig_block,
+                                prev_orig_block,
+                            ));
+                        }
+                    }
+
                     let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
+                    for i in 0..BUCKET_SLOTS {
+                        let s = bucket.as_slots()[i];
+                        changes.push(((bucket_slot as usize) + i, s, s));
+                    }
+
                     for (bs, orig_b, mut_b) in &touched_blocks {
                         for i in 0..ADJ_ARR_SLOTS {
                             let orig_s = orig_b.as_slots()[i];
                             let new_s = mut_b.as_slots()[i];
-
-                            if orig_s != new_s {
-                                changes.push((*bs + i, orig_s, new_s));
-                            }
+                            changes.push((*bs + i, orig_s, new_s));
                         }
                     }
 
@@ -1258,6 +1361,7 @@ impl Engine {
                     }
 
                     changes.sort_by_key(|(s, _, _)| *s);
+                    changes.dedup_by(|a, b| a.0 == b.0);
                     let mut tx = self.mmap.new_tx();
 
                     for (s, orig_s, new_s) in &changes {
@@ -1283,8 +1387,7 @@ impl Engine {
                         .write_list_key_payload(key_plan.local_idx, key)
                         .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    let key_pool_hop = self.databuf_slot_to_hop(key_plan.start_slot as u32)?;
-                    let key_buf_idx = DBuf::global_buf_idx(key_pool_hop, key_plan.local_idx);
+                    let key_buf_idx = DBuf::global_buf_idx(key_plan.pool_hop, key_plan.local_idx);
 
                     let mut item_plan = self.find_free_databuf(req_item, key_plan.start_slot)?;
                     item_plan
@@ -1292,8 +1395,8 @@ impl Engine {
                         .write_list_val_payload(item_plan.local_idx, item)
                         .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    let item_pool_hop = self.databuf_slot_to_hop(item_plan.start_slot as u32)?;
-                    let item_buf_idx = DBuf::global_buf_idx(item_pool_hop, item_plan.local_idx);
+                    let item_buf_idx =
+                        DBuf::global_buf_idx(item_plan.pool_hop, item_plan.local_idx);
 
                     let (arr_idx, block_slot, orig_block, mut mut_block) =
                         self.find_free_adjarr_array(0)?;
@@ -1322,6 +1425,7 @@ impl Engine {
                             changes.push((block_slot + i, orig_s, new_s));
                         }
                     }
+
                     if key_plan.start_slot == item_plan.start_slot {
                         for i in 0..DBUF_SLOTS {
                             let orig_s = key_plan.orig.as_slots()[i];
@@ -1384,8 +1488,7 @@ impl Engine {
                         .write_list_key_payload(key_plan.local_idx, key)
                         .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    let key_pool_hop = self.databuf_slot_to_hop(key_plan.start_slot as u32)?;
-                    let key_buf_idx = DBuf::global_buf_idx(key_pool_hop, key_plan.local_idx);
+                    let key_buf_idx = DBuf::global_buf_idx(key_plan.pool_hop, key_plan.local_idx);
 
                     let mut item_plan = self.find_free_databuf(req_item, key_plan.start_slot)?;
                     item_plan
@@ -1393,8 +1496,8 @@ impl Engine {
                         .write_list_val_payload(item_plan.local_idx, item)
                         .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    let item_pool_hop = self.databuf_slot_to_hop(item_plan.start_slot as u32)?;
-                    let item_buf_idx = DBuf::global_buf_idx(item_pool_hop, item_plan.local_idx);
+                    let item_buf_idx =
+                        DBuf::global_buf_idx(item_plan.pool_hop, item_plan.local_idx);
 
                     let (arr_idx, block_slot, orig_block, mut mut_block) =
                         self.find_free_adjarr_array(0)?;
@@ -1410,24 +1513,28 @@ impl Engine {
                     }
 
                     all_entries.push(new_entry);
-                    let split_res = self.execute_bucket_split(
-                        loc.parent_slot,
-                        loc.parent_child_idx,
-                        loc.bucket_slot,
-                        loc.depth,
-                        &all_entries,
-                    )?;
+
+                    let orig_parent =
+                        self.mmap.read_exact::<Node, _, _>(parent_slot as usize, |n| *n)?;
+                    let (_new_node_slot, compacted_bucket, mutated_parent) = self
+                        .split_and_rehash(
+                            parent_slot,
+                            parent_child_idx,
+                            bucket_slot,
+                            depth,
+                            &all_entries,
+                        )?;
 
                     let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
                     changes.push((
-                        loc.parent_slot as usize,
-                        *loc.parent_node.as_slot(),
-                        *split_res.mutated_parent.as_slot(),
+                        parent_slot as usize,
+                        *orig_parent.as_slot(),
+                        *mutated_parent.as_slot(),
                     ));
 
                     for i in 0..BUCKET_SLOTS {
                         let orig_s = bucket.as_slots()[i];
-                        let new_s = split_res.compacted_bucket_slots[i];
+                        let new_s = compacted_bucket.as_slots()[i];
 
                         if orig_s != new_s {
                             changes.push(((bucket_slot as usize) + i, orig_s, new_s));
@@ -1442,6 +1549,7 @@ impl Engine {
                             changes.push((block_slot + i, orig_s, new_s));
                         }
                     }
+
                     if key_plan.start_slot == item_plan.start_slot {
                         for i in 0..DBUF_SLOTS {
                             let orig_s = key_plan.orig.as_slots()[i];
@@ -1499,7 +1607,7 @@ impl Engine {
 
     fn find_free_adjarr_array(
         &self,
-        _exclude_slot: usize,
+        exclude_slot: usize,
     ) -> TurboResult<(u32, usize, AdjArrayBlock, AdjArrayBlock)> {
         let mut curr = ADJ_ARR_HEAD_SLOT as usize;
         let mut last_slot = curr;
@@ -1507,30 +1615,77 @@ impl Engine {
 
         while curr != 0 {
             last_slot = curr;
-            let (next, opt_alloc) = self.mmap.read_exact::<AdjArrayBlock, _, _>(curr, |b| {
-                let next = b.next_block() as usize;
-                let mut mutated = *b;
+            if curr != exclude_slot {
+                let (next, opt_alloc) = self.mmap.read_exact::<AdjArrayBlock, _, _>(curr, |b| {
+                    let next = b.next_block() as usize;
+                    let mut mutated = *b;
 
-                match mutated.alloc_array() {
-                    Some(local_idx) => (next, Some((local_idx, *b, mutated))),
-                    None => (next, None),
+                    match mutated.alloc_array() {
+                        Some(local_idx) => (next, Some((local_idx, *b, mutated))),
+                        None => (next, None),
+                    }
+                })?;
+
+                if let Some((local_idx, orig, mutated)) = opt_alloc {
+                    let relative_idx = relative_array_idx(block_hop, local_idx);
+                    return Ok((relative_idx, curr, orig, mutated));
                 }
-            })?;
 
-            if let Some((local_idx, orig, mutated)) = opt_alloc {
-                let relative_idx = relative_array_idx(block_hop, local_idx);
-                return Ok((relative_idx, curr, orig, mutated));
+                curr = next;
+            } else {
+                let next = self
+                    .mmap
+                    .read_exact::<AdjArrayBlock, _, _>(curr, |b| b.next_block() as usize)?;
+
+                curr = next;
             }
 
-            curr = next;
             block_hop += 1;
         }
 
-        let new_slot = self.expand_adjarr(last_slot)? as usize;
+        let _guard = self.growth_mutex.lock().unwrap_or_else(|e| e.into_inner());
+
+        let mut actual_tail = last_slot;
+        let mut actual_hop = block_hop.saturating_sub(1);
+
+        loop {
+            let next = self
+                .mmap
+                .read_exact::<AdjArrayBlock, _, _>(actual_tail, |b| b.next_block() as usize)?;
+
+            if next == 0 {
+                break;
+            }
+
+            actual_tail = next;
+            actual_hop += 1;
+
+            if actual_tail != exclude_slot {
+                let (_, opt_alloc) =
+                    self.mmap.read_exact::<AdjArrayBlock, _, _>(actual_tail, |b| {
+                        let next = b.next_block() as usize;
+                        let mut mutated = *b;
+
+                        match mutated.alloc_array() {
+                            Some(local_idx) => (next, Some((local_idx, *b, mutated))),
+                            None => (next, None),
+                        }
+                    })?;
+
+                if let Some((local_idx, orig, mutated)) = opt_alloc {
+                    let relative_idx = relative_array_idx(actual_hop, local_idx);
+                    return Ok((relative_idx, actual_tail, orig, mutated));
+                }
+            }
+        }
+
+        let new_slot = self.expand_adjarr_locked(actual_tail)? as usize;
+
         let mut block = self.mmap.read_exact::<AdjArrayBlock, _, _>(new_slot, |b| *b)?;
         let orig = block;
+
         let local_idx = block.alloc_array().ok_or(TurboError::DatabaseFull)?;
-        let relative_idx = relative_array_idx(block_hop, local_idx);
+        let relative_idx = relative_array_idx(actual_hop + 1, local_idx);
 
         Ok((relative_idx, new_slot, orig, block))
     }
@@ -1564,8 +1719,7 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let loc = self.traverse_to_leaf(hash)?;
-            let bucket_slot = loc.bucket_slot;
+            let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let matched_idx = bucket
@@ -1577,6 +1731,8 @@ impl Engine {
             };
 
             let entry = bucket.entry(target_entry_idx);
+
+            let mut is_unoccupied = false;
             let mut curr_arr_idx = entry.adjarr_idx();
             let mut prev_info: Option<(u32, usize, AdjArrayBlock, usize)> = None;
 
@@ -1584,6 +1740,11 @@ impl Engine {
                 let (block_hop, local_arr) = decompose_relative_array_idx(curr_arr_idx);
                 let block_slot = self.locate_adjarr_block_slot(block_hop)? as usize;
                 let block = self.mmap.read_exact::<AdjArrayBlock, _, _>(block_slot, |b| *b)?;
+
+                if !block.is_array_occupied(local_arr) {
+                    is_unoccupied = true;
+                    break (None, 0, block, 0);
+                }
 
                 let next = block.array(local_arr).next_array();
                 if next == 0 {
@@ -1593,6 +1754,11 @@ impl Engine {
                 prev_info = Some((curr_arr_idx, block_slot, block, local_arr));
                 curr_arr_idx = next;
             };
+
+            if is_unoccupied {
+                Self::occ_backoff(attempt);
+                continue;
+            }
 
             let mut mutated_last_block = last_orig_block;
             let popped_entry = match mutated_last_block.array_mut(last_local_arr).pop() {
@@ -1605,21 +1771,14 @@ impl Engine {
             let item_dbuf_slot = self.locate_databuf_slot(item_pool_hop)? as usize;
             let orig_item_dbuf = self.mmap.read_exact::<DBuf, _, _>(item_dbuf_slot, |d| *d)?;
 
-            let vlen = match orig_item_dbuf.read_list_vlen(item_local_idx) {
-                Ok(v) => v,
-                Err(_) => {
-                    Self::occ_backoff(attempt);
-                    continue;
-                }
-            };
+            let vlen = orig_item_dbuf
+                .read_list_vlen(item_local_idx)
+                .map_err(|_| TurboError::CorruptedPayload("List item invalid index"))?;
 
-            let val_bytes = match orig_item_dbuf.read_list_val_payload(item_local_idx, vlen) {
-                Ok(v) => v.to_vec(),
-                Err(_) => {
-                    Self::occ_backoff(attempt);
-                    continue;
-                }
-            };
+            let val_bytes = orig_item_dbuf
+                .read_list_val_payload(item_local_idx, vlen)
+                .map_err(|_| TurboError::CorruptedPayload("List item CRC mismatch"))?
+                .to_vec();
 
             let req_item = DBuf::required_list_val_buffers(vlen);
             let mut freed_item_dbuf = orig_item_dbuf;
@@ -1648,17 +1807,27 @@ impl Engine {
                 }
             } else {
                 touched_blocks.push((last_block_slot, last_orig_block, mutated_last_block));
+                if let Some((_, prev_block_slot, prev_orig_block, _)) = prev_opt {
+                    if prev_block_slot != last_block_slot
+                        && !touched_blocks.iter().any(|(s, _, _)| *s == prev_block_slot)
+                    {
+                        touched_blocks.push((prev_block_slot, prev_orig_block, prev_orig_block));
+                    }
+                }
             }
 
             let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
+            for i in 0..BUCKET_SLOTS {
+                let s = bucket.as_slots()[i];
+                changes.push(((bucket_slot as usize) + i, s, s));
+            }
+
             for (bs, orig_b, mut_b) in &touched_blocks {
                 for i in 0..ADJ_ARR_SLOTS {
                     let orig_s = orig_b.as_slots()[i];
                     let new_s = mut_b.as_slots()[i];
 
-                    if orig_s != new_s {
-                        changes.push((*bs + i, orig_s, new_s));
-                    }
+                    changes.push((*bs + i, orig_s, new_s));
                 }
             }
 
@@ -1672,6 +1841,8 @@ impl Engine {
             }
 
             changes.sort_by_key(|(s, _, _)| *s);
+            changes.dedup_by(|a, b| a.0 == b.0);
+
             let mut tx = self.mmap.new_tx();
             for (s, orig_s, new_s) in &changes {
                 if let Err(e) = tx.write(orig_s, new_s, *s) {
@@ -1698,9 +1869,9 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let loc = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
+        let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
 
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
         let matched_idx = bucket
             .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
 
@@ -1733,8 +1904,8 @@ impl Engine {
         }
 
         let hash = hash_key(key);
-        let loc = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
+        let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
         let matched_idx = bucket
             .probe_match(hash, |entry_idx| self.match_list_key(&bucket.entry(entry_idx), key));
@@ -1802,8 +1973,9 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let loc = self.traverse_to_leaf(hash)?;
-            let orig_bucket_slot = loc.bucket_slot as usize;
+            let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let orig_bucket_slot = bucket_slot as usize;
+
             let orig_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(orig_bucket_slot, |b| *b)?;
 
@@ -1878,8 +2050,9 @@ impl Engine {
             Self::occ_backoff(attempt);
         }
 
-        let loc = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
+        let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+
         if bucket.probe_match(hash, |i| self.match_list_key(&bucket.entry(i), key)).is_none() {
             Ok(None)
         } else {
@@ -1896,8 +2069,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let loc = self.traverse_to_leaf(hash)?;
-            let orig_bucket_slot = loc.bucket_slot as usize;
+            let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let orig_bucket_slot = bucket_slot as usize;
             let orig_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(orig_bucket_slot, |b| *b)?;
 
@@ -1950,8 +2123,8 @@ impl Engine {
             Self::occ_backoff(attempt);
         }
 
-        let loc = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
+        let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
         if bucket.probe_match(hash, |idx| self.match_list_key(&bucket.entry(idx), key)).is_none() {
             Ok(0)
         } else {
@@ -1968,8 +2141,8 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let loc = self.traverse_to_leaf(hash)?;
-            let orig_bucket_slot = loc.bucket_slot as usize;
+            let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+            let orig_bucket_slot = bucket_slot as usize;
             let orig_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(orig_bucket_slot, |b| *b)?;
 
@@ -2038,8 +2211,9 @@ impl Engine {
             Self::occ_backoff(attempt);
         }
 
-        let loc = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(loc.bucket_slot as usize, |b| *b)?;
+        let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+
         if bucket.probe_match(hash, |idx| self.match_list_key(&bucket.entry(idx), key)).is_none() {
             Ok(Vec::new())
         } else {
@@ -2056,8 +2230,7 @@ impl Engine {
         let hash = hash_key(key);
 
         for attempt in 0..OCC_MAX_RETRIES {
-            let loc = self.traverse_to_leaf(hash)?;
-            let bucket_slot = loc.bucket_slot;
+            let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
             let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let matched_idx = bucket
@@ -2379,13 +2552,19 @@ mod tests {
         let engine = Engine::create(cfg).unwrap();
 
         let initial_free = engine.free_slot_marker.load(Ordering::Acquire);
-        let alloc_s = engine.alloc_uniform_slots(0x20).unwrap();
+        let alloc_s = {
+            let _guard = engine.growth_mutex.lock().unwrap();
+            engine.alloc_uniform_slots_locked(0x20).unwrap()
+        };
         assert_eq!(alloc_s, initial_free);
         assert_eq!(engine.free_slot_marker.load(Ordering::Acquire), initial_free + 0x20);
 
         let initial_pages = engine.total_pages().unwrap();
         let initial_slots = engine.total_slots.load(Ordering::Acquire);
-        let huge_alloc = engine.alloc_uniform_slots(initial_slots + 0x40).unwrap();
+        let huge_alloc = {
+            let _guard = engine.growth_mutex.lock().unwrap();
+            engine.alloc_uniform_slots_locked(initial_slots + 0x40).unwrap()
+        };
         assert!(huge_alloc >= initial_free + 0x20);
         assert!(engine.total_pages().unwrap() > initial_pages);
         assert!(engine.total_slots.load(Ordering::Acquire) > initial_slots);
@@ -2408,7 +2587,13 @@ mod tests {
 
         let last_init_slot =
             DATABUF_HEAD_SLOT + ((INITIAL_DATABUF_POOLS - 1) as u32) * (DBUF_SLOTS as u32);
-        let new_slot = engine.expand_databuf(last_init_slot as usize).unwrap();
+        let new_slot = {
+            let _guard = engine.growth_mutex.lock().unwrap();
+            let s = engine.expand_databuf_locked(last_init_slot as usize).unwrap();
+            let new_hop = engine.databuf_slot_to_hop(s).unwrap();
+            engine.active_dbuf_hint.store(new_hop, Ordering::Relaxed);
+            s
+        };
         assert_eq!(engine.locate_databuf_slot(INITIAL_DATABUF_POOLS as u32).unwrap(), new_slot);
         assert_eq!(engine.databuf_slot_to_hop(new_slot).unwrap(), INITIAL_DATABUF_POOLS as u32);
 
@@ -2462,14 +2647,35 @@ mod tests {
 
         let (rel_idx, block_slot, _orig, _mutated) = engine.find_free_adjarr_array(0).unwrap();
         assert_eq!(block_slot, ADJ_ARR_HEAD_SLOT as usize);
+
         let (hop, local) = decompose_relative_array_idx(rel_idx);
         assert_eq!(hop, 0);
         assert_eq!(local, 0);
 
-        let new_block_slot = engine.expand_adjarr(ADJ_ARR_HEAD_SLOT as usize).unwrap();
+        let new_block_slot = {
+            let _guard = engine.growth_mutex.lock().unwrap();
+            engine.expand_adjarr_locked(ADJ_ARR_HEAD_SLOT as usize).unwrap()
+        };
         assert!(new_block_slot > 0);
 
         engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_dbuf_slot_cache_push_and_get() {
+        let cache = DBufSlotCache::new();
+        assert_eq!(cache.get(0), None);
+        assert_eq!(cache.get(0x10), None);
+
+        cache.push(0, 0x40);
+        assert_eq!(cache.get(0), Some(0x40));
+        assert_eq!(cache.get(1), None);
+
+        // Push across chunk boundary (chunk 1 starts at 4096 = 0x1000)
+        cache.push(0x1000, 0x5000);
+        assert_eq!(cache.get(0x1000), Some(0x5000));
+        assert_eq!(cache.get(0), Some(0x40));
+        assert_eq!(cache.get(0x0FFF), None);
     }
 
     #[test]

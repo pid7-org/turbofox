@@ -442,6 +442,8 @@ mod tests {
 
         let slot = block.as_slot();
         assert_eq!(slot.0.len(), 0x40);
+        assert_eq!(block.as_slot_mut().0.len(), 0x40);
         assert_eq!(block.as_slots().len(), 2);
+        assert_eq!(block.as_slots_mut().len(), 2);
     }
 }

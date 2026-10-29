@@ -20,7 +20,7 @@ pub(crate) fn hash_key(key: &[u8]) -> u32 {
 #[inline(always)]
 pub(crate) const fn trie_child_idx(hash: u32, depth: usize) -> usize {
     let raw_slice = (hash >> (4 * (depth % 8))) & 0x0F;
-    if raw_slice >= 15 { 0 } else { raw_slice as usize }
+    if raw_slice >= 0x0F { 0 } else { raw_slice as usize }
 }
 
 #[cfg(test)]
@@ -152,9 +152,7 @@ mod tests {
 
         // Test folding edge cases
         let mock_h15 = 15u32;
-        let mock_h14 = 14u32;
-
         assert_eq!(trie_child_idx(mock_h15, 0), 0);
-        assert_eq!(trie_child_idx(mock_h14, 0), 14);
+        assert_eq!(trie_child_idx(14, 0), 14);
     }
 }

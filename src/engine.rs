@@ -141,10 +141,7 @@ impl Engine {
     /// Ref: `DESIGN.md` §8.1
     pub(crate) fn create(cfg: TurboCfg) -> TurboResult<Self> {
         let page_size = MemMap::<Slot>::page_size()?;
-        let initial_pages = match page_size {
-            PageSize::K4 => 4,
-            PageSize::K16 | PageSize::K64 => 1,
-        };
+        let initial_pages = cfg.resolve_initial_pages(page_size)?;
 
         let dir_path = cfg.resolve_dir();
         let memmap_cfg = MemMapCfg {

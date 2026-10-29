@@ -228,7 +228,7 @@ mod node;
 mod probe;
 mod ticket;
 
-pub use cfg::{SyncMode, TurboCfg};
+pub use cfg::{CapacityHint, SyncMode, TurboCfg};
 pub use common::{MAX_KEY_LEN, MAX_VAL_LEN};
 pub use error::{TurboError, TurboResult};
 pub use list::{TurboList, TurboListIter};

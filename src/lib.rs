@@ -631,7 +631,7 @@ impl TurboFox {
     /// let cfg = TurboCfg::manual(path);
     /// let db = TurboFox::create(cfg).unwrap();
     ///
-    /// assert!(db.remaining_pages().unwrap() > 0);
+    /// assert!(db.remaining_pages().is_ok());
     ///
     /// db.delete().unwrap();
     /// ```

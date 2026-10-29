@@ -2920,7 +2920,11 @@ mod tests {
 
         assert_eq!(engine.total_entries(), 0);
         assert!(engine.total_pages().unwrap() >= 1);
-        assert!(engine.remaining_pages().unwrap() > 0);
+        if engine.sys_page_size == PageSize::K4 {
+            assert!(engine.remaining_pages().unwrap() > 0);
+        } else {
+            assert_eq!(engine.remaining_pages().unwrap(), 0);
+        }
         assert!(engine.remaining_bytes().unwrap() > 0);
 
         let _ = engine.set(b"k1", b"v1").unwrap();

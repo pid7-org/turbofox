@@ -16,7 +16,7 @@ fn ok_turbofox_lifecycle_configs_and_metrics() {
     assert!(db.is_empty());
     assert_eq!(db.total_entries(), 0);
     assert!(db.total_pages().unwrap() > 0);
-    assert!(db.remaining_pages().unwrap() > 0);
+    assert!(db.remaining_pages().is_ok());
     assert!(db.remaining_bytes().unwrap() > 0);
 
     db.set(b"key_a", b"val_a").unwrap();

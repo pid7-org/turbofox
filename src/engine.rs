@@ -248,7 +248,9 @@ impl Engine {
             return Err(TurboError::CorruptedHeader("metadata validation failed"));
         }
 
-        let expected_slots = (file_len / SLOT_SIZE) as u32;
+        let raw_slots = file_len / SLOT_SIZE;
+        let expected_slots =
+            if raw_slots > (0xFFFF_FFFFusize) { 0xFFFF_FFFFu32 } else { raw_slots as u32 };
         if meta.total_slots != expected_slots {
             return Err(TurboError::CorruptedHeader("metadata total_slots divergence"));
         }
@@ -330,13 +332,21 @@ impl Engine {
         let current_free = self.free_slot_marker.load(Ordering::Acquire);
         let total = self.total_slots.load(Ordering::Acquire);
 
-        if current_free.saturating_add(count) > total {
+        let next_free = match current_free.checked_add(count) {
+            Some(next) => next,
+            None => return Err(TurboError::DatabaseFull),
+        };
+
+        if next_free > total {
             self.grow_backing_file(count)?;
         }
 
-        let allocated = current_free;
-        let next_free = current_free + count;
+        let new_total = self.total_slots.load(Ordering::Acquire);
+        if next_free > new_total {
+            return Err(TurboError::DatabaseFull);
+        }
 
+        let allocated = current_free;
         self.free_slot_marker.store(next_free, Ordering::Release);
         let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| {
             m.free_slot_marker = next_free;
@@ -355,9 +365,16 @@ impl Engine {
             PageSize::K16 | PageSize::K64 => 1,
         };
 
-        let needed_pages = (needed_slots as usize * SLOT_SIZE).div_ceil(page_bytes);
+        let needed_bytes = match (needed_slots as usize).checked_mul(SLOT_SIZE) {
+            Some(b) => b,
+            None => return Err(TurboError::DatabaseFull),
+        };
+        let needed_pages = needed_bytes.div_ceil(page_bytes);
         let growth_pages = needed_pages.div_ceil(quantum_pages) * quantum_pages;
-        let added_bytes = growth_pages * page_bytes;
+        let added_bytes = match growth_pages.checked_mul(page_bytes) {
+            Some(b) => b,
+            None => return Err(TurboError::DatabaseFull),
+        };
 
         if curr_len.saturating_add(added_bytes) > MAX_DB_LEN {
             return Err(TurboError::DatabaseFull);
@@ -2572,6 +2589,30 @@ mod tests {
         assert!(huge_alloc >= initial_free + 0x20);
         assert!(engine.total_pages().unwrap() > initial_pages);
         assert!(engine.total_slots.load(Ordering::Acquire) > initial_slots);
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn err_engine_slot_index_exhaustion_on_u32_max() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        // Simulate free_slot_marker reaching u32 boundary
+        engine.free_slot_marker.store(0xFFFF_FFFE, Ordering::Release);
+        {
+            let _guard = engine.growth_mutex.lock().unwrap();
+            let res = engine.alloc_uniform_slots_locked(4);
+            assert!(matches!(res, Err(TurboError::DatabaseFull)));
+        }
+
+        engine.free_slot_marker.store(0xFFFF_FFFF, Ordering::Release);
+        {
+            let _guard = engine.growth_mutex.lock().unwrap();
+            let res = engine.alloc_uniform_slots_locked(1);
+            assert!(matches!(res, Err(TurboError::DatabaseFull)));
+        }
 
         engine.delete().unwrap();
     }

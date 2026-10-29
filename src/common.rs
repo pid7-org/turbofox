@@ -27,7 +27,7 @@ pub(crate) const SLOT_SIZE: usize = 0x40;
 /// Ref: `DESIGN.md` §1
 pub(crate) const SLOT_ALIGN: usize = 8;
 
-/// Ref: `DESIGN.md` §1, §3.5
+/// Ref: `DESIGN.md` §1, §3.4
 pub(crate) const ADJ_ARR_SIZE: usize = 0x80;
 pub(crate) const ADJ_ARR_SLOTS: usize = 2;
 pub(crate) const ADJ_ARRAYS_PER_BLOCK: usize = 6;
@@ -41,7 +41,7 @@ pub(crate) const METADATA_SIZE: usize = 0x40;
 pub(crate) const METADATA_SLOTS: usize = 1;
 pub(crate) const METADATA_SLOT: u32 = 0;
 
-/// Ref: `DESIGN.md` §1, §3.4
+/// Ref: `DESIGN.md` §1, §3.3
 pub(crate) const DBUF_SIZE: usize = 0x0100;
 pub(crate) const DBUF_SLOTS: usize = 4;
 pub(crate) const DBUF_BUF_COUNT: usize = 31;
@@ -115,13 +115,13 @@ pub(crate) const INITIAL_BUCKET_START_SLOT: u32 = 0x04;
 pub(crate) const INITIAL_BUCKET_COUNT: usize = 15;
 
 /// Ref: `DESIGN.md` §2
-pub(crate) const INITIAL_EXTRA_NODES_START_SLOT: u32 = 0x7C;
-pub(crate) const INITIAL_EXTRA_NODES_COUNT: usize = 4;
 pub(crate) const INITIAL_FREE_SLOT_MARKER: u32 = 0x80;
 pub(crate) const INITIAL_FOOTPRINT_SLOTS: u32 = 0x80;
 pub(crate) const INITIAL_FOOTPRINT_BYTES: usize = 0x2000;
 pub(crate) const INITIAL_ADJ_ARR_BLOCKS: usize = 1;
 pub(crate) const INITIAL_DATABUF_POOLS: usize = 15;
+pub(crate) const INITIAL_EXTRA_NODES: usize = 4;
+pub(crate) const EXTRA_NODE_START_SLOT: u32 = 124;
 
 /// Ref: `DESIGN.md` §8.1
 pub(crate) const INITIAL_PAGES_4K: usize = 4;

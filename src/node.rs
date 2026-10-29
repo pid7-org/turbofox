@@ -1,6 +1,6 @@
 use crate::common::{NODE_CHILDREN, NODE_FLAG, NODE_SIZE, NODE_SLOTS, Slot};
 
-/// Ref: `DESIGN.md` §3.1
+/// Ref: `DESIGN.md` §3.2
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Node {

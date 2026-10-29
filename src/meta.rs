@@ -1,6 +1,6 @@
 use crate::common::{
-    INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION, MAGIC, METADATA_SIZE, PAGE_SIZE_4K, PAGE_SIZE_16K,
-    PAGE_SIZE_64K, SLOT_ALIGN, SLOT_SIZE, Slot,
+    EXTRA_NODE_START_SLOT, INITIAL_EXTRA_NODES, INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION, MAGIC,
+    METADATA_SIZE, PAGE_SIZE_4K, PAGE_SIZE_16K, PAGE_SIZE_64K, SLOT_ALIGN, SLOT_SIZE, Slot,
 };
 
 /// Ref: `DESIGN.md` §3.1
@@ -56,8 +56,13 @@ impl Metadata {
             total_slots,
             free_slot_marker: INITIAL_FREE_SLOT_MARKER,
             total_entries: 0,
-            extra_nodes: [124, 125, 126, 127],
-            extra_node_count: 4,
+            extra_nodes: [
+                EXTRA_NODE_START_SLOT,
+                EXTRA_NODE_START_SLOT + 1,
+                EXTRA_NODE_START_SLOT + 2,
+                EXTRA_NODE_START_SLOT + 3,
+            ],
+            extra_node_count: INITIAL_EXTRA_NODES as u32,
             reserved: [0u8; 12],
         }
     }
@@ -75,15 +80,10 @@ impl Metadata {
             && self.total_slots == (self.total_pages * self.page_size) / (SLOT_SIZE as u32)
             && self.free_slot_marker >= INITIAL_FREE_SLOT_MARKER
             && self.free_slot_marker <= self.total_slots
+            && (self.extra_node_count as usize) <= self.extra_nodes.len()
     }
 
-    /// Ref: `DESIGN.md` §5.4
-    #[inline(always)]
-    pub(crate) fn record_growth(&mut self, added_pages: u32) {
-        self.total_pages = self.total_pages.saturating_add(added_pages);
-        self.total_slots = (self.total_pages * self.page_size) / (SLOT_SIZE as u32);
-    }
-
+    /// Ref: `DESIGN.md` §4.4
     #[inline(always)]
     pub(crate) fn pop_extra_node(&mut self) -> Option<u32> {
         if self.extra_node_count > 0 {
@@ -94,13 +94,23 @@ impl Metadata {
         }
     }
 
+    /// Ref: `DESIGN.md` §4.4
     #[inline(always)]
-    pub(crate) fn push_extra_nodes(&mut self, nodes: &[u32]) {
-        for &node in nodes {
-            debug_assert!((self.extra_node_count as usize) < self.extra_nodes.len());
-            self.extra_nodes[self.extra_node_count as usize] = node;
+    pub(crate) fn push_extra_node(&mut self, slot: u32) -> bool {
+        if (self.extra_node_count as usize) < self.extra_nodes.len() {
+            self.extra_nodes[self.extra_node_count as usize] = slot;
             self.extra_node_count += 1;
+            true
+        } else {
+            false
         }
+    }
+
+    /// Ref: `DESIGN.md` §5.4
+    #[inline(always)]
+    pub(crate) fn record_growth(&mut self, added_pages: u32) {
+        self.total_pages = self.total_pages.saturating_add(added_pages);
+        self.total_slots = (self.total_pages * self.page_size) / (SLOT_SIZE as u32);
     }
 
     #[allow(dead_code)]
@@ -151,19 +161,18 @@ mod tests {
     }
 
     #[test]
-    fn ok_metadata_extra_nodes_pop_push() {
+    fn ok_metadata_extra_nodes_stack() {
         let mut meta = Metadata::new(PAGE_SIZE_4K as u32, LAYOUT_VERSION, 4);
         assert_eq!(meta.pop_extra_node(), Some(127));
         assert_eq!(meta.pop_extra_node(), Some(126));
         assert_eq!(meta.pop_extra_node(), Some(125));
         assert_eq!(meta.pop_extra_node(), Some(124));
         assert_eq!(meta.pop_extra_node(), None);
+        assert_eq!(meta.extra_node_count, 0);
 
-        meta.push_extra_nodes(&[200, 201]);
-        assert_eq!(meta.extra_node_count, 2);
-        assert_eq!(meta.pop_extra_node(), Some(201));
+        assert!(meta.push_extra_node(200));
+        assert_eq!(meta.extra_node_count, 1);
         assert_eq!(meta.pop_extra_node(), Some(200));
-        assert_eq!(meta.pop_extra_node(), None);
     }
 
     #[test]
@@ -204,7 +213,7 @@ mod tests {
         assert!(!zero_pages.validate(PAGE_SIZE_4K as u32, LAYOUT_VERSION));
 
         let mut bad_slots = valid;
-        bad_slots.total_slots = 0xFF;
+        bad_slots.total_slots = 0x7F;
         assert!(!bad_slots.validate(PAGE_SIZE_4K as u32, LAYOUT_VERSION));
 
         let mut bad_marker_low = valid;

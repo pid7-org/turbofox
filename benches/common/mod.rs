@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+// life is too short to waste time optimizing benchmarks for windows and mac
 #[cfg(not(target_os = "linux"))]
 compile_error!("benchmarks require target_os = \"linux\"");
 
@@ -16,84 +17,7 @@ pub const HISTOGRAM_MAX_NANOS: u64 = 0x0DF8_4758_0000;
 pub const NANOS_PER_MICRO: f64 = 0x03E8 as f64;
 
 pub const HIT_PREFIX: u16 = 0x0001;
-pub const MISS_PREFIX: u16 = 0xFFFF;
-
-#[derive(Clone, Debug)]
-pub struct BenchConfig {
-    pub ops: usize,
-    pub threads: usize,
-    pub warmup_ops: usize,
-    pub samples: usize,
-    pub scales: Vec<usize>,
-    pub db_path: Option<PathBuf>,
-    pub mem_index: bool,
-}
-
-impl BenchConfig {
-    pub fn parse() -> Self {
-        let mut ops = 0x0001_86A0; // 100,000
-        let mut threads = 0x04;
-        let mut warmup_ops = 0x00;
-        let mut samples = 0x32; // 50 samples
-        let mut scales = vec![0x03E8, 0x2710, 0x0001_86A0]; // 1K, 10K, 100K
-        let mut db_path = None;
-        let mut mem_index = false;
-
-        let args: Vec<String> = std::env::args().collect();
-        let mut idx = 0x01;
-        while idx < args.len() {
-            match args[idx].as_str() {
-                "--mem-index" | "--simd-index" => {
-                    mem_index = true;
-                }
-                "--ops" if idx + 0x01 < args.len() => {
-                    ops = parse_num(&args[idx + 0x01]);
-                    idx += 0x02;
-                    continue;
-                }
-                "--threads" if idx + 0x01 < args.len() => {
-                    threads = parse_num(&args[idx + 0x01]);
-                    idx += 0x02;
-                    continue;
-                }
-                "--warmup" if idx + 0x01 < args.len() => {
-                    warmup_ops = parse_num(&args[idx + 0x01]);
-                    idx += 0x02;
-                    continue;
-                }
-                "--samples" if idx + 0x01 < args.len() => {
-                    samples = parse_num(&args[idx + 0x01]);
-                    idx += 0x02;
-                    continue;
-                }
-                "--scales" if idx + 0x01 < args.len() => {
-                    scales =
-                        args[idx + 0x01].split(',').map(parse_num).filter(|&n| n > 0x00).collect();
-                    idx += 0x02;
-                    continue;
-                }
-                "--db-path" if idx + 0x01 < args.len() => {
-                    db_path = Some(PathBuf::from(&args[idx + 0x01]));
-                    idx += 0x02;
-                    continue;
-                }
-                _ => {}
-            }
-
-            idx += 0x01;
-        }
-
-        BenchConfig { ops, threads, warmup_ops, samples, scales, db_path, mem_index }
-    }
-}
-
-fn parse_num(s: &str) -> usize {
-    if s.starts_with("0x") || s.starts_with("0X") {
-        usize::from_str_radix(&s[0x02..], 0x10).unwrap_or(0x00)
-    } else {
-        s.parse::<usize>().unwrap_or(0x00)
-    }
-}
+const MISS_PREFIX: u16 = 0xFFFF;
 
 pub enum BenchDir {
     Managed(TempDir),
@@ -227,16 +151,19 @@ pub fn pin_to_physical_core(tid: usize) {
         for entry in entries.filter_map(|e| e.ok()) {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
+
             if name_str.starts_with("cpu") && name_str[0x03..].chars().all(|c| c.is_ascii_digit()) {
                 if let Ok(cpu_num) = name_str[0x03..].parse::<usize>() {
                     cpu_dirs.push((cpu_num, entry.path()));
                 }
             }
         }
+
         cpu_dirs.sort_by_key(|(n, _)| *n);
 
         for (cpu_num, path) in cpu_dirs {
             let core_id_path = path.join("topology/core_id");
+
             if let Ok(core_id_str) = fs::read_to_string(core_id_path) {
                 if let Ok(core_id) = core_id_str.trim().parse::<usize>() {
                     if seen_cores.insert(core_id) {
@@ -249,8 +176,10 @@ pub fn pin_to_physical_core(tid: usize) {
 
     if !physical_cpus.is_empty() {
         let target_cpu = physical_cpus[tid % physical_cpus.len()];
+
         if target_cpu < 0x40 {
             let mask = 1u64 << target_cpu;
+
             unsafe extern "C" {
                 fn sched_setaffinity(pid: i32, cpusetsize: usize, mask: *const u64) -> i32;
             }

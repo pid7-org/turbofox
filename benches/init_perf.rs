@@ -1,15 +1,10 @@
-#![cfg(target_os = "linux")]
-
-#[cfg(not(target_os = "linux"))]
-compile_error!("benchmarks require target_os = \"linux\"");
-
 mod common;
 
 use common::{BenchDir, BenchSummary, KEY_SIZE, VAL_SIZE, new_histogram, print_json_summary};
 use std::time::Instant;
 use turbofox::{TurboCfg, TurboFox};
 
-const TOTAL_KEYS: usize = 0x0001_86A0;
+const TOTAL_KEYS: usize = 0x0001_F400;
 const SAMPLES_PER_INTERVAL: usize = 0x10;
 
 fn main() {

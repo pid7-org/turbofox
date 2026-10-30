@@ -133,6 +133,9 @@ for b_id in "${BENCH_ID_ARRAY[@]}"; do
   esac
 done
 
+# Export ops for benchmark binaries
+export TURBOFOX_BENCH_OPS="${OPS}"
+
 # 1. Run Init Benchmark across scaling intervals
 if [[ ${RUN_INIT} -eq 1 ]]; then
   taskset_single=""
@@ -150,7 +153,13 @@ fi
 if [[ ${RUN_KV} -eq 1 ]]; then
   taskset_cmd=""
   if command -v taskset >/dev/null 2>&1; then
-    taskset_cmd="taskset -c 0-1"
+    physical_cpus=$(lscpu -p=CORE,CPU 2>/dev/null | grep -v '^#' | \
+      sort -u -t, -k1,1 | cut -d, -f2 | head -n 2 | paste -sd, -)
+    if [[ $(echo "${physical_cpus}" | tr -cd ',' | wc -c) -ge 1 ]]; then
+      taskset_cmd="taskset -c ${physical_cpus}"
+    else
+      taskset_cmd="taskset -c 0-1"
+    fi
   fi
 
   echo "Running kv_perf [set/get/del 60/40] (threads=1,2, N=256K)..." >&2

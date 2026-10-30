@@ -670,6 +670,19 @@ impl TurboFox {
     /// Combines file-backed pages currently resident in RAM queried via host page tables
     /// with heap memory allocated by internal in-memory caches
     ///
+    /// ## Memory Semantics
+    ///
+    /// Unlike private heap allocations (such as `Vec<u8>` or `String`) which represent committed
+    /// anonymous RSS memory that cannot be dropped without swap or OOM termination, file-backed
+    /// memory represents pages currently held in the operating system unified page cache
+    ///
+    /// The kernel retains autonomous control over this memory, i.e. clean mapped pages can be
+    /// reclaimed, trimmed, or evicted at any moment under system memory pressure without
+    /// process involvement or data loss
+    ///
+    /// Consequently, this metric is a transient point-in-time snapshot of pages resident in
+    /// physical RAM rather than a fixed process allocation or memory commitment
+    ///
     /// ## Errors
     ///
     /// * [`TurboError::Storage`] if inspecting host virtual memory page residency fails

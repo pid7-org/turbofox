@@ -22,7 +22,7 @@ use std::sync::{
 };
 
 pub(crate) struct DBufSlotCache {
-    chunks: [AtomicPtr<[AtomicU32; 0x1000]>; 0x0400],
+    chunks: [AtomicPtr<[AtomicU32; 0x0100]>; 0x0100],
 }
 
 impl std::fmt::Debug for DBufSlotCache {
@@ -35,10 +35,10 @@ unsafe impl Send for DBufSlotCache {}
 unsafe impl Sync for DBufSlotCache {}
 
 impl DBufSlotCache {
-    pub(crate) const CHUNK_SHIFT: usize = 0x0C;
-    pub(crate) const CHUNK_MASK: usize = 0x0FFF;
-    pub(crate) const CHUNK_SIZE: usize = 0x1000;
-    pub(crate) const MAX_CHUNKS: usize = 0x0400;
+    pub(crate) const CHUNK_SHIFT: usize = 0x08;
+    pub(crate) const CHUNK_MASK: usize = 0x00FF;
+    pub(crate) const CHUNK_SIZE: usize = 0x0100;
+    pub(crate) const MAX_CHUNKS: usize = 0x0100;
 
     pub(crate) fn new() -> Self {
         Self { chunks: std::array::from_fn(|_| AtomicPtr::new(std::ptr::null_mut())) }
@@ -74,7 +74,7 @@ impl DBufSlotCache {
             }
 
             let boxed: Box<[AtomicU32]> = v.into_boxed_slice();
-            let boxed_arr: Box<[AtomicU32; 0x1000]> = match boxed.try_into() {
+            let boxed_arr: Box<[AtomicU32; 0x0100]> = match boxed.try_into() {
                 Ok(b) => b,
                 Err(_) => unreachable!(),
             };
@@ -178,7 +178,6 @@ impl Engine {
         };
 
         engine.format_initial_topography(LAYOUT_VERSION, initial_pages as u32)?;
-        engine.dbuf_slot_cache.push(0, DATABUF_HEAD_SLOT);
         engine.sync()?;
 
         Ok(engine)
@@ -279,8 +278,6 @@ impl Engine {
             sys_page_size,
             dbuf_slot_cache: DBufSlotCache::new(),
         };
-
-        engine.dbuf_slot_cache.push(0, DATABUF_HEAD_SLOT);
 
         Ok(engine)
     }
@@ -451,6 +448,10 @@ impl Engine {
 
     /// Ref: `DESIGN.md` §3.3
     pub(crate) fn locate_databuf_slot(&self, pool_hop: u32) -> TurboResult<u32> {
+        if pool_hop == 0 {
+            return Ok(DATABUF_HEAD_SLOT);
+        }
+
         if let Some(slot) = self.dbuf_slot_cache.get(pool_hop) {
             return Ok(slot);
         }
@@ -2733,11 +2734,11 @@ mod tests {
         assert_eq!(cache.get(0), Some(0x40));
         assert_eq!(cache.get(1), None);
 
-        // Push across chunk boundary (chunk 1 starts at 4096 = 0x1000)
-        cache.push(0x1000, 0x5000);
-        assert_eq!(cache.get(0x1000), Some(0x5000));
+        // Push across chunk boundary (chunk 1 starts at 256 = 0x0100)
+        cache.push(0x0100, 0x5000);
+        assert_eq!(cache.get(0x0100), Some(0x5000));
         assert_eq!(cache.get(0), Some(0x40));
-        assert_eq!(cache.get(0x0FFF), None);
+        assert_eq!(cache.get(0x00FF), None);
     }
 
     #[test]
@@ -2750,7 +2751,7 @@ mod tests {
         let chunk_size = core::mem::size_of::<[AtomicU32; DBufSlotCache::CHUNK_SIZE]>();
         assert_eq!(cache.memory_bytes(), base_size + chunk_size);
 
-        cache.push(0x1000, 0x5000);
+        cache.push(0x0100, 0x5000);
         assert_eq!(cache.memory_bytes(), base_size + (chunk_size * 2));
     }
 

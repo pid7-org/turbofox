@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" width="1000" height="500" style="background:#fff; font-family:ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace;">
 <rect width="1000" height="500" rx="12" fill="#fff" stroke="#d0d7de" stroke-width="1"/>
 <text x="32" y="34" fill="#24292f" font-size="16" font-weight="bold">TurboFox Resource Footprint Scaling</text>
-<text x="32" y="52" fill="#57606a" font-size="11">Resident memory (cached vs uncached) and disk footprint across intervals</text>
-<line x1="550" y1="34" x2="570" y2="34" stroke="#8839ef" stroke-width="2.5"/>
-<circle cx="560" cy="34" r="4.0" fill="#8839ef"/>
-<text x="575" y="38" fill="#24292f" font-size="10">Mem (Cached)</text>
-<line x1="686" y1="34" x2="706" y2="34" stroke="#df8e1d" stroke-width="2.5" stroke-dasharray="4,2"/>
-<circle cx="696" cy="34" r="4.0" fill="#df8e1d"/>
-<text x="711" y="38" fill="#24292f" font-size="10">Mem (Uncached)</text>
-<line x1="826" y1="34" x2="846" y2="34" stroke="#179299" stroke-width="2.5" stroke-dasharray="2,2"/>
-<circle cx="836" cy="34" r="4.0" fill="#179299"/>
-<text x="851" y="38" fill="#24292f" font-size="10">Disk Footprint</text>
+<text x="32" y="52" fill="#57606a" font-size="11">Resident memory and disk footprint across intervals (lookup_cache enabled vs disabled)</text>
+<line x1="522" y1="34" x2="542" y2="34" stroke="#8839ef" stroke-width="2.5"/>
+<circle cx="532" cy="34" r="4.0" fill="#8839ef"/>
+<text x="547" y="38" fill="#24292f" font-size="10">Mem (Enabled)</text>
+<line x1="660" y1="34" x2="680" y2="34" stroke="#df8e1d" stroke-width="2.5" stroke-dasharray="4,2"/>
+<circle cx="670" cy="34" r="4.0" fill="#df8e1d"/>
+<text x="685" y="38" fill="#24292f" font-size="10">Mem (Disabled)</text>
+<line x1="800" y1="34" x2="820" y2="34" stroke="#179299" stroke-width="2.5" stroke-dasharray="2,2"/>
+<circle cx="810" cy="34" r="4.0" fill="#179299"/>
+<text x="825" y="38" fill="#24292f" font-size="10">Disk Footprint</text>
 <rect x="80" y="75" width="880" height="360" fill="#f8f9fa" rx="6" stroke="#e1e4e8" stroke-width="1"/>
 <line x1="80" y1="413.0" x2="960" y2="413.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
 <text x="68" y="417.0" fill="#57606a" font-size="10" text-anchor="end">0 B</text>
@@ -45,73 +45,73 @@
 <line x1="920.0" y1="75" x2="920.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
 <text x="920.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=10K</text>
 <text x="520.0" y="473" fill="#57606a" font-size="10" text-anchor="middle">Scaling Intervals (Keys Written)</text>
-<polyline points="120.0,410.4 200.0,392.4 280.0,383.9 360.0,364.9 440.0,341.7 520.0,286.7 600.0,225.4 680.0,185.2 760.0,156.7 840.0,145.1 920.0,140.9" fill="none" stroke="#8839ef" stroke-width="2.5"/>
-<polyline points="120.0,410.9 200.0,392.9 280.0,384.5 360.0,365.4 440.0,342.2 520.0,287.2 600.0,225.9 680.0,185.8 760.0,157.2 840.0,145.6 920.0,141.4" fill="none" stroke="#df8e1d" stroke-width="2.5" stroke-dasharray="4,2"/>
+<polyline points="114.0,410.4 194.0,392.4 274.0,383.9 354.0,364.9 434.0,341.7 514.0,286.7 594.0,225.4 674.0,185.2 754.0,156.7 834.0,145.1 914.0,140.9" fill="none" stroke="#8839ef" stroke-width="2.5"/>
+<polyline points="126.0,410.9 206.0,392.9 286.0,384.5 366.0,365.4 446.0,342.2 526.0,287.2 606.0,225.9 686.0,185.8 766.0,157.2 846.0,145.6 926.0,141.4" fill="none" stroke="#df8e1d" stroke-width="2.5" stroke-dasharray="4,2"/>
 <polyline points="120.0,408.8 200.0,391.9 280.0,383.4 360.0,362.3 440.0,341.1 520.0,286.2 600.0,222.8 680.0,184.7 760.0,155.1 840.0,142.4 920.0,138.2" fill="none" stroke="#179299" stroke-width="2.5" stroke-dasharray="2,2"/>
-<circle cx="120.0" cy="410.4" r="4.0" fill="#8839ef"/>
-<text x="120.0" y="402.4" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">10KB</text>
-<circle cx="120.0" cy="410.9" r="4.0" fill="#df8e1d"/>
-<text x="120.0" y="424.9" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">8KB</text>
+<circle cx="114.0" cy="410.4" r="4.0" fill="#8839ef"/>
+<circle cx="126.0" cy="410.9" r="4.0" fill="#df8e1d"/>
 <circle cx="120.0" cy="408.8" r="4.0" fill="#179299"/>
-<text x="120.0" y="423.8" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">16KB</text>
-<circle cx="200.0" cy="392.4" r="4.0" fill="#8839ef"/>
-<text x="200.0" y="384.4" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">78KB</text>
-<circle cx="200.0" cy="392.9" r="4.0" fill="#df8e1d"/>
-<text x="200.0" y="406.9" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">76KB</text>
+<text x="120.0" y="399.8" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">16KB</text>
+<text x="112.0" y="425.4" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">10KB</text>
+<text x="128.0" y="425.9" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">8KB</text>
+<circle cx="194.0" cy="392.4" r="4.0" fill="#8839ef"/>
+<circle cx="206.0" cy="392.9" r="4.0" fill="#df8e1d"/>
 <circle cx="200.0" cy="391.9" r="4.0" fill="#179299"/>
-<text x="200.0" y="406.9" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">80KB</text>
-<circle cx="280.0" cy="383.9" r="4.0" fill="#8839ef"/>
-<text x="280.0" y="375.9" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">110KB</text>
-<circle cx="280.0" cy="384.5" r="4.0" fill="#df8e1d"/>
-<text x="280.0" y="398.5" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">108KB</text>
+<text x="200.0" y="382.9" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">80KB</text>
+<text x="192.0" y="407.4" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">78KB</text>
+<text x="208.0" y="407.9" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">76KB</text>
+<circle cx="274.0" cy="383.9" r="4.0" fill="#8839ef"/>
+<circle cx="286.0" cy="384.5" r="4.0" fill="#df8e1d"/>
 <circle cx="280.0" cy="383.4" r="4.0" fill="#179299"/>
-<text x="280.0" y="398.4" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">112KB</text>
-<circle cx="360.0" cy="364.9" r="4.0" fill="#8839ef"/>
-<text x="360.0" y="356.9" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">182KB</text>
-<circle cx="360.0" cy="365.4" r="4.0" fill="#df8e1d"/>
-<text x="360.0" y="379.4" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">180KB</text>
+<text x="280.0" y="374.4" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">112KB</text>
+<text x="272.0" y="398.9" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">110KB</text>
+<text x="288.0" y="399.5" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">108KB</text>
+<circle cx="354.0" cy="364.9" r="4.0" fill="#8839ef"/>
+<circle cx="366.0" cy="365.4" r="4.0" fill="#df8e1d"/>
 <circle cx="360.0" cy="362.3" r="4.0" fill="#179299"/>
-<text x="360.0" y="377.3" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">192KB</text>
-<circle cx="440.0" cy="341.7" r="4.0" fill="#8839ef"/>
-<text x="440.0" y="333.7" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">270KB</text>
-<circle cx="440.0" cy="342.2" r="4.0" fill="#df8e1d"/>
-<text x="440.0" y="356.2" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">268KB</text>
+<text x="360.0" y="353.3" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">192KB</text>
+<text x="352.0" y="379.9" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">182KB</text>
+<text x="368.0" y="380.4" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">180KB</text>
+<circle cx="434.0" cy="341.7" r="4.0" fill="#8839ef"/>
+<circle cx="446.0" cy="342.2" r="4.0" fill="#df8e1d"/>
 <circle cx="440.0" cy="341.1" r="4.0" fill="#179299"/>
-<text x="440.0" y="356.1" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">272KB</text>
-<circle cx="520.0" cy="286.7" r="4.0" fill="#8839ef"/>
-<text x="520.0" y="278.7" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">478KB</text>
-<circle cx="520.0" cy="287.2" r="4.0" fill="#df8e1d"/>
-<text x="520.0" y="301.2" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">476KB</text>
+<text x="440.0" y="332.1" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">272KB</text>
+<text x="432.0" y="356.7" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">270KB</text>
+<text x="448.0" y="357.2" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">268KB</text>
+<circle cx="514.0" cy="286.7" r="4.0" fill="#8839ef"/>
+<circle cx="526.0" cy="287.2" r="4.0" fill="#df8e1d"/>
 <circle cx="520.0" cy="286.2" r="4.0" fill="#179299"/>
-<text x="520.0" y="301.2" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">480KB</text>
-<circle cx="600.0" cy="225.4" r="4.0" fill="#8839ef"/>
-<text x="600.0" y="217.4" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">710KB</text>
-<circle cx="600.0" cy="225.9" r="4.0" fill="#df8e1d"/>
-<text x="600.0" y="239.9" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">708KB</text>
+<text x="520.0" y="277.2" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">480KB</text>
+<text x="512.0" y="301.7" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">478KB</text>
+<text x="528.0" y="302.2" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">476KB</text>
+<circle cx="594.0" cy="225.4" r="4.0" fill="#8839ef"/>
+<circle cx="606.0" cy="225.9" r="4.0" fill="#df8e1d"/>
 <circle cx="600.0" cy="222.8" r="4.0" fill="#179299"/>
-<text x="600.0" y="237.8" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">720KB</text>
-<circle cx="680.0" cy="185.2" r="4.0" fill="#8839ef"/>
-<text x="680.0" y="177.2" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">862KB</text>
-<circle cx="680.0" cy="185.8" r="4.0" fill="#df8e1d"/>
-<text x="680.0" y="199.8" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">860KB</text>
+<text x="600.0" y="213.8" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">720KB</text>
+<text x="592.0" y="240.4" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">710KB</text>
+<text x="608.0" y="240.9" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">708KB</text>
+<circle cx="674.0" cy="185.2" r="4.0" fill="#8839ef"/>
+<circle cx="686.0" cy="185.8" r="4.0" fill="#df8e1d"/>
 <circle cx="680.0" cy="184.7" r="4.0" fill="#179299"/>
-<text x="680.0" y="199.7" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">864KB</text>
-<circle cx="760.0" cy="156.7" r="4.0" fill="#8839ef"/>
-<text x="760.0" y="148.7" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">970KB</text>
-<circle cx="760.0" cy="157.2" r="4.0" fill="#df8e1d"/>
-<text x="760.0" y="171.2" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">968KB</text>
+<text x="680.0" y="175.7" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">864KB</text>
+<text x="672.0" y="200.2" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">862KB</text>
+<text x="688.0" y="200.8" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">860KB</text>
+<circle cx="754.0" cy="156.7" r="4.0" fill="#8839ef"/>
+<circle cx="766.0" cy="157.2" r="4.0" fill="#df8e1d"/>
 <circle cx="760.0" cy="155.1" r="4.0" fill="#179299"/>
-<text x="760.0" y="170.1" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">976KB</text>
-<circle cx="840.0" cy="145.1" r="4.0" fill="#8839ef"/>
-<text x="840.0" y="137.1" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">1014KB</text>
-<circle cx="840.0" cy="145.6" r="4.0" fill="#df8e1d"/>
-<text x="840.0" y="159.6" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">1012KB</text>
+<text x="760.0" y="146.1" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">976KB</text>
+<text x="752.0" y="171.7" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">970KB</text>
+<text x="768.0" y="172.2" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">968KB</text>
+<circle cx="834.0" cy="145.1" r="4.0" fill="#8839ef"/>
+<circle cx="846.0" cy="145.6" r="4.0" fill="#df8e1d"/>
 <circle cx="840.0" cy="142.4" r="4.0" fill="#179299"/>
-<text x="840.0" y="157.4" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">1.00MB</text>
-<circle cx="920.0" cy="140.9" r="4.0" fill="#8839ef"/>
-<text x="920.0" y="132.9" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">1.01MB</text>
-<circle cx="920.0" cy="141.4" r="4.0" fill="#df8e1d"/>
-<text x="920.0" y="155.4" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="middle">1.00MB</text>
+<text x="840.0" y="133.4" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">1.00MB</text>
+<text x="832.0" y="160.1" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">1014KB</text>
+<text x="848.0" y="160.6" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">1012KB</text>
+<circle cx="914.0" cy="140.9" r="4.0" fill="#8839ef"/>
+<circle cx="926.0" cy="141.4" r="4.0" fill="#df8e1d"/>
 <circle cx="920.0" cy="138.2" r="4.0" fill="#179299"/>
-<text x="920.0" y="153.2" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">1.02MB</text>
+<text x="920.0" y="129.2" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">1.02MB</text>
+<text x="912.0" y="155.9" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="end">1.01MB</text>
+<text x="928.0" y="156.4" fill="#df8e1d" font-size="9" font-weight="bold" text-anchor="start">1.00MB</text>
 </svg>

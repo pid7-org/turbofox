@@ -2454,6 +2454,12 @@ impl Engine {
     }
 
     /// Ref: `DESIGN.md` §8.1
+    #[inline]
+    pub(crate) fn resident_bytes_on_disk(&self) -> usize {
+        self.mmap.length()
+    }
+
+    /// Ref: `DESIGN.md` §8.1
     pub(crate) fn sync(&self) -> TurboResult<()> {
         let entries = self.total_entries.load(Ordering::Acquire);
         let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| {
@@ -2995,6 +3001,12 @@ mod tests {
         let resident_bytes = engine.resident_bytes_in_memory().unwrap();
         assert!(resident_bytes >= engine.sys_page_size.as_usize());
         assert!(resident_bytes >= core::mem::size_of::<DBufSlotCache>());
+        let resident_disk = engine.resident_bytes_on_disk();
+        assert!(resident_disk >= engine.sys_page_size.as_usize());
+        assert_eq!(
+            resident_disk,
+            engine.total_pages().unwrap() as usize * engine.sys_page_size.as_usize()
+        );
 
         let _ = engine.set(b"k1", b"v1").unwrap();
         let _ = engine.set(b"k2", b"v2").unwrap();

@@ -693,6 +693,27 @@ impl TurboFox {
         self.engine.resident_bytes_in_memory()
     }
 
+    /// Return the active file length in bytes allocated on persistent disk storage
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::manual(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// assert!(db.resident_bytes_on_disk() > 0);
+    ///
+    /// db.delete().unwrap();
+    /// ```
+    #[inline]
+    pub fn resident_bytes_on_disk(&self) -> usize {
+        self.engine.resident_bytes_on_disk()
+    }
+
     /// Perform an explicit flush for crash safe durability
     ///
     /// ## Errors

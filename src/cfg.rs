@@ -207,6 +207,49 @@ pub enum SyncMode {
     Manual,
 }
 
+/// Operating policy governing physical page eviction from memory mapping
+///
+/// ## Semantics
+///
+/// Controls the granularity of page shedding when invoking [`crate::TurboFox::evict`]; while
+/// in-memory structures such as lookup caches are purged alongside OS page cache eviction
+///
+/// ## Pending [`crate::TurboTicket`]
+///
+/// Dirty memory mapped pages are automatically flushed to persistent storage before kernel
+/// eviction hints are dispatched, guaranteeing crash consistency and advancing durable write
+/// epochs so all the pending tickets become durable
+///
+/// Subsequent calls to [`crate::TurboFox::sync`] while pages remain cold or evicted succeed
+/// as a zero-cost no-op w/o faulting pages back into physical memory
+///
+/// ## Errors
+///
+/// * [`crate::TurboError::Storage`] any underlying storage or I/O failures are returned if occurred
+///   during the pre-eviction sync (which is made as best-effort call)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvictionMode {
+    /// Sheds data and index buffers while retaining initial header topography in physical RAM
+    ///
+    /// Preserves the metadata and root node pages hot in cache to prevent cold-start page faults
+    /// during subsequent read operations
+    ///
+    /// Leaves [`crate::TurboFox::resident_bytes_in_memory`] at 8 KiB (`0x2000` bytes, 2 pages) on
+    /// standard 4 KiB systems, 16 KiB (`0x4000` bytes, 1 page) on macOS Apple Silicon (AArch64),
+    /// or 64 KiB (`0x0001_0000` bytes, 1 page) on 64 KiB Linux kernel page configurations
+    PreserveHeaders,
+
+    /// Evicts all mapped database pages across the entire backing file from physical memory
+    ///
+    /// Advises the kernel to drop all process page table entries (PTEs) and purge clean pages
+    /// from the operating system unified page cache;
+    ///
+    /// Reduces [`crate::TurboFox::resident_bytes_in_memory`] to 0 bytes (or base cache header
+    /// allocation if lookup cache is enabled); subsequent operations transparently fault required
+    /// pages back into RAM on demand
+    PurgeAll,
+}
+
 /// Configuration parameters for initializing or opening a [`crate::TurboFox`] instance
 ///
 /// Path must point strictly to a target directory and not a file; engine backing files are

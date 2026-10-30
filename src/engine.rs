@@ -141,7 +141,7 @@ pub(crate) struct Engine {
     free_slot_marker: AtomicU32,
     active_dbuf_hint: AtomicU32,
     sys_page_size: PageSize,
-    dbuf_slot_cache: DBufSlotCache,
+    dbuf_slot_cache: Option<DBufSlotCache>,
 }
 
 impl Engine {
@@ -174,7 +174,7 @@ impl Engine {
             free_slot_marker: AtomicU32::new(INITIAL_FREE_SLOT_MARKER),
             active_dbuf_hint: AtomicU32::new(0),
             sys_page_size: page_size,
-            dbuf_slot_cache: DBufSlotCache::new(),
+            dbuf_slot_cache: if cfg.lookup_cache { Some(DBufSlotCache::new()) } else { None },
         };
 
         engine.format_initial_topography(LAYOUT_VERSION, initial_pages as u32)?;
@@ -276,7 +276,7 @@ impl Engine {
             free_slot_marker: AtomicU32::new(meta.free_slot_marker),
             active_dbuf_hint: AtomicU32::new(0),
             sys_page_size,
-            dbuf_slot_cache: DBufSlotCache::new(),
+            dbuf_slot_cache: if cfg.lookup_cache { Some(DBufSlotCache::new()) } else { None },
         };
 
         Ok(engine)
@@ -414,10 +414,12 @@ impl Engine {
         })?;
 
         let tail_hop = self.databuf_slot_to_hop(tail_slot as u32)?;
-        for i in 0..pool_count {
-            let s = new_slot + (i * DBUF_SLOTS) as u32;
-            let hop = tail_hop + 1 + (i as u32);
-            self.dbuf_slot_cache.push(hop, s);
+        if let Some(ref cache) = self.dbuf_slot_cache {
+            for i in 0..pool_count {
+                let s = new_slot + (i * DBUF_SLOTS) as u32;
+                let hop = tail_hop + 1 + (i as u32);
+                cache.push(hop, s);
+            }
         }
 
         Ok(new_slot)
@@ -452,17 +454,21 @@ impl Engine {
             return Ok(DATABUF_HEAD_SLOT);
         }
 
-        if let Some(slot) = self.dbuf_slot_cache.get(pool_hop) {
-            return Ok(slot);
+        if let Some(ref cache) = self.dbuf_slot_cache {
+            if let Some(slot) = cache.get(pool_hop) {
+                return Ok(slot);
+            }
         }
 
         let mut start_hop = 0u32;
         let mut curr = DATABUF_HEAD_SLOT;
-        for h in (1..pool_hop).rev() {
-            if let Some(slot) = self.dbuf_slot_cache.get(h) {
-                start_hop = h;
-                curr = slot;
-                break;
+        if let Some(ref cache) = self.dbuf_slot_cache {
+            for h in (1..pool_hop).rev() {
+                if let Some(slot) = cache.get(h) {
+                    start_hop = h;
+                    curr = slot;
+                    break;
+                }
             }
         }
 
@@ -475,7 +481,9 @@ impl Engine {
             }
 
             curr = next;
-            self.dbuf_slot_cache.push(h, curr);
+            if let Some(ref cache) = self.dbuf_slot_cache {
+                cache.push(h, curr);
+            }
         }
 
         Ok(curr)
@@ -2450,7 +2458,7 @@ impl Engine {
     /// Ref: `DESIGN.md` §8.1
     pub(crate) fn resident_bytes_in_memory(&self) -> TurboResult<usize> {
         let mmap_bytes = self.mmap.resident_bytes()?;
-        let cache_bytes = self.dbuf_slot_cache.memory_bytes();
+        let cache_bytes = self.dbuf_slot_cache.as_ref().map_or(0, |c| c.memory_bytes());
         Ok(mmap_bytes.saturating_add(cache_bytes))
     }
 
@@ -3001,7 +3009,15 @@ mod tests {
         assert!(engine.remaining_bytes().unwrap() > 0);
         let resident_bytes = engine.resident_bytes_in_memory().unwrap();
         assert!(resident_bytes >= engine.sys_page_size.as_usize());
-        assert!(resident_bytes >= core::mem::size_of::<DBufSlotCache>());
+        assert_eq!(engine.dbuf_slot_cache.as_ref().map_or(0, |c| c.memory_bytes()), 0);
+
+        let cached_dir = tempdir().unwrap();
+        let cached_cfg = TurboCfg::manual(cached_dir.path()).with_lookup_cache(true);
+        let cached_engine = Engine::create(cached_cfg).unwrap();
+        let cached_resident = cached_engine.resident_bytes_in_memory().unwrap();
+        assert!(cached_resident >= core::mem::size_of::<DBufSlotCache>());
+        cached_engine.delete().unwrap();
+
         let resident_disk = engine.resident_bytes_on_disk();
         assert!(resident_disk >= engine.sys_page_size.as_usize());
         assert_eq!(

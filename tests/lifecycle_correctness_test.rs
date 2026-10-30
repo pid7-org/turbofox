@@ -1,5 +1,5 @@
 use tempfile::tempdir;
-use turbofox::{TurboCfg, TurboError, TurboFox};
+use turbofox::{EvictionMode, TurboCfg, TurboError, TurboFox};
 
 /// Ref: `DESIGN.md` §3.1, §7.1, §7.2, §7.3
 #[test]
@@ -319,5 +319,73 @@ fn ok_lifecycle_open_open_semantics() {
 
             db.delete().unwrap();
         }
+    }
+}
+
+/// Ref: `DESIGN.md` §3.1, §8.1
+#[test]
+fn ok_lifecycle_page_eviction_modes_correctness() {
+    for &lookup_cache in &[false, true] {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path()).with_lookup_cache(lookup_cache);
+        let db = TurboFox::create(cfg.clone()).unwrap();
+
+        let n = 0x0200;
+
+        // Step 1: Ingest entries to populate memory pages and cache
+        for i in 0..n {
+            let k = format!("evict_key_{:04x}", i);
+            let v = format!("evict_payload_{:04x}_{}", i, "Z".repeat(0x30));
+            db.set(k.as_bytes(), v.as_bytes()).unwrap();
+        }
+
+        db.sync().unwrap();
+        let pre_evict_resident = db.resident_bytes_in_memory().unwrap();
+        assert!(pre_evict_resident > 0);
+
+        // Step 2: Evict data pages while preserving headers
+        db.evict(EvictionMode::PreserveHeaders).unwrap();
+
+        // Verify all keys remain intact and readable through demand paging
+        for i in 0..n {
+            let k = format!("evict_key_{:04x}", i);
+            let expected = format!("evict_payload_{:04x}_{}", i, "Z".repeat(0x30));
+            assert_eq!(db.get(k.as_bytes()).unwrap(), Some(expected.into_bytes()));
+        }
+
+        // Step 3: Mutate existing keys and insert new keys
+        for i in 0..(n / 2) {
+            let k = format!("evict_key_{:04x}", i);
+            let updated = format!("updated_after_preserve_{:04x}", i);
+            db.set(k.as_bytes(), updated.as_bytes()).unwrap();
+        }
+
+        let extra_key = b"evict_extra_key";
+        db.set(extra_key, b"extra_value").unwrap();
+        assert_eq!(db.get(extra_key).unwrap(), Some(b"extra_value".to_vec()));
+
+        // Step 4: Evict all pages across the entire DB
+        db.evict(EvictionMode::PurgeAll).unwrap();
+
+        // Step 5: Verify mutated and original keys post PurgeAll
+        for i in 0..(n / 2) {
+            let k = format!("evict_key_{:04x}", i);
+            let expected = format!("updated_after_preserve_{:04x}", i);
+            assert_eq!(db.get(k.as_bytes()).unwrap(), Some(expected.into_bytes()));
+        }
+
+        for i in (n / 2)..n {
+            let k = format!("evict_key_{:04x}", i);
+            let expected = format!("evict_payload_{:04x}_{}", i, "Z".repeat(0x30));
+            assert_eq!(db.get(k.as_bytes()).unwrap(), Some(expected.into_bytes()));
+        }
+
+        assert_eq!(db.get(extra_key).unwrap(), Some(b"extra_value".to_vec()));
+
+        // Step 6: Verify deletion works seamlessly after eviction
+        assert!(db.del(extra_key).unwrap());
+        assert_eq!(db.get(extra_key).unwrap(), None);
+
+        db.delete().unwrap();
     }
 }

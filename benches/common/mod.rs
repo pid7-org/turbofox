@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 
+#[cfg(not(target_os = "linux"))]
+compile_error!("benchmarks require target_os = \"linux\"");
+
 use hdrhistogram::Histogram;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -213,6 +216,49 @@ pub fn generate_del_60_40_keys(thread_id: usize, count: usize) -> (Vec<[u8; KEY_
     }
 
     (keys, hit_target)
+}
+
+pub fn pin_to_physical_core(tid: usize) {
+    let mut physical_cpus = Vec::new();
+    let mut seen_cores = std::collections::HashSet::new();
+
+    if let Ok(entries) = fs::read_dir("/sys/devices/system/cpu") {
+        let mut cpu_dirs = Vec::new();
+        for entry in entries.filter_map(|e| e.ok()) {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with("cpu") && name_str[0x03..].chars().all(|c| c.is_ascii_digit()) {
+                if let Ok(cpu_num) = name_str[0x03..].parse::<usize>() {
+                    cpu_dirs.push((cpu_num, entry.path()));
+                }
+            }
+        }
+        cpu_dirs.sort_by_key(|(n, _)| *n);
+
+        for (cpu_num, path) in cpu_dirs {
+            let core_id_path = path.join("topology/core_id");
+            if let Ok(core_id_str) = fs::read_to_string(core_id_path) {
+                if let Ok(core_id) = core_id_str.trim().parse::<usize>() {
+                    if seen_cores.insert(core_id) {
+                        physical_cpus.push(cpu_num);
+                    }
+                }
+            }
+        }
+    }
+
+    if !physical_cpus.is_empty() {
+        let target_cpu = physical_cpus[tid % physical_cpus.len()];
+        if target_cpu < 0x40 {
+            let mask = 1u64 << target_cpu;
+            unsafe extern "C" {
+                fn sched_setaffinity(pid: i32, cpusetsize: usize, mask: *const u64) -> i32;
+            }
+            unsafe {
+                let _ = sched_setaffinity(0x00, std::mem::size_of::<u64>(), &mask);
+            }
+        }
+    }
 }
 
 pub fn new_histogram() -> Histogram<u64> {

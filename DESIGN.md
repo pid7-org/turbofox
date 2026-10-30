@@ -219,13 +219,13 @@ chain requires $O(\text{pool\_hop})$ sequential disk/memory loads;
 an in-memory append-only chunked array provides wait-free $O(1)$ resolution:
 
 ```rs
-const CHUNK_SHIFT: usize = 0x0C; // 4096 entries per chunk (16 KiB chunk)
+const CHUNK_SHIFT: usize = 0x08; // 256 entries per chunk (1 KiB chunk)
 const CHUNK_SIZE: usize = 1 << CHUNK_SHIFT;
 const CHUNK_MASK: usize = CHUNK_SIZE - 1;
-const MAX_CHUNKS: usize = 0x0400; // 1024 chunks covers 4,194,304 DBuf pools (1 GiB DB)
+const MAX_CHUNKS: usize = 0x0100; // 256 chunks covers 65,536 DBuf pools (16 MiB DB)
 
 pub(crate) struct DBufSlotCache {
-    chunks: [AtomicPtr<u32>; MAX_CHUNKS],
+    chunks: [AtomicPtr<[AtomicU32; CHUNK_SIZE]>; MAX_CHUNKS],
 }
 ```
 
@@ -234,13 +234,15 @@ pub(crate) struct DBufSlotCache {
   `chunk_idx = (hop as usize) >> CHUNK_SHIFT;`
   `offset = (hop as usize) & CHUNK_MASK;`
   Loads chunk pointer with `Ordering::Acquire`; reads slot with zero locks or refcounts;
-  wait-free execution prevents cache-line bouncing across concurrent transactions
+  wait-free execution prevents cache-line bouncing across concurrent transactions;
+  pool 0 resolves immediately to `DATABUF_HEAD_SLOT` via constant fast-path
 - **Write Path (Growth)**:
-  Under `growth_mutex`, when crossing chunk boundary, allocates 16 KiB boxed chunk;
+  Under `growth_mutex`, when crossing chunk boundary, allocates 1 KiB boxed chunk;
   publishes pointer with `Ordering::Release`; writes slot indices with monotonic stores
 - **Footprint**:
-  8 KiB outer pointer array (`1024 * 8 B`); allocates 16 KiB lazily per 4096 DBuf pools;
-  consumes exactly 4 B per DBuf pool (1.56% of raw DBuf storage)
+  2 KiB outer pointer array (`256 * 8 B`); allocates 1 KiB lazily per 256 DBuf pools;
+  consumes exactly 4 B per DBuf pool (1.56% of raw DBuf storage);
+  pool 0 fast-path avoids allocating chunk 0 at initialization
 
 ### 3.5 Adjacent Array Block (128 Bytes, 2 Slots, `align(8)`)
 
@@ -585,7 +587,7 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 64]`):
    - Slots 64..123: 15x DBuf pools on Page 1 (chained `64 -> 68 -> ... -> 120 -> 0`)
    - Slots 124..127: 4x Pre-allocated spare Nodes (`flag = 0x0`, zeroed child indices)
 6. Flush initial state via `mmap.sync()?` to guarantee disk persistence
-7. Anchor pool 0 (`DATABUF_HEAD_SLOT`) in in-memory `DBufSlotCache`;
+7. Pool 0 resolves directly to `DATABUF_HEAD_SLOT`;
    subsequent hops resolve, validate on disk, and cache dynamically on demand
 8. Construct and return `TurboFox` engine handle
 
@@ -604,7 +606,7 @@ and page validation to `MemMap<Slot>` (`Slot: [u8; 64]`):
    - Assert `meta.total_slots == (mmap.length() / 64) as u32`; error if corrupt
    - Assert `meta.total_pages == (mmap.length() / sys_page_size.as_usize()) as u32`
    - Assert `meta.free_slot_marker <= meta.total_slots`; error if corrupt
-5. Anchor pool 0 (`DATABUF_HEAD_SLOT`) in in-memory `DBufSlotCache`;
+5. Pool 0 resolves directly to `DATABUF_HEAD_SLOT`;
    subsequent hops resolve, validate on disk for broken chain detection, and cache dynamically
 6. Construct and return `TurboFox` engine handle
 

@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" width="1000" height="500" style="background:#fff; font-family:ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace;">
+<rect width="1000" height="500" rx="12" fill="#fff" stroke="#d0d7de" stroke-width="1"/>
+<text x="32" y="34" fill="#24292f" font-size="16" font-weight="bold">TurboFox Resource Footprint Scaling</text>
+<text x="32" y="52" fill="#57606a" font-size="11">Resident memory (in_mem_bytes) and disk footprint (db_size_bytes) across intervals</text>
+<line x1="660" y1="34" x2="684" y2="34" stroke="#8839ef" stroke-width="2.5"/>
+<circle cx="672" cy="34" r="4.5" fill="#8839ef"/>
+<text x="690" y="38" fill="#24292f" font-size="11">Resident Memory</text>
+<line x1="820" y1="34" x2="844" y2="34" stroke="#179299" stroke-width="2.5" stroke-dasharray="4,2"/>
+<circle cx="832" cy="34" r="4.5" fill="#179299"/>
+<text x="850" y="38" fill="#24292f" font-size="11">Disk Footprint</text>
+<rect x="80" y="75" width="880" height="360" fill="#f8f9fa" rx="6" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="80" y1="413.0" x2="960" y2="413.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="68" y="417.0" fill="#57606a" font-size="10" text-anchor="end">0 B</text>
+<line x1="80" y1="334.0" x2="960" y2="334.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="68" y="338.0" fill="#57606a" font-size="10" text-anchor="end">302KB</text>
+<line x1="80" y1="255.0" x2="960" y2="255.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="68" y="259.0" fill="#57606a" font-size="10" text-anchor="end">605KB</text>
+<line x1="80" y1="176.0" x2="960" y2="176.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="68" y="180.0" fill="#57606a" font-size="10" text-anchor="end">907KB</text>
+<line x1="80" y1="97.0" x2="960" y2="97.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="68" y="101.0" fill="#57606a" font-size="10" text-anchor="end">1.18MB</text>
+<line x1="120.0" y1="75" x2="120.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="120.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=0</text>
+<line x1="200.0" y1="75" x2="200.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="200.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=1K</text>
+<line x1="280.0" y1="75" x2="280.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="280.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=2K</text>
+<line x1="360.0" y1="75" x2="360.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="360.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=3K</text>
+<line x1="440.0" y1="75" x2="440.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="440.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=4K</text>
+<line x1="520.0" y1="75" x2="520.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="520.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=5K</text>
+<line x1="600.0" y1="75" x2="600.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="600.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=6K</text>
+<line x1="680.0" y1="75" x2="680.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="680.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=7K</text>
+<line x1="760.0" y1="75" x2="760.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="760.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=8K</text>
+<line x1="840.0" y1="75" x2="840.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="840.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=9K</text>
+<line x1="920.0" y1="75" x2="920.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
+<text x="920.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=10K</text>
+<text x="520.0" y="473" fill="#57606a" font-size="10" text-anchor="middle">Scaling Intervals (Keys Written)</text>
+<polyline points="120.0,404.6 200.0,386.9 280.0,378.5 360.0,359.7 440.0,336.7 520.0,282.4 600.0,221.8 680.0,182.1 760.0,153.9 840.0,142.4 920.0,138.2" fill="none" stroke="#8839ef" stroke-width="2.5"/>
+<polyline points="120.0,408.8 200.0,392.1 280.0,383.7 360.0,362.8 440.0,342.0 520.0,287.6 600.0,224.9 680.0,187.3 760.0,158.1 840.0,145.5 920.0,141.4" fill="none" stroke="#179299" stroke-width="2.5" stroke-dasharray="4,2"/>
+<circle cx="120.0" cy="404.6" r="4.5" fill="#8839ef"/>
+<text x="120.0" y="396.6" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">32KB</text>
+<circle cx="120.0" cy="408.8" r="4.5" fill="#179299"/>
+<text x="120.0" y="423.8" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">16KB</text>
+<circle cx="200.0" cy="386.9" r="4.5" fill="#8839ef"/>
+<text x="200.0" y="378.9" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">100KB</text>
+<circle cx="200.0" cy="392.1" r="4.5" fill="#179299"/>
+<text x="200.0" y="407.1" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">80KB</text>
+<circle cx="280.0" cy="378.5" r="4.5" fill="#8839ef"/>
+<text x="280.0" y="370.5" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">132KB</text>
+<circle cx="280.0" cy="383.7" r="4.5" fill="#179299"/>
+<text x="280.0" y="398.7" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">112KB</text>
+<circle cx="360.0" cy="359.7" r="4.5" fill="#8839ef"/>
+<text x="360.0" y="351.7" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">204KB</text>
+<circle cx="360.0" cy="362.8" r="4.5" fill="#179299"/>
+<text x="360.0" y="377.8" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">192KB</text>
+<circle cx="440.0" cy="336.7" r="4.5" fill="#8839ef"/>
+<text x="440.0" y="328.7" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">292KB</text>
+<circle cx="440.0" cy="342.0" r="4.5" fill="#179299"/>
+<text x="440.0" y="357.0" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">272KB</text>
+<circle cx="520.0" cy="282.4" r="4.5" fill="#8839ef"/>
+<text x="520.0" y="274.4" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">500KB</text>
+<circle cx="520.0" cy="287.6" r="4.5" fill="#179299"/>
+<text x="520.0" y="302.6" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">480KB</text>
+<circle cx="600.0" cy="221.8" r="4.5" fill="#8839ef"/>
+<text x="600.0" y="213.8" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">732KB</text>
+<circle cx="600.0" cy="224.9" r="4.5" fill="#179299"/>
+<text x="600.0" y="239.9" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">720KB</text>
+<circle cx="680.0" cy="182.1" r="4.5" fill="#8839ef"/>
+<text x="680.0" y="174.1" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">884KB</text>
+<circle cx="680.0" cy="187.3" r="4.5" fill="#179299"/>
+<text x="680.0" y="202.3" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">864KB</text>
+<circle cx="760.0" cy="153.9" r="4.5" fill="#8839ef"/>
+<text x="760.0" y="145.9" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">992KB</text>
+<circle cx="760.0" cy="158.1" r="4.5" fill="#179299"/>
+<text x="760.0" y="173.1" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">976KB</text>
+<circle cx="840.0" cy="142.4" r="4.5" fill="#8839ef"/>
+<text x="840.0" y="134.4" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">1.01MB</text>
+<circle cx="840.0" cy="145.5" r="4.5" fill="#179299"/>
+<text x="840.0" y="160.5" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">1.00MB</text>
+<circle cx="920.0" cy="138.2" r="4.5" fill="#8839ef"/>
+<text x="920.0" y="130.2" fill="#8839ef" font-size="9" font-weight="bold" text-anchor="middle">1.03MB</text>
+<circle cx="920.0" cy="141.4" r="4.5" fill="#179299"/>
+<text x="920.0" y="156.4" fill="#179299" font-size="9" font-weight="bold" text-anchor="middle">1.02MB</text>
+</svg>

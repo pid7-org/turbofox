@@ -640,6 +640,7 @@ path          PathBuf               path                    Forwarded directly; 
 version       u32                   version                 Compiled constant (LAYOUT_VERSION = 3)
 sync_mode     SyncMode              sync_interval           Mapped to Periodic(Duration) or Manual
 capacity_hint Option<CapacityHint>  initial_pages           Evaluates quantum-aligned initial pages
+lookup_cache  bool                  (Engine internal)       In-memory DBufSlotCache (false default)
 (constant)    [u8; 4]               name                    DB_NAME_TAG (*b"tbfx")
 (constant)    u8                    module_id               MODULE_ID (0x46)
 (constant)    usize                 max_len                 MAX_DB_LEN (0x40_0000_0000)

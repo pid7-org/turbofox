@@ -1,6 +1,8 @@
 mod common;
 
-use common::{BenchDir, BenchSummary, KEY_SIZE, VAL_SIZE, new_histogram, print_json_summary};
+use common::{
+    BenchDir, BenchSummary, KEY_SIZE, VAL_SIZE, drop_page_cache, new_histogram, print_json_summary,
+};
 use std::time::Instant;
 use turbofox::{EvictionMode, TurboCfg, TurboFox};
 
@@ -59,6 +61,10 @@ fn main() {
         drop(disk_db);
 
         for &(lookup_cache, workload) in &[(false, "open_uncached"), (true, "open_cached")] {
+            if !lookup_cache {
+                drop_page_cache();
+            }
+
             let turbo_cfg = TurboCfg::manual(&db_path).with_lookup_cache(lookup_cache);
             let mut hist = new_histogram();
 
@@ -70,6 +76,10 @@ fn main() {
 
             let start_all = Instant::now();
             for _ in 0x00..SAMPLES_PER_INTERVAL {
+                if !lookup_cache {
+                    drop_page_cache();
+                }
+
                 let t0 = Instant::now();
                 let opened_db = TurboFox::open(turbo_cfg.clone()).expect("open failed");
                 let elapsed_ns = t0.elapsed().as_nanos() as u64;

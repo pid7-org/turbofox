@@ -6,7 +6,9 @@ compile_error!("benchmarks require target_os = \"linux\"");
 
 use hdrhistogram::Histogram;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
 use tempfile::TempDir;
 
@@ -244,4 +246,15 @@ pub fn print_json_summary(s: &BenchSummary) {
     println!("    \"stddev\": {:.2}", stddev);
     println!("  }}");
     println!("}}");
+}
+
+pub fn drop_page_cache() {
+    let _ = Command::new("sync").status();
+    if let Ok(mut f) = fs::OpenOptions::new().write(true).open("/proc/sys/vm/drop_caches") {
+        let _ = f.write_all(b"3\n");
+    } else {
+        let cmd = "(sync; echo 3 > /proc/sys/vm/drop_caches || \
+                   sudo -n sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches') >/dev/null 2>&1";
+        let _ = Command::new("sh").args(["-c", cmd]).status();
+    }
 }

@@ -714,13 +714,16 @@ impl TurboFox {
     /// prior to eviction to guarantee persistence and advance durable write epochs, marking
     /// all outstanding [`TurboTicket`](crate::TurboTicket) instances as durable
     ///
-    /// In [`EvictionMode::PreserveHeaders`], evicts data and index pages while keeping the initial
-    /// metadata and root node pages hot in RAM (8 KiB / `0x2000` bytes on 4 KiB systems, 16 KiB
-    /// on macOS AArch64, or 64 KiB on 64 KiB Linux configurations)
+    /// Eviction operates as a best-effort kernel advisory hint; while process page table entries
+    /// (PTEs) or working set pages are unmapped, underlying clean file pages may remain resident
+    /// in the operating system page cache according to host kernel memory management policies
     ///
-    /// In [`EvictionMode::PurgeAll`], evicts all mapped pages across the entire database file,
-    /// reducing [`resident_bytes_in_memory`](Self::resident_bytes_in_memory) to 0 (or base cache
-    /// struct size when lookup cache is enabled)
+    /// In [`EvictionMode::PreserveHeaders`], advises the kernel to unmap data and index pages
+    /// while retaining metadata and root node pages hot in cache
+    ///
+    /// In [`EvictionMode::PurgeAll`], advises the kernel to unmap all mapped pages across the
+    /// entire database file; subsequent operations transparently fault pages back into RAM on
+    /// demand
     ///
     /// When lookup caching is enabled, it invalidates allocated heap cache chunks
     ///
@@ -748,7 +751,10 @@ impl TurboFox {
     /// let db = TurboFox::create(cfg).unwrap();
     ///
     /// db.set(b"k1", b"v1").unwrap();
+    /// assert!(db.resident_bytes_in_memory().unwrap() > 0x00);
+    ///
     /// db.evict(EvictionMode::PreserveHeaders).unwrap();
+    /// assert!(db.resident_bytes_in_memory().is_ok());
     /// assert_eq!(db.get(b"k1").unwrap(), Some(b"v1".to_vec()));
     ///
     /// db.delete().unwrap();

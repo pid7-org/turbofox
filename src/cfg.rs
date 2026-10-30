@@ -214,6 +214,9 @@ pub enum SyncMode {
 /// Controls the granularity of page shedding when invoking [`crate::TurboFox::evict`]; while
 /// in-memory structures such as lookup caches are purged alongside OS page cache eviction
 ///
+/// Eviction operates as a best-effort kernel advisory hint; while process page table entries
+/// or working set pages are unmapped, host page caches may retain clean file pages in RAM
+///
 /// ## Pending [`crate::TurboTicket`]
 ///
 /// Dirty memory mapped pages are automatically flushed to persistent storage before kernel
@@ -227,26 +230,37 @@ pub enum SyncMode {
 ///
 /// * [`crate::TurboError::Storage`] any underlying storage or I/O failures are returned if occurred
 ///   during the pre-eviction sync (which is made as best-effort call)
+///
+/// ## Example
+///
+/// ```
+/// use turbofox::{EvictionMode, TurboCfg, TurboFox};
+///
+/// let dir = tempfile::tempdir().unwrap();
+/// let cfg = TurboCfg::manual(dir.path());
+/// let db = TurboFox::create(cfg).unwrap();
+///
+/// db.set(b"k1", b"v1").unwrap();
+/// assert!(db.resident_bytes_in_memory().unwrap() > 0x00);
+///
+/// db.evict(EvictionMode::PreserveHeaders).unwrap();
+/// assert!(db.resident_bytes_in_memory().is_ok());
+/// assert_eq!(db.get(b"k1").unwrap(), Some(b"v1".to_vec()));
+///
+/// db.delete().unwrap();
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EvictionMode {
     /// Sheds data and index buffers while retaining initial header topography in physical RAM
     ///
-    /// Preserves the metadata and root node pages hot in cache to prevent cold-start page faults
-    /// during subsequent read operations
-    ///
-    /// Leaves [`crate::TurboFox::resident_bytes_in_memory`] at 8 KiB (`0x2000` bytes, 2 pages) on
-    /// standard 4 KiB systems, 16 KiB (`0x4000` bytes, 1 page) on macOS Apple Silicon (AArch64),
-    /// or 64 KiB (`0x0001_0000` bytes, 1 page) on 64 KiB Linux kernel page configurations
+    /// Best-effort hint advising the kernel to unmap data and index pages while preserving
+    /// metadata and root node pages hot in cache to prevent cold-start page faults
     PreserveHeaders,
 
     /// Evicts all mapped database pages across the entire backing file from physical memory
     ///
-    /// Advises the kernel to drop all process page table entries (PTEs) and purge clean pages
-    /// from the operating system unified page cache;
-    ///
-    /// Reduces [`crate::TurboFox::resident_bytes_in_memory`] to 0 bytes (or base cache header
-    /// allocation if lookup cache is enabled); subsequent operations transparently fault required
-    /// pages back into RAM on demand
+    /// Best-effort hint advising the kernel to unmap process page table entries (PTEs) or working
+    /// set pages across the mapping; subsequent operations fault pages back into RAM on demand
     PurgeAll,
 }
 

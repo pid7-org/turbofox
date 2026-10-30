@@ -1,8 +1,14 @@
+#![cfg(target_os = "linux")]
+
+#[cfg(not(target_os = "linux"))]
+compile_error!("benchmarks require target_os = \"linux\"");
+
 mod common;
 
 use common::{
     BenchDir, BenchSummary, HIT_PREFIX, KEY_SIZE, VAL_SIZE, generate_60_40_probe_keys,
-    generate_del_60_40_keys, make_key, make_val, new_histogram, print_json_summary,
+    generate_del_60_40_keys, make_key, make_val, new_histogram, pin_to_physical_core,
+    print_json_summary,
 };
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -40,14 +46,14 @@ fn generate_set_80_20_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]
     keys
 }
 
-fn run_tier(thread_count: usize, is_first: &mut bool) {
+fn run_tier(thread_count: usize, total_ops: usize, is_first: &mut bool) {
     let (bench_dir, db_path) = BenchDir::new(None, "kv_perf");
 
-    let hint = CapacityHint::new().with_kv(TOTAL_OPS, KEY_SIZE, VAL_SIZE);
+    let hint = CapacityHint::new().with_kv(total_ops, KEY_SIZE, VAL_SIZE);
     let turbo_cfg = TurboCfg::manual(&db_path).with_capacity_hint(hint);
     let db = Arc::new(TurboFox::create(turbo_cfg).expect("failed to create db"));
 
-    let ops_per_thread = TOTAL_OPS / thread_count;
+    let ops_per_thread = total_ops / thread_count;
 
     // -------------------------------------------------------------
     // Phase 1: SET (80/20 New/Update)
@@ -65,6 +71,7 @@ fn run_tier(thread_count: usize, is_first: &mut bool) {
         let db_clone = Arc::clone(&db);
         let bar = Arc::clone(&barrier_set);
         handles_set.push(thread::spawn(move || {
+            pin_to_physical_core(tid);
             let mut hist = new_histogram();
             bar.wait();
 
@@ -120,11 +127,12 @@ fn run_tier(thread_count: usize, is_first: &mut bool) {
     let mut handles_get = Vec::with_capacity(thread_count);
     let start_get = Instant::now();
 
-    for probes in get_probes {
+    for (tid, probes) in get_probes.into_iter().enumerate() {
         let db_clone = Arc::clone(&db);
         let bar = Arc::clone(&barrier_get);
 
         handles_get.push(thread::spawn(move || {
+            pin_to_physical_core(tid);
             let mut hist = new_histogram();
             bar.wait();
 
@@ -163,11 +171,12 @@ fn run_tier(thread_count: usize, is_first: &mut bool) {
     let mut handles_del = Vec::with_capacity(thread_count);
     let start_del = Instant::now();
 
-    for keys in del_keys {
+    for (tid, keys) in del_keys.into_iter().enumerate() {
         let db_clone = Arc::clone(&db);
         let bar = Arc::clone(&barrier_del);
 
         handles_del.push(thread::spawn(move || {
+            pin_to_physical_core(tid);
             let mut hist = new_histogram();
             bar.wait();
 
@@ -212,7 +221,7 @@ fn run_tier(thread_count: usize, is_first: &mut bool) {
     let summary_set = BenchSummary {
         benchmark: "set_perf",
         workload: "mixed_80_20_new_update",
-        total_ops: TOTAL_OPS,
+        total_ops,
         threads: thread_count,
         total_elapsed: elapsed_set,
         hist: &set_hist,
@@ -228,7 +237,7 @@ fn run_tier(thread_count: usize, is_first: &mut bool) {
     let summary_get = BenchSummary {
         benchmark: "get_perf",
         workload: "mixed_60_40",
-        total_ops: TOTAL_OPS,
+        total_ops,
         threads: thread_count,
         total_elapsed: elapsed_get,
         hist: &get_hist,
@@ -240,7 +249,7 @@ fn run_tier(thread_count: usize, is_first: &mut bool) {
     let summary_del = BenchSummary {
         benchmark: "del_perf",
         workload: "mixed_60_40",
-        total_ops: TOTAL_OPS,
+        total_ops,
         threads: thread_count,
         total_elapsed: elapsed_del,
         hist: &del_hist,
@@ -250,8 +259,19 @@ fn run_tier(thread_count: usize, is_first: &mut bool) {
 }
 
 fn main() {
+    let total_ops = std::env::var("TURBOFOX_BENCH_OPS")
+        .ok()
+        .and_then(|v| {
+            if v.starts_with("0x") || v.starts_with("0X") {
+                usize::from_str_radix(&v[0x02..], 0x10).ok()
+            } else {
+                v.parse().ok()
+            }
+        })
+        .unwrap_or(TOTAL_OPS);
+
     let mut is_first = true;
     for &threads in &THREAD_CONFIGS {
-        run_tier(threads, &mut is_first);
+        run_tier(threads, total_ops, &mut is_first);
     }
 }

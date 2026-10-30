@@ -228,7 +228,7 @@ mod node;
 mod probe;
 mod ticket;
 
-pub use cfg::{CapacityHint, SyncMode, TurboCfg};
+pub use cfg::{CapacityHint, EvictionMode, SyncMode, TurboCfg};
 pub use common::{MAX_KEY_LEN, MAX_VAL_LEN};
 pub use error::{TurboError, TurboResult};
 pub use list::{TurboList, TurboListIter};
@@ -693,6 +693,58 @@ impl TurboFox {
         self.engine.resident_bytes_in_memory()
     }
 
+    /// Evicts database pages from physical memory (RAM) according to the configured mode
+    ///
+    /// ## Semantics
+    ///
+    /// Synchronizes dirty metadata and data pages to persistent storage via [`sync`](Self::sync)
+    /// prior to eviction to guarantee persistence and advance durable write epochs, marking
+    /// all outstanding [`TurboTicket`](crate::TurboTicket) instances as durable
+    ///
+    /// In [`EvictionMode::PreserveHeaders`], evicts data and index pages while keeping the initial
+    /// metadata and root node pages hot in RAM (8 KiB / `0x2000` bytes on 4 KiB systems, 16 KiB
+    /// on macOS AArch64, or 64 KiB on 64 KiB Linux configurations)
+    ///
+    /// In [`EvictionMode::PurgeAll`], evicts all mapped pages across the entire database file,
+    /// reducing [`resident_bytes_in_memory`](Self::resident_bytes_in_memory) to 0 (or base cache
+    /// struct size when lookup cache is enabled)
+    ///
+    /// When lookup caching is enabled, it invalidates allocated heap cache chunks
+    ///
+    /// ## Pending [`crate::TurboTicket`]
+    ///
+    /// Dirty memory mapped pages are automatically flushed to persistent storage before kernel
+    /// eviction hints are dispatched, guaranteeing crash consistency and advancing durable write
+    /// epochs so all the pending tickets become durable
+    ///
+    /// Subsequent calls to [`crate::TurboFox::sync`] while pages remain cold or evicted succeed
+    /// as a zero-cost no-op w/o faulting pages back into physical memory
+    ///
+    /// ## Errors
+    ///
+    /// * [`TurboError::Storage`] any underlying storage or I/O failures are returned if occurred
+    ///   during the pre-eviction sync (which is made as best-effort call)
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{EvictionMode, TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let cfg = TurboCfg::manual(dir.path());
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// db.set(b"k1", b"v1").unwrap();
+    /// db.evict(EvictionMode::PreserveHeaders).unwrap();
+    /// assert_eq!(db.get(b"k1").unwrap(), Some(b"v1".to_vec()));
+    ///
+    /// db.delete().unwrap();
+    /// ```
+    #[inline]
+    pub fn evict(&self, mode: EvictionMode) -> TurboResult<()> {
+        self.engine.evict(mode)
+    }
+
     /// Return the active file length in bytes allocated on persistent disk storage
     ///
     /// ## Example
@@ -715,6 +767,13 @@ impl TurboFox {
     }
 
     /// Perform an explicit flush for crash safe durability
+    ///
+    /// ## Pending [`crate::TurboTicket`]
+    ///
+    /// Internally advances durable write epochs and notifies ticket listeners
+    ///
+    /// If no modifications occurred or if all pages remain cold/evicted, returns immediately as a
+    /// safe, zero-cost no-op without faulting cold pages into memory
     ///
     /// ## Errors
     ///

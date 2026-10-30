@@ -1,6 +1,6 @@
 use crate::adjarr::{AdjArrayBlock, decompose_relative_array_idx, relative_array_idx};
 use crate::bucket::{Bucket, BucketEntry, ProbeResult};
-use crate::cfg::TurboCfg;
+use crate::cfg::{EvictionMode, TurboCfg};
 use crate::common::{
     ADJ_ARR_HEAD_SLOT, ADJ_ARR_SLOTS, ALLOC_SLOT_QUANTUM, BUCKET_ENTRIES, BUCKET_FLAG,
     BUCKET_SLOTS, DATABUF_HEAD_SLOT, DB_NAME_TAG, DBUF_BUF_COUNT, DBUF_SLOTS,
@@ -50,10 +50,12 @@ impl DBufSlotCache {
         if chunk_idx >= Self::MAX_CHUNKS {
             return None;
         }
+
         let chunk_ptr = self.chunks[chunk_idx].load(Ordering::Acquire);
         if chunk_ptr.is_null() {
             return None;
         }
+
         let slot = unsafe { (*chunk_ptr)[offset].load(Ordering::Acquire) };
         if slot == 0 { None } else { Some(slot) }
     }
@@ -108,6 +110,15 @@ impl DBufSlotCache {
             self.chunks.iter().filter(|chunk| !chunk.load(Ordering::Acquire).is_null()).count();
         core::mem::size_of::<Self>().saturating_add(allocated_chunks.saturating_mul(chunk_size))
     }
+
+    pub(crate) fn clear(&self) {
+        for chunk in &self.chunks {
+            let ptr = chunk.swap(std::ptr::null_mut(), Ordering::AcqRel);
+            if !ptr.is_null() {
+                unsafe { drop(Box::from_raw(ptr)) };
+            }
+        }
+    }
 }
 
 impl Drop for DBufSlotCache {
@@ -115,9 +126,7 @@ impl Drop for DBufSlotCache {
         for chunk in &self.chunks {
             let ptr = chunk.load(Ordering::Relaxed);
             if !ptr.is_null() {
-                unsafe {
-                    drop(Box::from_raw(ptr));
-                }
+                unsafe { drop(Box::from_raw(ptr)) };
             }
         }
     }
@@ -254,6 +263,7 @@ impl Engine {
         let raw_slots = file_len / SLOT_SIZE;
         let expected_slots =
             if raw_slots > (0xFFFF_FFFFusize) { 0xFFFF_FFFFu32 } else { raw_slots as u32 };
+
         if meta.total_slots != expected_slots {
             return Err(TurboError::CorruptedHeader("metadata total_slots divergence"));
         }
@@ -462,6 +472,7 @@ impl Engine {
 
         let mut start_hop = 0u32;
         let mut curr = DATABUF_HEAD_SLOT;
+
         if let Some(ref cache) = self.dbuf_slot_cache {
             for h in (1..pool_hop).rev() {
                 if let Some(slot) = cache.get(h) {
@@ -533,9 +544,11 @@ impl Engine {
                 } else {
                     tail_slot = curr;
                     tail_hop = curr_hop;
+
                     if wrapped || start_slot == (DATABUF_HEAD_SLOT as usize) {
                         break;
                     }
+
                     wrapped = true;
                     curr = DATABUF_HEAD_SLOT as usize;
                     curr_hop = 0;
@@ -575,6 +588,7 @@ impl Engine {
                 } else {
                     tail_slot = curr;
                     tail_hop = curr_hop;
+
                     if wrapped || start_slot == (DATABUF_HEAD_SLOT as usize) {
                         break;
                     }
@@ -605,6 +619,7 @@ impl Engine {
 
             actual_tail = next;
             actual_tail_hop += 1;
+
             if actual_tail != exclude_slot {
                 let (_, alloc_opt) = self.mmap.read_exact::<DBuf, _, _>(actual_tail, |d| {
                     let next = d.next_dbuf_index() as usize;
@@ -618,6 +633,7 @@ impl Engine {
 
                 if let Some((local_idx, orig, mutated)) = alloc_opt {
                     self.active_dbuf_hint.store(actual_tail_hop, Ordering::Relaxed);
+
                     return Ok(DbufAllocPlan {
                         start_slot: actual_tail,
                         pool_hop: actual_tail_hop,
@@ -2480,6 +2496,41 @@ impl Engine {
     }
 
     /// Ref: `DESIGN.md` §8.1
+    pub(crate) fn evict(&self, mode: EvictionMode) -> TurboResult<()> {
+        self.sync()?;
+
+        let total_bytes = self.resident_bytes_on_disk();
+        if total_bytes == 0x00 {
+            return Ok(());
+        }
+
+        let page_size = self.sys_page_size.as_usize();
+        let header_pages = match self.sys_page_size {
+            PageSize::K4 => 0x02,
+            PageSize::K16 | PageSize::K64 => 0x01,
+        };
+
+        match mode {
+            EvictionMode::PurgeAll => {
+                self.mmap.evict()?;
+            }
+            EvictionMode::PreserveHeaders => {
+                let skip_bytes = header_pages * page_size;
+                if total_bytes > skip_bytes {
+                    let evict_len = total_bytes - skip_bytes;
+                    self.mmap.evict_range(skip_bytes, evict_len)?;
+                }
+            }
+        }
+
+        if let Some(ref cache) = self.dbuf_slot_cache {
+            cache.clear();
+        }
+
+        Ok(())
+    }
+
+    /// Ref: `DESIGN.md` §8.1
     pub(crate) fn delete(self) -> TurboResult<()> {
         self.mmap.delete()?;
         Ok(())
@@ -2764,6 +2815,22 @@ mod tests {
     }
 
     #[test]
+    fn ok_dbuf_slot_cache_clear() {
+        let cache = DBufSlotCache::new();
+        let base_size = core::mem::size_of::<DBufSlotCache>();
+
+        cache.push(0x00, 0x40);
+        cache.push(0x0100, 0x5000);
+        let chunk_size = core::mem::size_of::<[AtomicU32; DBufSlotCache::CHUNK_SIZE]>();
+        assert_eq!(cache.memory_bytes(), base_size + (chunk_size * 2));
+
+        cache.clear();
+        assert_eq!(cache.memory_bytes(), base_size);
+        assert_eq!(cache.get(0x00), None);
+        assert_eq!(cache.get(0x0100), None);
+    }
+
+    #[test]
     fn ok_engine_kv_crud_lifecycle() {
         let dir = tempdir().unwrap();
         let cfg = TurboCfg::manual(dir.path());
@@ -3031,6 +3098,43 @@ mod tests {
 
         engine.sync().unwrap();
         engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_eviction_modes() {
+        for &lookup_cache in &[false, true] {
+            let dir = tempdir().unwrap();
+            let cfg = TurboCfg::manual(dir.path()).with_lookup_cache(lookup_cache);
+            let engine = Engine::create(cfg).unwrap();
+
+            for i in 0..0x80 {
+                let k = format!("k_{:04x}", i);
+                let v = format!("val_{:04x}", i);
+                let _ = engine.set(k.as_bytes(), v.as_bytes()).unwrap();
+            }
+
+            engine.sync().unwrap();
+            let pre_resident = engine.resident_bytes_in_memory().unwrap();
+            assert!(pre_resident > 0);
+
+            // 1: EvictionMode::PreserveHeaders
+            engine.evict(EvictionMode::PreserveHeaders).unwrap();
+            for i in 0..0x80 {
+                let k = format!("k_{:04x}", i);
+                let expected = format!("val_{:04x}", i);
+                assert_eq!(engine.get(k.as_bytes()).unwrap(), Some(expected.into_bytes()));
+            }
+
+            // 2: EvictionMode::PurgeAll
+            engine.evict(EvictionMode::PurgeAll).unwrap();
+            for i in 0..0x80 {
+                let k = format!("k_{:04x}", i);
+                let expected = format!("val_{:04x}", i);
+                assert_eq!(engine.get(k.as_bytes()).unwrap(), Some(expected.into_bytes()));
+            }
+
+            engine.delete().unwrap();
+        }
     }
 
     #[test]

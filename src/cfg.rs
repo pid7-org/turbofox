@@ -231,6 +231,9 @@ pub struct TurboCfg {
 
     /// Optional capacity hint guiding upfront backing storage pre-allocation
     pub capacity_hint: Option<CapacityHint>,
+
+    /// Optional in-memory lookup cache to accelerate record access; defaults to false
+    pub lookup_cache: bool,
 }
 
 impl TurboCfg {
@@ -246,7 +249,7 @@ impl TurboCfg {
     /// ```
     #[inline]
     pub fn new<P: Into<PathBuf>>(path: P, sync_mode: SyncMode) -> Self {
-        Self { path: path.into(), sync_mode, capacity_hint: None }
+        Self { path: path.into(), sync_mode, capacity_hint: None, lookup_cache: false }
     }
 
     /// Construct configuration driving a periodic background synchronization thread
@@ -272,7 +275,12 @@ impl TurboCfg {
     /// ```
     #[inline]
     pub fn periodic<P: Into<PathBuf>>(path: P, interval: Duration) -> Self {
-        Self { path: path.into(), sync_mode: SyncMode::Periodic(interval), capacity_hint: None }
+        Self {
+            path: path.into(),
+            sync_mode: SyncMode::Periodic(interval),
+            capacity_hint: None,
+            lookup_cache: false,
+        }
     }
 
     /// Construct configuration with manual synchronization and no background worker thread
@@ -292,7 +300,12 @@ impl TurboCfg {
     /// ```
     #[inline]
     pub fn manual<P: Into<PathBuf>>(path: P) -> Self {
-        Self { path: path.into(), sync_mode: SyncMode::Manual, capacity_hint: None }
+        Self {
+            path: path.into(),
+            sync_mode: SyncMode::Manual,
+            capacity_hint: None,
+            lookup_cache: false,
+        }
     }
 
     /// Update the synchronization mode
@@ -327,6 +340,27 @@ impl TurboCfg {
     #[inline]
     pub fn with_capacity_hint(mut self, hint: CapacityHint) -> Self {
         self.capacity_hint = Some(hint);
+        self
+    }
+
+    /// Configure optional in-memory lookup cache enablement
+    ///
+    /// When enabled, the engine maintains an append-only in-memory resolution cache providing
+    /// wait-free O(1) record addressing across grown storage segments at the cost of modest
+    /// resident memory; when disabled (default), record locations are resolved by traversing
+    /// persistent storage structures directly
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::TurboCfg;
+    ///
+    /// let cfg = TurboCfg::manual("data_dir").with_lookup_cache(true);
+    /// assert!(cfg.lookup_cache);
+    /// ```
+    #[inline]
+    pub fn with_lookup_cache(mut self, enabled: bool) -> Self {
+        self.lookup_cache = enabled;
         self
     }
 
@@ -367,15 +401,29 @@ mod tests {
         assert_eq!(manual.sync_mode, SyncMode::Manual);
         assert_eq!(manual.sync_interval(), None);
         assert_eq!(manual.capacity_hint, None);
+        assert!(!manual.lookup_cache);
         assert_eq!(manual.resolve_dir(), PathBuf::from("test_db_dir"));
 
         let periodic = TurboCfg::periodic("test_db_dir", Duration::from_millis(0x64));
         assert_eq!(periodic.sync_mode, SyncMode::Periodic(Duration::from_millis(0x64)));
         assert_eq!(periodic.sync_interval(), Some(Duration::from_millis(0x64)));
         assert_eq!(periodic.capacity_hint, None);
+        assert!(!periodic.lookup_cache);
 
         let updated = manual.with_sync_mode(SyncMode::Periodic(Duration::from_millis(0x32)));
         assert_eq!(updated.sync_mode, SyncMode::Periodic(Duration::from_millis(0x32)));
+    }
+
+    #[test]
+    fn ok_turbocfg_lookup_cache_builder() {
+        let default_cfg = TurboCfg::manual("test_db_dir");
+        assert!(!default_cfg.lookup_cache);
+
+        let enabled_cfg = default_cfg.with_lookup_cache(true);
+        assert!(enabled_cfg.lookup_cache);
+
+        let disabled_cfg = enabled_cfg.with_lookup_cache(false);
+        assert!(!disabled_cfg.lookup_cache);
     }
 
     #[test]

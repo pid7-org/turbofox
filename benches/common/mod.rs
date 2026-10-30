@@ -203,6 +203,7 @@ pub struct BenchSummary<'a> {
     pub total_elapsed: Duration,
     pub hist: &'a Histogram<u64>,
     pub db_size_bytes: u64,
+    pub in_mem_bytes: u64,
 }
 
 pub fn print_json_summary(s: &BenchSummary) {
@@ -229,6 +230,7 @@ pub fn print_json_summary(s: &BenchSummary) {
     println!("  \"wall_time_secs\": {:.6},", total_secs);
     println!("  \"throughput_ops_sec\": {:.2},", ops_per_sec);
     println!("  \"db_size_bytes\": {},", s.db_size_bytes);
+    println!("  \"in_mem_bytes\": {},", s.in_mem_bytes);
     println!("  \"latency_micros\": {{");
     println!("    \"min\": {:.2},", min);
     println!("    \"p50\": {:.2},", p50);

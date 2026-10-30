@@ -235,6 +235,7 @@ fn run_tier(thread_count: usize, total_ops: usize, is_first: &mut bool) {
         total_elapsed: elapsed_set,
         hist: &set_hist,
         db_size_bytes: db_size_set,
+        in_mem_bytes: 0x00,
     };
     if !*is_first {
         println!(",");
@@ -251,6 +252,7 @@ fn run_tier(thread_count: usize, total_ops: usize, is_first: &mut bool) {
         total_elapsed: elapsed_get,
         hist: &get_hist,
         db_size_bytes: db_size_get,
+        in_mem_bytes: 0x00,
     };
     print_json_summary(&summary_get);
 
@@ -263,6 +265,7 @@ fn run_tier(thread_count: usize, total_ops: usize, is_first: &mut bool) {
         total_elapsed: elapsed_del,
         hist: &del_hist,
         db_size_bytes: db_size_del,
+        in_mem_bytes: 0x00,
     };
     print_json_summary(&summary_del);
 }

@@ -27,7 +27,7 @@ exclude = [
 autobenches = false
 
 [[bench]]
-name = "init_perf"
+name = "scale_perf"
 harness = false
 
 [[bench]]

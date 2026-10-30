@@ -36,7 +36,7 @@ def load_init_results(path):
 
     records = []
     for entry in entries:
-        if entry.get("benchmark") != "init_perf":
+        if entry.get("benchmark") != "scale_perf":
             continue
         workload = entry.get("workload", "")
         if workload == "with_mem_index":

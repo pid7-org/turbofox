@@ -81,10 +81,10 @@ echo "Compiling benchmarks in release mode with target-cpu=native..." >&2
 RUSTFLAGS="${RUSTFLAGS:--C target-cpu=native}" CARGO_TARGET_DIR="${TARGET_DIR}" cargo bench --no-run
 
 DEPS_DIR="${TARGET_DIR}/release/deps"
-INIT_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "init_perf-*" -executable -type f | head -n 1)
+SCALE_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "scale_perf-*" -executable -type f | head -n 1)
 KV_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "kv_perf-*" -executable -type f | head -n 1)
 
-if [[ -z "${INIT_BIN}" || -z "${KV_BIN}" ]]; then
+if [[ -z "${SCALE_BIN}" || -z "${KV_BIN}" ]]; then
   echo "Error: Failed to locate benchmark binaries in ${DEPS_DIR}" >&2
   exit 1
 fi
@@ -109,25 +109,25 @@ append_result() {
   FIRST_ENTRY=0
 }
 
-RUN_INIT=0
+RUN_SCALE=0
 RUN_KV=0
 
 IFS=',' read -ra BENCH_ID_ARRAY <<< "${SELECTED_BENCHES}"
 for b_id in "${BENCH_ID_ARRAY[@]}"; do
   case "${b_id,,}" in
     all)
-      RUN_INIT=1
+      RUN_SCALE=1
       RUN_KV=1
       ;;
-    1|init|init_perf)
-      RUN_INIT=1
+    1|scale|scale_perf)
+      RUN_SCALE=1
       ;;
     2|kv|kv_perf)
       RUN_KV=1
       ;;
     *)
       echo "Unknown benchmark identifier: '${b_id}'" >&2
-      echo "Available IDs: 1 (init), 2 (kv), all" >&2
+      echo "Available IDs: 1 (scale), 2 (kv), all" >&2
       exit 1
       ;;
   esac
@@ -136,16 +136,16 @@ done
 # Export ops for benchmark binaries
 export TURBOFOX_BENCH_OPS="${OPS}"
 
-# 1. Run Init Benchmark across scaling intervals
-if [[ ${RUN_INIT} -eq 1 ]]; then
+# 1. Run Scale Benchmark across scaling intervals
+if [[ ${RUN_SCALE} -eq 1 ]]; then
   taskset_single=""
   if command -v taskset >/dev/null 2>&1; then
     taskset_single="taskset -c 0"
   fi
 
-  echo "Running init_perf across scaling intervals..." >&2
+  echo "Running scale_perf across scaling intervals..." >&2
   drop_page_cache
-  json_out=$(${taskset_single} "${INIT_BIN}")
+  json_out=$(${taskset_single} "${SCALE_BIN}")
   append_result "${json_out}"
 fi
 

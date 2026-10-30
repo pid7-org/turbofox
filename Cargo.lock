@@ -110,9 +110,9 @@ dependencies = [
 
 [[package]]
 name = "frozen-core"
-version = "0.0.38"
+version = "0.0.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "761a8f188a11085abee74d154c77fd56339c2a7cdd62b476b048994fa2043a65"
+checksum = "07c44514da3d56b75efa89ca96211e5e0955fedd7f38f635224096e3df490bfd"
 dependencies = [
  "libc",
  "windows-sys",

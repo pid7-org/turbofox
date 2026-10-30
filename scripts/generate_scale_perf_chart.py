@@ -12,9 +12,11 @@ COLOR_LINE = "#e1e4e8"      # Grid line
 COLOR_TEXT = "#24292f"      # Primary text
 COLOR_SUBTLE = "#57606a"    # Secondary text and axis ticks
 
-COLOR_LATENCY = "#1e66f5"   # Blue
-COLOR_MEMORY = "#8839ef"    # Mauve
-COLOR_DISK = "#179299"      # Teal
+COLOR_LAT_CACHED = "#1e66f5"    # Blue
+COLOR_LAT_UNCACHED = "#d20f39"  # Crimson / Red
+COLOR_MEM_CACHED = "#8839ef"    # Mauve
+COLOR_MEM_UNCACHED = "#df8e1d"  # Amber
+COLOR_DISK = "#179299"          # Teal
 
 FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
@@ -25,7 +27,18 @@ def load_scale_results(path):
     if not os.path.exists(path):
         return []
     with open(path, "r", encoding="utf-8") as handle:
-        raw = json.load(handle)
+        content = handle.read().strip()
+
+    if not content:
+        return []
+
+    try:
+        raw = json.loads(content)
+    except json.JSONDecodeError:
+        try:
+            raw = json.loads(f"[{content.rstrip().rstrip(',')}]")
+        except json.JSONDecodeError:
+            return []
 
     if isinstance(raw, dict):
         entries = raw.get("results", [])
@@ -34,7 +47,7 @@ def load_scale_results(path):
     else:
         entries = []
 
-    records = []
+    by_n = {}
     for entry in entries:
         if entry.get("benchmark") != "scale_perf":
             continue
@@ -43,16 +56,31 @@ def load_scale_results(path):
             continue
         ops = entry.get("operations", 0x00)
         lat = entry.get("latency_micros", {})
-        rec = {
-            "n": ops,
-            "p50": lat.get("p50", 0.0),
-            "p90": lat.get("p90", 0.0),
-            "p99": lat.get("p99", 0.0),
-            "in_mem_bytes": entry.get("in_mem_bytes", 0x00),
-            "db_size_bytes": entry.get("db_size_bytes", 0x00),
-        }
-        records.append(rec)
+        p50 = lat.get("p50", 0.0)
+        in_mem = entry.get("in_mem_bytes", 0x00)
+        db_size = entry.get("db_size_bytes", 0x00)
 
+        if ops not in by_n:
+            by_n[ops] = {
+                "n": ops,
+                "db_size_bytes": db_size,
+                "cached_p50": 0.0,
+                "uncached_p50": 0.0,
+                "cached_mem": 0,
+                "uncached_mem": 0,
+            }
+
+        if db_size > 0:
+            by_n[ops]["db_size_bytes"] = db_size
+
+        if workload in ("open_cached", "cached"):
+            by_n[ops]["cached_p50"] = p50
+            by_n[ops]["cached_mem"] = in_mem
+        elif workload in ("open_uncached", "uncached", "open"):
+            by_n[ops]["uncached_p50"] = p50
+            by_n[ops]["uncached_mem"] = in_mem
+
+    records = list(by_n.values())
     records.sort(key=lambda r: r["n"])
     return records
 
@@ -104,7 +132,7 @@ def generate_latency_svg(records, out_path):
     min_n = min(all_n)
     max_n = max(all_n)
 
-    max_lat = max(r["p50"] for r in records)
+    max_lat = max(max(r["cached_p50"], r["uncached_p50"]) for r in records)
     max_lat = max(max_lat * 1.15, 10.0)
 
     def x_coord(n):
@@ -135,19 +163,30 @@ def generate_latency_svg(records, out_path):
     )
     svg.append(
         f'<text x="32" y="52" fill="{COLOR_SUBTLE}" font-size="11">'
-        f'Database open latency (p50) across scaling intervals</text>'
+        f'Database open latency (p50) with lookup_cache enabled vs disabled</text>'
     )
 
-    # Legend
-    leg_x = svg_w - 0x00E6  # 770 px
+    # Legends (dual series)
+    leg_x1 = svg_w - 0x0168  # 640 px
     svg.append(
-        f'<line x1="{leg_x}" y1="34" x2="{leg_x + 24}" y2="34" '
-        f'stroke="{COLOR_LATENCY}" stroke-width="2.5"/>'
+        f'<line x1="{leg_x1}" y1="34" x2="{leg_x1 + 24}" y2="34" '
+        f'stroke="{COLOR_LAT_CACHED}" stroke-width="2.5"/>'
     )
-    svg.append(f'<circle cx="{leg_x + 12}" cy="34" r="4.5" fill="{COLOR_LATENCY}"/>')
+    svg.append(f'<circle cx="{leg_x1 + 12}" cy="34" r="4.5" fill="{COLOR_LAT_CACHED}"/>')
     svg.append(
-        f'<text x="{leg_x + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
-        f'Open Latency (p50)</text>'
+        f'<text x="{leg_x1 + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
+        f'Cached (p50)</text>'
+    )
+
+    leg_x2 = leg_x1 + 0x009C  # 796 px
+    svg.append(
+        f'<line x1="{leg_x2}" y1="34" x2="{leg_x2 + 24}" y2="34" '
+        f'stroke="{COLOR_LAT_UNCACHED}" stroke-width="2.5" stroke-dasharray="4,2"/>'
+    )
+    svg.append(f'<circle cx="{leg_x2 + 12}" cy="34" r="4.5" fill="{COLOR_LAT_UNCACHED}"/>')
+    svg.append(
+        f'<text x="{leg_x2 + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
+        f'Uncached (p50)</text>'
     )
 
     # Plot panel background
@@ -187,29 +226,52 @@ def generate_latency_svg(records, out_path):
         f'font-size="10" text-anchor="middle">Scaling Intervals (Keys Written)</text>'
     )
 
-    # Series line
-    pts = []
+    # Series 1: Cached polyline
+    pts_c = []
     for r in records:
         xc = x_coord(r["n"])
-        yc = y_coord(r["p50"])
-        pts.append(f"{xc:.1f},{yc:.1f}")
+        yc = y_coord(r["cached_p50"])
+        pts_c.append(f"{xc:.1f},{yc:.1f}")
 
     svg.append(
-        f'<polyline points="{" ".join(pts)}" fill="none" '
-        f'stroke="{COLOR_LATENCY}" stroke-width="2.5"/>'
+        f'<polyline points="{" ".join(pts_c)}" fill="none" '
+        f'stroke="{COLOR_LAT_CACHED}" stroke-width="2.5"/>'
+    )
+
+    # Series 2: Uncached polyline
+    pts_u = []
+    for r in records:
+        xc = x_coord(r["n"])
+        yc = y_coord(r["uncached_p50"])
+        pts_u.append(f"{xc:.1f},{yc:.1f}")
+
+    svg.append(
+        f'<polyline points="{" ".join(pts_u)}" fill="none" '
+        f'stroke="{COLOR_LAT_UNCACHED}" stroke-width="2.5" stroke-dasharray="4,2"/>'
     )
 
     # Data points and labels
     for r in records:
         xc = x_coord(r["n"])
-        yc = y_coord(r["p50"])
+        yc_c = y_coord(r["cached_p50"])
+        yc_u = y_coord(r["uncached_p50"])
+
         svg.append(
-            f'<circle cx="{xc:.1f}" cy="{yc:.1f}" r="4.5" fill="{COLOR_LATENCY}"/>'
+            f'<circle cx="{xc:.1f}" cy="{yc_c:.1f}" r="4.5" fill="{COLOR_LAT_CACHED}"/>'
         )
         svg.append(
-            f'<text x="{xc:.1f}" y="{yc - 8:.1f}" fill="{COLOR_LATENCY}" '
+            f'<text x="{xc:.1f}" y="{yc_c - 8:.1f}" fill="{COLOR_LAT_CACHED}" '
             f'font-size="10" font-weight="bold" text-anchor="middle">'
-            f'{format_latency(r["p50"])}</text>'
+            f'{format_latency(r["cached_p50"])}</text>'
+        )
+
+        svg.append(
+            f'<circle cx="{xc:.1f}" cy="{yc_u:.1f}" r="4.5" fill="{COLOR_LAT_UNCACHED}"/>'
+        )
+        svg.append(
+            f'<text x="{xc:.1f}" y="{yc_u + 15:.1f}" fill="{COLOR_LAT_UNCACHED}" '
+            f'font-size="10" font-weight="bold" text-anchor="middle">'
+            f'{format_latency(r["uncached_p50"])}</text>'
         )
 
     svg.append('</svg>')
@@ -237,7 +299,9 @@ def generate_footprint_svg(records, out_path):
     min_n = min(all_n)
     max_n = max(all_n)
 
-    max_bytes = max(max(r["in_mem_bytes"], r["db_size_bytes"]) for r in records)
+    max_bytes = max(
+        max(r["cached_mem"], r["uncached_mem"], r["db_size_bytes"]) for r in records
+    )
     max_bytes = max(float(max_bytes) * 1.15, 1024.0)
 
     def x_coord(n):
@@ -268,29 +332,40 @@ def generate_footprint_svg(records, out_path):
     )
     svg.append(
         f'<text x="32" y="52" fill="{COLOR_SUBTLE}" font-size="11">'
-        f'Resident memory (in_mem_bytes) and disk footprint (db_size_bytes) across intervals</text>'
+        f'Resident memory (cached vs uncached) and disk footprint across intervals</text>'
     )
 
-    # Legends
-    leg_x1 = svg_w - 0x0154  # 660 px
+    # Legends (3 series)
+    leg_x1 = svg_w - 0x01C2  # 550 px
     svg.append(
-        f'<line x1="{leg_x1}" y1="34" x2="{leg_x1 + 24}" y2="34" '
-        f'stroke="{COLOR_MEMORY}" stroke-width="2.5"/>'
+        f'<line x1="{leg_x1}" y1="34" x2="{leg_x1 + 20}" y2="34" '
+        f'stroke="{COLOR_MEM_CACHED}" stroke-width="2.5"/>'
     )
-    svg.append(f'<circle cx="{leg_x1 + 12}" cy="34" r="4.5" fill="{COLOR_MEMORY}"/>')
+    svg.append(f'<circle cx="{leg_x1 + 10}" cy="34" r="4.0" fill="{COLOR_MEM_CACHED}"/>')
     svg.append(
-        f'<text x="{leg_x1 + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
-        f'Resident Memory</text>'
+        f'<text x="{leg_x1 + 25}" y="38" fill="{COLOR_TEXT}" font-size="10">'
+        f'Mem (Cached)</text>'
     )
 
-    leg_x2 = leg_x1 + 0x00A0  # 820 px
+    leg_x2 = leg_x1 + 0x0088  # 686 px
     svg.append(
-        f'<line x1="{leg_x2}" y1="34" x2="{leg_x2 + 24}" y2="34" '
-        f'stroke="{COLOR_DISK}" stroke-width="2.5" stroke-dasharray="4,2"/>'
+        f'<line x1="{leg_x2}" y1="34" x2="{leg_x2 + 20}" y2="34" '
+        f'stroke="{COLOR_MEM_UNCACHED}" stroke-width="2.5" stroke-dasharray="4,2"/>'
     )
-    svg.append(f'<circle cx="{leg_x2 + 12}" cy="34" r="4.5" fill="{COLOR_DISK}"/>')
+    svg.append(f'<circle cx="{leg_x2 + 10}" cy="34" r="4.0" fill="{COLOR_MEM_UNCACHED}"/>')
     svg.append(
-        f'<text x="{leg_x2 + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
+        f'<text x="{leg_x2 + 25}" y="38" fill="{COLOR_TEXT}" font-size="10">'
+        f'Mem (Uncached)</text>'
+    )
+
+    leg_x3 = leg_x2 + 0x008C  # 826 px
+    svg.append(
+        f'<line x1="{leg_x3}" y1="34" x2="{leg_x3 + 20}" y2="34" '
+        f'stroke="{COLOR_DISK}" stroke-width="2.5" stroke-dasharray="2,2"/>'
+    )
+    svg.append(f'<circle cx="{leg_x3 + 10}" cy="34" r="4.0" fill="{COLOR_DISK}"/>')
+    svg.append(
+        f'<text x="{leg_x3 + 25}" y="38" fill="{COLOR_TEXT}" font-size="10">'
         f'Disk Footprint</text>'
     )
 
@@ -331,19 +406,31 @@ def generate_footprint_svg(records, out_path):
         f'font-size="10" text-anchor="middle">Scaling Intervals (Keys Written)</text>'
     )
 
-    # Series 1: Resident Memory
-    pts_mem = []
+    # Series 1: Cached Memory
+    pts_mem_c = []
     for r in records:
         xc = x_coord(r["n"])
-        yc = y_coord(r["in_mem_bytes"])
-        pts_mem.append(f"{xc:.1f},{yc:.1f}")
+        yc = y_coord(r["cached_mem"])
+        pts_mem_c.append(f"{xc:.1f},{yc:.1f}")
 
     svg.append(
-        f'<polyline points="{" ".join(pts_mem)}" fill="none" '
-        f'stroke="{COLOR_MEMORY}" stroke-width="2.5"/>'
+        f'<polyline points="{" ".join(pts_mem_c)}" fill="none" '
+        f'stroke="{COLOR_MEM_CACHED}" stroke-width="2.5"/>'
     )
 
-    # Series 2: Disk Footprint
+    # Series 2: Uncached Memory
+    pts_mem_u = []
+    for r in records:
+        xc = x_coord(r["n"])
+        yc = y_coord(r["uncached_mem"])
+        pts_mem_u.append(f"{xc:.1f},{yc:.1f}")
+
+    svg.append(
+        f'<polyline points="{" ".join(pts_mem_u)}" fill="none" '
+        f'stroke="{COLOR_MEM_UNCACHED}" stroke-width="2.5" stroke-dasharray="4,2"/>'
+    )
+
+    # Series 3: Disk Footprint
     pts_disk = []
     for r in records:
         xc = x_coord(r["n"])
@@ -352,28 +439,40 @@ def generate_footprint_svg(records, out_path):
 
     svg.append(
         f'<polyline points="{" ".join(pts_disk)}" fill="none" '
-        f'stroke="{COLOR_DISK}" stroke-width="2.5" stroke-dasharray="4,2"/>'
+        f'stroke="{COLOR_DISK}" stroke-width="2.5" stroke-dasharray="2,2"/>'
     )
 
     # Data points and labels
     for r in records:
         xc = x_coord(r["n"])
-        yc_mem = y_coord(r["in_mem_bytes"])
+        yc_mem_c = y_coord(r["cached_mem"])
+        yc_mem_u = y_coord(r["uncached_mem"])
         yc_disk = y_coord(r["db_size_bytes"])
 
-        # Resident Memory points (label above)
+        # Cached Mem point (label above)
         svg.append(
-            f'<circle cx="{xc:.1f}" cy="{yc_mem:.1f}" r="4.5" fill="{COLOR_MEMORY}"/>'
+            f'<circle cx="{xc:.1f}" cy="{yc_mem_c:.1f}" r="4.0" fill="{COLOR_MEM_CACHED}"/>'
         )
         svg.append(
-            f'<text x="{xc:.1f}" y="{yc_mem - 8:.1f}" fill="{COLOR_MEMORY}" '
+            f'<text x="{xc:.1f}" y="{yc_mem_c - 8:.1f}" fill="{COLOR_MEM_CACHED}" '
             f'font-size="9" font-weight="bold" text-anchor="middle">'
-            f'{format_bytes(r["in_mem_bytes"])}</text>'
+            f'{format_bytes(r["cached_mem"])}</text>'
         )
 
-        # Disk points (label below)
+        # Uncached Mem point
         svg.append(
-            f'<circle cx="{xc:.1f}" cy="{yc_disk:.1f}" r="4.5" fill="{COLOR_DISK}"/>'
+            f'<circle cx="{xc:.1f}" cy="{yc_mem_u:.1f}" r="4.0" fill="{COLOR_MEM_UNCACHED}"/>'
+        )
+        offset_u = 14.0 if abs(yc_mem_u - yc_mem_c) < 18 else -8.0
+        svg.append(
+            f'<text x="{xc:.1f}" y="{yc_mem_u + offset_u:.1f}" fill="{COLOR_MEM_UNCACHED}" '
+            f'font-size="9" font-weight="bold" text-anchor="middle">'
+            f'{format_bytes(r["uncached_mem"])}</text>'
+        )
+
+        # Disk point (label below)
+        svg.append(
+            f'<circle cx="{xc:.1f}" cy="{yc_disk:.1f}" r="4.0" fill="{COLOR_DISK}"/>'
         )
         svg.append(
             f'<text x="{xc:.1f}" y="{yc_disk + 15:.1f}" fill="{COLOR_DISK}" '

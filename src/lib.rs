@@ -665,6 +665,34 @@ impl TurboFox {
         self.engine.remaining_bytes()
     }
 
+    /// Return the total number of bytes currently resident in physical memory (RAM)
+    ///
+    /// Combines file-backed pages currently resident in RAM queried via host page tables
+    /// with heap memory allocated by internal in-memory caches
+    ///
+    /// ## Errors
+    ///
+    /// * [`TurboError::Storage`] if inspecting host virtual memory page residency fails
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let cfg = TurboCfg::manual(path);
+    /// let db = TurboFox::create(cfg).unwrap();
+    ///
+    /// assert!(db.resident_bytes_in_memory().unwrap() > 0);
+    ///
+    /// db.delete().unwrap();
+    /// ```
+    #[inline]
+    pub fn resident_bytes_in_memory(&self) -> TurboResult<usize> {
+        self.engine.resident_bytes_in_memory()
+    }
+
     /// Perform an explicit flush for crash safe durability
     ///
     /// ## Errors

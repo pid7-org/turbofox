@@ -101,6 +101,13 @@ impl DBufSlotCache {
             (*chunk_ptr)[offset].store(slot, Ordering::Release);
         }
     }
+
+    pub(crate) fn memory_bytes(&self) -> usize {
+        let chunk_size = core::mem::size_of::<[AtomicU32; Self::CHUNK_SIZE]>();
+        let allocated_chunks =
+            self.chunks.iter().filter(|chunk| !chunk.load(Ordering::Acquire).is_null()).count();
+        core::mem::size_of::<Self>().saturating_add(allocated_chunks.saturating_mul(chunk_size))
+    }
 }
 
 impl Drop for DBufSlotCache {
@@ -2440,6 +2447,13 @@ impl Engine {
     }
 
     /// Ref: `DESIGN.md` §8.1
+    pub(crate) fn resident_bytes_in_memory(&self) -> TurboResult<usize> {
+        let mmap_bytes = self.mmap.resident_bytes()?;
+        let cache_bytes = self.dbuf_slot_cache.memory_bytes();
+        Ok(mmap_bytes.saturating_add(cache_bytes))
+    }
+
+    /// Ref: `DESIGN.md` §8.1
     pub(crate) fn sync(&self) -> TurboResult<()> {
         let entries = self.total_entries.load(Ordering::Acquire);
         let _ = self.mmap.write_exact::<Metadata, _, _>(0, |m| {
@@ -2721,6 +2735,20 @@ mod tests {
     }
 
     #[test]
+    fn ok_dbuf_slot_cache_memory_bytes() {
+        let cache = DBufSlotCache::new();
+        let base_size = core::mem::size_of::<DBufSlotCache>();
+        assert_eq!(cache.memory_bytes(), base_size);
+
+        cache.push(0, 0x40);
+        let chunk_size = core::mem::size_of::<[AtomicU32; DBufSlotCache::CHUNK_SIZE]>();
+        assert_eq!(cache.memory_bytes(), base_size + chunk_size);
+
+        cache.push(0x1000, 0x5000);
+        assert_eq!(cache.memory_bytes(), base_size + (chunk_size * 2));
+    }
+
+    #[test]
     fn ok_engine_kv_crud_lifecycle() {
         let dir = tempdir().unwrap();
         let cfg = TurboCfg::manual(dir.path());
@@ -2964,6 +2992,9 @@ mod tests {
             assert_eq!(engine.remaining_pages().unwrap(), 0);
         }
         assert!(engine.remaining_bytes().unwrap() > 0);
+        let resident_bytes = engine.resident_bytes_in_memory().unwrap();
+        assert!(resident_bytes >= engine.sys_page_size.as_usize());
+        assert!(resident_bytes >= core::mem::size_of::<DBufSlotCache>());
 
         let _ = engine.set(b"k1", b"v1").unwrap();
         let _ = engine.set(b"k2", b"v2").unwrap();

@@ -214,7 +214,7 @@ fn ok_stress_multi_quantum_backing_file_and_trie_growth() {
     let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
-    let initial_pages = db.total_pages().unwrap();
+    let initial_disk = db.resident_bytes_on_disk();
     let seed_count = 0x10;
     for i in 0..seed_count {
         let k = format!("seed_{:04x}", i);
@@ -262,8 +262,8 @@ fn ok_stress_multi_quantum_backing_file_and_trie_growth() {
         h.join().unwrap();
     }
 
-    let grown_pages = db.total_pages().unwrap();
-    assert!(grown_pages > initial_pages);
+    let grown_disk = db.resident_bytes_on_disk();
+    assert!(grown_disk > initial_disk);
     assert_eq!(db.total_entries(), (seed_count + 0x0100) as u64);
 
     // Validate payloads for written entries

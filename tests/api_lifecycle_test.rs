@@ -15,9 +15,6 @@ fn ok_turbofox_lifecycle_configs_and_metrics() {
 
     assert!(db.is_empty());
     assert_eq!(db.total_entries(), 0);
-    assert!(db.total_pages().unwrap() > 0);
-    assert!(db.remaining_pages().is_ok());
-    assert!(db.remaining_bytes().unwrap() > 0);
     assert!(db.resident_bytes_in_memory().unwrap() > 0);
     assert!(db.resident_bytes_on_disk() > 0);
 
@@ -167,10 +164,8 @@ fn ok_turbofox_capacity_hint_preallocation_and_reopen() {
     let cfg = TurboCfg::manual(dir.path()).with_capacity_hint(hint);
     let db = TurboFox::create(cfg.clone()).unwrap();
 
-    let initial_pages = db.total_pages().unwrap();
-    assert!(initial_pages >= 0x04);
-    let initial_remaining = db.remaining_bytes().unwrap();
-    assert!(initial_remaining > 0x4000);
+    let initial_disk = db.resident_bytes_on_disk();
+    assert!(initial_disk >= 0x4000);
 
     // Verify operations work on pre-allocated storage
     db.set(b"hint_key_1", b"hint_val_1").unwrap();
@@ -186,7 +181,7 @@ fn ok_turbofox_capacity_hint_preallocation_and_reopen() {
 
     // Reopen and assert structure preserved
     let reopened = TurboFox::open(cfg.clone()).unwrap();
-    assert_eq!(reopened.total_pages().unwrap(), initial_pages);
+    assert_eq!(reopened.resident_bytes_on_disk(), initial_disk);
     assert_eq!(reopened.get(b"hint_key_1").unwrap(), Some(b"hint_val_1".to_vec()));
     assert_eq!(reopened.list(b"hint_list_1").len().unwrap(), 0x01);
 

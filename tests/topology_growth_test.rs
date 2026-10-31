@@ -8,7 +8,7 @@ fn ok_turbofox_bucket_overflow_chaining() {
     let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
-    let initial_pages = db.total_pages().unwrap();
+    let initial_disk = db.resident_bytes_on_disk();
     let count = 0xC8;
 
     // Insert 200 keys; root bucket holds 64 slots, forcing multiple bucket expansions
@@ -25,8 +25,8 @@ fn ok_turbofox_bucket_overflow_chaining() {
         assert_eq!(db.get(&k).unwrap(), Some(expected));
     }
 
-    let grown_pages = db.total_pages().unwrap();
-    assert!(grown_pages >= initial_pages);
+    let grown_disk = db.resident_bytes_on_disk();
+    assert!(grown_disk >= initial_disk);
 
     db.delete().unwrap();
 }
@@ -119,8 +119,7 @@ fn ok_turbofox_physical_os_page_growth() {
     let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg.clone()).unwrap();
 
-    let initial_pages = db.total_pages().unwrap();
-    let initial_rem_bytes = db.remaining_bytes().unwrap();
+    let initial_disk = db.resident_bytes_on_disk();
 
     // Ingest heavy payloads to consume slots and trigger OS page growth
     let count = 0x90;
@@ -130,17 +129,16 @@ fn ok_turbofox_physical_os_page_growth() {
         db.set(&k, &v).unwrap();
     }
 
-    let grown_pages = db.total_pages().unwrap();
-    assert!(grown_pages >= initial_pages);
+    let grown_disk = db.resident_bytes_on_disk();
+    assert!(grown_disk >= initial_disk);
     assert_eq!(db.total_entries(), count);
 
     db.sync().unwrap();
     drop(db);
 
     let reopened = TurboFox::open(cfg).unwrap();
-    assert_eq!(reopened.total_pages().unwrap(), grown_pages);
+    assert_eq!(reopened.resident_bytes_on_disk(), grown_disk);
     assert_eq!(reopened.total_entries(), count);
-    assert!(reopened.remaining_bytes().unwrap() <= initial_rem_bytes);
 
     reopened.delete().unwrap();
 }

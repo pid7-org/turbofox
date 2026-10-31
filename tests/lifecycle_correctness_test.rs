@@ -200,7 +200,7 @@ fn ok_lifecycle_growth_boundary_crud() {
         let cfg = TurboCfg::manual(dir.path()).with_lookup_cache(lookup_cache);
         let db = TurboFox::create(cfg.clone()).unwrap();
 
-        let initial_pages = db.total_pages().unwrap();
+        let initial_disk = db.resident_bytes_on_disk();
         let count = 0x0400;
 
         // Step 1: Ingest payload entries forcing dynamic page expansion
@@ -211,8 +211,8 @@ fn ok_lifecycle_growth_boundary_crud() {
             db.set(k.as_bytes(), &v).unwrap();
         }
 
-        let grown_pages = db.total_pages().unwrap();
-        assert!(grown_pages > initial_pages);
+        let grown_disk = db.resident_bytes_on_disk();
+        assert!(grown_disk > initial_disk);
         assert_eq!(db.total_entries(), count as u64);
 
         // Step 2: Overwrite existing keys with larger payloads to force databuf reallocations

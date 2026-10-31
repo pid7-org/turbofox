@@ -2422,41 +2422,6 @@ impl Engine {
     }
 
     /// Ref: `DESIGN.md` §8.1
-    pub(crate) fn total_pages(&self) -> TurboResult<u32> {
-        let meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
-        Ok(meta.total_pages)
-    }
-
-    /// Ref: `DESIGN.md` §8.1
-    pub(crate) fn remaining_pages(&self) -> TurboResult<u32> {
-        let meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
-        let used_slots = meta.free_slot_marker;
-        let total_slots = meta.total_slots;
-
-        if used_slots >= total_slots {
-            return Ok(0);
-        }
-
-        let free_slots = total_slots - used_slots;
-        let page_slots = meta.page_size / (SLOT_SIZE as u32);
-
-        Ok(free_slots / page_slots)
-    }
-
-    /// Ref: `DESIGN.md` §8.1
-    pub(crate) fn remaining_bytes(&self) -> TurboResult<u64> {
-        let meta = self.mmap.read_exact::<Metadata, _, _>(0, |m| *m)?;
-        let used_slots = meta.free_slot_marker as u64;
-        let total_slots = meta.total_slots as u64;
-
-        if used_slots >= total_slots {
-            return Ok(0);
-        }
-
-        Ok((total_slots - used_slots) * (SLOT_SIZE as u64))
-    }
-
-    /// Ref: `DESIGN.md` §8.1
     pub(crate) fn resident_bytes_in_memory(&self) -> TurboResult<usize> {
         let mmap_bytes = self.mmap.resident_bytes()?;
         let cache_bytes = self.dbuf_slot_cache.as_ref().map_or(0, |c| c.memory_bytes());
@@ -2536,7 +2501,7 @@ mod tests {
 
         let engine = Engine::create(cfg.clone()).unwrap();
         assert_eq!(engine.total_entries(), 0);
-        assert!(engine.total_pages().unwrap() > 0);
+        assert!(engine.resident_bytes_on_disk() > 0);
 
         let _ = engine.set(b"reopen_k", b"reopen_v").unwrap();
         assert_eq!(engine.total_entries(), 1);
@@ -2642,14 +2607,14 @@ mod tests {
         assert_eq!(alloc_s, initial_free);
         assert_eq!(engine.free_slot_marker.load(Ordering::Acquire), initial_free + 0x20);
 
-        let initial_pages = engine.total_pages().unwrap();
+        let initial_disk = engine.resident_bytes_on_disk();
         let initial_slots = engine.total_slots.load(Ordering::Acquire);
         let huge_alloc = {
             let _guard = engine.growth_mutex.lock().unwrap();
             engine.alloc_uniform_slots_locked(initial_slots + 0x40).unwrap()
         };
         assert!(huge_alloc >= initial_free + 0x20);
-        assert!(engine.total_pages().unwrap() > initial_pages);
+        assert!(engine.resident_bytes_on_disk() > initial_disk);
         assert!(engine.total_slots.load(Ordering::Acquire) > initial_slots);
 
         engine.delete().unwrap();
@@ -3052,13 +3017,6 @@ mod tests {
         let engine = Engine::create(cfg).unwrap();
 
         assert_eq!(engine.total_entries(), 0);
-        assert!(engine.total_pages().unwrap() >= 1);
-        if engine.sys_page_size == PageSize::K4 {
-            assert!(engine.remaining_pages().unwrap() > 0);
-        } else {
-            assert_eq!(engine.remaining_pages().unwrap(), 0);
-        }
-        assert!(engine.remaining_bytes().unwrap() > 0);
         let resident_bytes = engine.resident_bytes_in_memory().unwrap();
         assert!(resident_bytes >= engine.sys_page_size.as_usize());
         assert_eq!(engine.dbuf_slot_cache.as_ref().map_or(0, |c| c.memory_bytes()), 0);
@@ -3072,10 +3030,6 @@ mod tests {
 
         let resident_disk = engine.resident_bytes_on_disk();
         assert!(resident_disk >= engine.sys_page_size.as_usize());
-        assert_eq!(
-            resident_disk,
-            engine.total_pages().unwrap() as usize * engine.sys_page_size.as_usize()
-        );
 
         let _ = engine.set(b"k1", b"v1").unwrap();
         let _ = engine.set(b"k2", b"v2").unwrap();

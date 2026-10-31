@@ -349,7 +349,7 @@ impl Engine {
         };
 
         if next_free > total {
-            self.grow_backing_file(count)?;
+            self.grow_backing_file(next_free - total)?;
         }
 
         let new_total = self.total_slots.load(Ordering::Acquire);
@@ -614,7 +614,8 @@ impl Engine {
                 .read_exact::<DBuf, _, _>(actual_tail, |d| d.next_dbuf_index() as usize)?;
 
             if next == 0 {
-                break;
+                let _ = self.expand_databuf_locked(actual_tail)?;
+                continue;
             }
 
             actual_tail = next;
@@ -644,22 +645,6 @@ impl Engine {
                 }
             }
         }
-
-        let new_slot = self.expand_databuf_locked(actual_tail)? as usize;
-        let new_hop = actual_tail_hop + 1;
-        self.active_dbuf_hint.store(new_hop, Ordering::Relaxed);
-
-        let mut dbuf = self.mmap.read_exact::<DBuf, _, _>(new_slot, |d| *d)?;
-        let orig = dbuf;
-        let local_idx = dbuf.alloc_contiguous(needed).ok_or(TurboError::DatabaseFull)?;
-
-        Ok(DbufAllocPlan {
-            start_slot: new_slot,
-            pool_hop: new_hop,
-            local_idx,
-            orig,
-            mutated: dbuf,
-        })
     }
 
     /// Ref: `DESIGN.md` §3.3

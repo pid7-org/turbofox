@@ -169,7 +169,7 @@ impl Engine {
             max_len: MAX_DB_LEN,
             sync_interval: cfg.sync_interval(),
             memory_priority_hint: true,
-            sequential_access_hint: true,
+            sequential_access_hint: cfg.lookup_cache,
         };
 
         let mmap = MemMap::<Slot>::new(memmap_cfg)?;
@@ -203,7 +203,7 @@ impl Engine {
             max_len: MAX_DB_LEN,
             sync_interval: cfg.sync_interval(),
             memory_priority_hint: true,
-            sequential_access_hint: true,
+            sequential_access_hint: cfg.lookup_cache,
         };
 
         if memmap_cfg.versioned_path().exists() { Self::open(cfg) } else { Self::create(cfg) }
@@ -227,7 +227,7 @@ impl Engine {
             max_len: MAX_DB_LEN,
             sync_interval: cfg.sync_interval(),
             memory_priority_hint: true,
-            sequential_access_hint: true,
+            sequential_access_hint: cfg.lookup_cache,
         };
 
         let mmap = MemMap::<Slot>::open(memmap_cfg)?;

@@ -219,10 +219,10 @@ chain requires $O(\text{pool\_hop})$ sequential disk/memory loads;
 an in-memory append-only chunked array provides wait-free $O(1)$ resolution:
 
 ```rs
-const CHUNK_SHIFT: usize = 0x08; // 256 entries per chunk (1 KiB chunk)
+const CHUNK_SHIFT: usize = 0x0C; // 4096 entries per chunk (16 KiB chunk)
 const CHUNK_SIZE: usize = 1 << CHUNK_SHIFT;
 const CHUNK_MASK: usize = CHUNK_SIZE - 1;
-const MAX_CHUNKS: usize = 0x0100; // 256 chunks covers 65,536 DBuf pools (16 MiB DB)
+const MAX_CHUNKS: usize = 0x0400; // 1024 chunks covers 4,194,304 DBuf pools (1 GiB DB)
 
 pub(crate) struct DBufSlotCache {
     chunks: [AtomicPtr<[AtomicU32; CHUNK_SIZE]>; MAX_CHUNKS],
@@ -237,10 +237,10 @@ pub(crate) struct DBufSlotCache {
   wait-free execution prevents cache-line bouncing across concurrent transactions;
   pool 0 resolves immediately to `DATABUF_HEAD_SLOT` via constant fast-path
 - **Write Path (Growth)**:
-  Under `growth_mutex`, when crossing chunk boundary, allocates 1 KiB boxed chunk;
+  Under `growth_mutex`, when crossing chunk boundary, allocates 16 KiB boxed chunk;
   publishes pointer with `Ordering::Release`; writes slot indices with monotonic stores
 - **Footprint**:
-  2 KiB outer pointer array (`256 * 8 B`); allocates 1 KiB lazily per 256 DBuf pools;
+  8 KiB outer pointer array (`1024 * 8 B`); allocates 16 KiB lazily per 4096 DBuf pools;
   consumes exactly 4 B per DBuf pool (1.56% of raw DBuf storage);
   pool 0 fast-path avoids allocating chunk 0 at initialization
 

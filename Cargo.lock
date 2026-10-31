@@ -270,6 +270,7 @@ version = "0.0.201"
 dependencies = [
  "frozen-core",
  "hdrhistogram",
+ "libc",
  "tempfile",
  "turbo_crc",
  "twox-hash",

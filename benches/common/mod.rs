@@ -7,6 +7,7 @@ compile_error!("benchmarks require target_os = \"linux\"");
 use hdrhistogram::Histogram;
 use std::fs;
 use std::io::Write;
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -28,6 +29,7 @@ pub enum BenchDir {
 
 impl BenchDir {
     pub fn new(custom: Option<PathBuf>, bench_tag: &str) -> (Self, PathBuf) {
+        let custom = std::env::var_os("TURBOFOX_BENCH_DIR").map(PathBuf::from).or(custom);
         if let Some(mut path) = custom {
             path.push(format!("tf_{}_{}", bench_tag, std::process::id()));
             fs::create_dir_all(&path).expect("failed to create custom db dir");
@@ -57,6 +59,14 @@ impl BenchDir {
                     .sum::<u64>()
             })
             .unwrap_or(0x00)
+    }
+}
+
+impl Drop for BenchDir {
+    fn drop(&mut self) {
+        if let BenchDir::Custom(path) = self {
+            let _ = fs::remove_dir_all(path);
+        }
     }
 }
 
@@ -257,4 +267,20 @@ pub fn drop_page_cache() {
                    sudo -n sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches') >/dev/null 2>&1";
         let _ = Command::new("sh").args(["-c", cmd]).status();
     }
+}
+
+pub fn purge_directory_page_cache(dir: &Path) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            if let Ok(file) = fs::OpenOptions::new().read(true).write(true).open(entry.path()) {
+                let fd = file.as_raw_fd();
+                unsafe {
+                    let _ = libc::fdatasync(fd);
+                    let _ = libc::posix_fadvise(fd, 0x00, 0x00, libc::POSIX_FADV_DONTNEED);
+                }
+            }
+        }
+    }
+
+    drop_page_cache();
 }

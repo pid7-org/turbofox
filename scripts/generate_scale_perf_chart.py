@@ -370,7 +370,7 @@ def generate_footprint_svg(records, out_path):
     )
 
     # Legends (3 series)
-    leg_x1 = svg_w - 0x01DE  # 522 px
+    leg_x1 = 0x01C2  # 450 px
     svg.append(
         f'<line x1="{leg_x1}" y1="34" x2="{leg_x1 + 20}" y2="34" '
         f'stroke="{COLOR_MEM_CACHED}" stroke-width="2.5"/>'
@@ -378,10 +378,10 @@ def generate_footprint_svg(records, out_path):
     svg.append(f'<circle cx="{leg_x1 + 10}" cy="34" r="4.0" fill="{COLOR_MEM_CACHED}"/>')
     svg.append(
         f'<text x="{leg_x1 + 25}" y="38" fill="{COLOR_TEXT}" font-size="10">'
-        f'Mem (Enabled)</text>'
+        f'RAM (lookup_cache enabled)</text>'
     )
 
-    leg_x2 = leg_x1 + 0x008A  # 660 px
+    leg_x2 = leg_x1 + 0x00C8  # 650 px
     svg.append(
         f'<line x1="{leg_x2}" y1="34" x2="{leg_x2 + 20}" y2="34" '
         f'stroke="{COLOR_MEM_UNCACHED}" stroke-width="2.5" stroke-dasharray="4,2"/>'
@@ -389,10 +389,10 @@ def generate_footprint_svg(records, out_path):
     svg.append(f'<circle cx="{leg_x2 + 10}" cy="34" r="4.0" fill="{COLOR_MEM_UNCACHED}"/>')
     svg.append(
         f'<text x="{leg_x2 + 25}" y="38" fill="{COLOR_TEXT}" font-size="10">'
-        f'Mem (Disabled)</text>'
+        f'RAM (lookup_cache disabled)</text>'
     )
 
-    leg_x3 = leg_x2 + 0x008C  # 800 px
+    leg_x3 = leg_x2 + 0x00CE  # 856 px
     svg.append(
         f'<line x1="{leg_x3}" y1="34" x2="{leg_x3 + 20}" y2="34" '
         f'stroke="{COLOR_DISK}" stroke-width="2.5" stroke-dasharray="2,2"/>'

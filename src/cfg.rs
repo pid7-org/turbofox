@@ -289,7 +289,10 @@ pub struct TurboCfg {
     /// Optional capacity hint guiding upfront backing storage pre-allocation
     pub capacity_hint: Option<CapacityHint>,
 
-    /// Optional in-memory lookup cache to accelerate record access; defaults to false
+    /// Optional in-memory lookup cache
+    ///
+    /// Internally activates aggressive kernel-level sequential readahead across mapping layers at
+    /// the cost of increased resident page footprint
     pub lookup_cache: bool,
 }
 
@@ -406,6 +409,20 @@ impl TurboCfg {
     /// wait-free O(1) record addressing across grown storage segments at the cost of modest
     /// resident memory; when disabled (default), record locations are resolved by traversing
     /// persistent storage structures directly
+    ///
+    /// ## Kernel Readahead
+    ///
+    /// Enabling `lookup_cache` automatically configures sequential access optimizations for the
+    /// underlying mapping engine across all platforms:
+    ///
+    /// * On POSIX (Linux and macOS), dispatches `madvise(MADV_SEQUENTIAL)` (and `posix_fadvise`
+    ///   under Linux), causing the kernel page cache to aggressively cluster and prefetch pages;
+    /// * On Windows, invokes `PrefetchVirtualMemory` and opens backing handles with
+    ///   `FILE_FLAG_SEQUENTIAL_SCAN` to pre-fault pages into the working set;
+    ///
+    /// This significantly accelerates traversal throughput by eliminating fault stalls, but will
+    /// increase observed resident memory (RSS / working set) as clean pages are eagerly populated
+    /// in advance
     ///
     /// ## Example
     ///

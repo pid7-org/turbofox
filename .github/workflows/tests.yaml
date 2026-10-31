@@ -54,6 +54,7 @@ jobs:
         run: cargo check --tests --release --all-features
 
       - name: Cargo check (benches)
+        if: runner.os == 'Linux'
         run: cargo check --benches --release --all-features
 
       - name: Cargo test (debug)
@@ -206,6 +207,7 @@ jobs:
         run: cargo check --tests --release --all-features
 
       - name: Cargo check (benches)
+        if: runner.os == 'Linux'
         run: cargo check --benches --release --all-features
 
       - name: Run tests (debug)

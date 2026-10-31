@@ -55,8 +55,13 @@ def load_scale_results(path):
         if workload == "with_mem_index":
             continue
         ops = entry.get("operations", 0x00)
-        lat = entry.get("latency_micros", {})
-        p50 = lat.get("p50", 0.0)
+        lat_val = entry.get("latency_micros")
+        if isinstance(lat_val, dict):
+            lat = lat_val.get("p50", 0.0)
+        elif isinstance(lat_val, (int, float)):
+            lat = float(lat_val)
+        else:
+            lat = float(entry.get("open_latency_micros", 0.0))
         in_mem = entry.get("in_mem_bytes", 0x00)
         db_size = entry.get("db_size_bytes", 0x00)
 
@@ -64,8 +69,8 @@ def load_scale_results(path):
             by_n[ops] = {
                 "n": ops,
                 "db_size_bytes": db_size,
-                "cached_p50": 0.0,
-                "uncached_p50": 0.0,
+                "cached_lat": 0.0,
+                "uncached_lat": 0.0,
                 "cached_mem": 0,
                 "uncached_mem": 0,
             }
@@ -81,7 +86,7 @@ def load_scale_results(path):
             "open_warm",
             "warm",
         ):
-            by_n[ops]["cached_p50"] = p50
+            by_n[ops]["cached_lat"] = lat
             by_n[ops]["cached_mem"] = in_mem
         elif workload in (
             "lookup_cache_disabled",
@@ -92,7 +97,7 @@ def load_scale_results(path):
             "cold",
             "open",
         ):
-            by_n[ops]["uncached_p50"] = p50
+            by_n[ops]["uncached_lat"] = lat
             by_n[ops]["uncached_mem"] = in_mem
 
     records = list(by_n.values())
@@ -147,8 +152,8 @@ def generate_latency_svg(records, out_path):
     min_n = min(all_n)
     max_n = max(all_n)
 
-    min_lat = min(min(r["cached_p50"], r["uncached_p50"]) for r in records)
-    max_lat = max(max(r["cached_p50"], r["uncached_p50"]) for r in records)
+    min_lat = min(min(r["cached_lat"], r["uncached_lat"]) for r in records)
+    max_lat = max(max(r["cached_lat"], r["uncached_lat"]) for r in records)
     y_min = max(0.0, (int(min_lat * 0.85) // 50) * 50.0)
     y_max = max((int(max_lat * 1.15) // 50 + 1) * 50.0, y_min + 100.0)
 
@@ -182,7 +187,7 @@ def generate_latency_svg(records, out_path):
     )
     svg.append(
         f'<text x="32" y="52" fill="{COLOR_SUBTLE}" font-size="11">'
-        f'Database open latency (p50) with lookup_cache enabled vs disabled</text>'
+        f'Database open latency with lookup_cache enabled vs disabled</text>'
     )
 
     # Legends (dual series)
@@ -194,7 +199,7 @@ def generate_latency_svg(records, out_path):
     svg.append(f'<circle cx="{leg_x1 + 12}" cy="34" r="4.5" fill="{COLOR_LAT_CACHED}"/>')
     svg.append(
         f'<text x="{leg_x1 + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
-        f'lookup_cache Enabled (p50)</text>'
+        f'lookup_cache Enabled</text>'
     )
 
     leg_x2 = 0x02DC  # 732 px
@@ -205,7 +210,7 @@ def generate_latency_svg(records, out_path):
     svg.append(f'<circle cx="{leg_x2 + 12}" cy="34" r="4.5" fill="{COLOR_LAT_UNCACHED}"/>')
     svg.append(
         f'<text x="{leg_x2 + 30}" y="38" fill="{COLOR_TEXT}" font-size="11">'
-        f'lookup_cache Disabled (p50)</text>'
+        f'lookup_cache Disabled</text>'
     )
 
     # Plot panel background
@@ -249,7 +254,7 @@ def generate_latency_svg(records, out_path):
     pts_c = []
     for r in records:
         xc = x_coord(r["n"]) - 5.0
-        yc = y_coord(r["cached_p50"])
+        yc = y_coord(r["cached_lat"])
         pts_c.append(f"{xc:.1f},{yc:.1f}")
 
     svg.append(
@@ -261,7 +266,7 @@ def generate_latency_svg(records, out_path):
     pts_u = []
     for r in records:
         xc = x_coord(r["n"]) + 5.0
-        yc = y_coord(r["uncached_p50"])
+        yc = y_coord(r["uncached_lat"])
         pts_u.append(f"{xc:.1f},{yc:.1f}")
 
     svg.append(
@@ -274,8 +279,8 @@ def generate_latency_svg(records, out_path):
         xc = x_coord(r["n"])
         xc_c = xc - 5.0
         xc_u = xc + 5.0
-        yc_c = y_coord(r["cached_p50"])
-        yc_u = y_coord(r["uncached_p50"])
+        yc_c = y_coord(r["cached_lat"])
+        yc_u = y_coord(r["uncached_lat"])
 
         svg.append(
             f'<circle cx="{xc_c:.1f}" cy="{yc_c:.1f}" r="4.5" fill="{COLOR_LAT_CACHED}"/>'
@@ -289,23 +294,23 @@ def generate_latency_svg(records, out_path):
             svg.append(
                 f'<text x="{xc_c:.1f}" y="{yc_c - 9:.1f}" fill="{COLOR_LAT_CACHED}" '
                 f'font-size="10" font-weight="bold" text-anchor="middle">'
-                f'{format_latency(r["cached_p50"])}</text>'
+                f'{format_latency(r["cached_lat"])}</text>'
             )
             svg.append(
                 f'<text x="{xc_u:.1f}" y="{yc_u + 16:.1f}" fill="{COLOR_LAT_UNCACHED}" '
                 f'font-size="10" font-weight="bold" text-anchor="middle">'
-                f'{format_latency(r["uncached_p50"])}</text>'
+                f'{format_latency(r["uncached_lat"])}</text>'
             )
         else:
             svg.append(
                 f'<text x="{xc_u:.1f}" y="{yc_u - 9:.1f}" fill="{COLOR_LAT_UNCACHED}" '
                 f'font-size="10" font-weight="bold" text-anchor="middle">'
-                f'{format_latency(r["uncached_p50"])}</text>'
+                f'{format_latency(r["uncached_lat"])}</text>'
             )
             svg.append(
                 f'<text x="{xc_c:.1f}" y="{yc_c + 16:.1f}" fill="{COLOR_LAT_CACHED}" '
                 f'font-size="10" font-weight="bold" text-anchor="middle">'
-                f'{format_latency(r["cached_p50"])}</text>'
+                f'{format_latency(r["cached_lat"])}</text>'
             )
 
     svg.append('</svg>')

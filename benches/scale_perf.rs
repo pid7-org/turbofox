@@ -1,8 +1,7 @@
 mod common;
 
 use common::{
-    BenchDir, BenchSummary, KEY_SIZE, VAL_SIZE, new_histogram, pin_to_physical_core,
-    print_json_summary, purge_directory_page_cache,
+    BenchDir, KEY_SIZE, NANOS_PER_MICRO, VAL_SIZE, pin_to_physical_core, purge_directory_page_cache,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,7 +12,25 @@ use turbofox::{EvictionMode, TurboCfg, TurboFox};
 
 const TOTAL_KEYS: usize = 0x0001_F400;
 const BENCH_NAME: &str = "scale_perf";
-const SAMPLES_PER_INTERVAL: usize = 0x10;
+
+#[inline(always)]
+fn print_scale_json(
+    workload: &str,
+    operations: usize,
+    db_size_bytes: u64,
+    in_mem_bytes: u64,
+    latency_micros: f64,
+) {
+    println!("{{");
+    println!("  \"benchmark\": \"{}\",", BENCH_NAME);
+    println!("  \"workload\": \"{}\",", workload);
+    println!("  \"operations\": {},", operations);
+    println!("  \"threads\": 1,");
+    println!("  \"db_size_bytes\": {},", db_size_bytes);
+    println!("  \"in_mem_bytes\": {},", in_mem_bytes);
+    println!("  \"latency_micros\": {:.2}", latency_micros);
+    println!("}}");
+}
 
 #[inline(always)]
 fn run_worker(
@@ -40,32 +57,12 @@ fn run_worker(
     let mut current_keys = 0x00;
     for interval_idx in 0x00..=num_intervals {
         let cfg = TurboCfg::manual(db_path).with_lookup_cache(lookup_cache);
-        let probe = TurboFox::open(cfg.clone()).expect("probe open failed");
-        let in_mem = probe.resident_bytes_in_memory().expect("in-mem query failed") as u64;
-        let disk = probe.resident_bytes_on_disk() as u64;
-        drop(probe);
-
-        let mut hist = new_histogram();
-        let t_start = Instant::now();
-        for _ in 0x00..SAMPLES_PER_INTERVAL {
-            let t0 = Instant::now();
-            let opened_db = TurboFox::open(cfg.clone()).expect("open failed");
-            let elapsed_ns = t0.elapsed().as_nanos() as u64;
-            hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
-            drop(opened_db);
-        }
-        let total_elapsed = t_start.elapsed();
-
-        let summary = BenchSummary {
-            benchmark: BENCH_NAME,
-            workload,
-            total_ops: current_keys,
-            threads: 0x01,
-            total_elapsed,
-            hist: &hist,
-            db_size_bytes: disk,
-            in_mem_bytes: in_mem,
-        };
+        let t0 = Instant::now();
+        let opened_db = TurboFox::open(cfg).expect("open failed");
+        let latency_micros = (t0.elapsed().as_nanos() as f64) / NANOS_PER_MICRO;
+        let in_mem = opened_db.resident_bytes_in_memory().expect("in-mem query failed") as u64;
+        let disk = opened_db.resident_bytes_on_disk() as u64;
+        drop(opened_db);
 
         barrier.wait();
 
@@ -74,14 +71,14 @@ fn run_worker(
                 println!(",");
             }
 
-            print_json_summary(&summary);
+            print_scale_json(workload, current_keys, disk, in_mem, latency_micros);
         }
 
         barrier.wait();
 
         if tid == 0x01 {
             println!(",");
-            print_json_summary(&summary);
+            print_scale_json(workload, current_keys, disk, in_mem, latency_micros);
         }
 
         barrier.wait();

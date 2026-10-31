@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Generate scaling performance benchmark SVGs for open latency and resource footprint"""
 
 import json
 import os
@@ -183,11 +182,11 @@ def generate_latency_svg(records, out_path):
     # Title & Subtitle
     svg.append(
         f'<text x="32" y="34" fill="{COLOR_TEXT}" font-size="16" font-weight="bold">'
-        f'TurboFox Open Latency Scaling</text>'
+        f'Open Latency Scaling</text>'
     )
     svg.append(
-        f'<text x="32" y="52" fill="{COLOR_SUBTLE}" font-size="11">'
-        f'Database open latency with lookup_cache enabled vs disabled</text>'
+        f'<text x="32" y="56" fill="{COLOR_SUBTLE}" font-size="11">'
+        f'TurboFox::open latency with lookup_cache enabled vs disabled</text>'
     )
 
     # Legends (dual series)
@@ -247,7 +246,7 @@ def generate_latency_svg(records, out_path):
     # Bottom caption
     svg.append(
         f'<text x="{p_x + p_w / 2.0:.1f}" y="{p_y + p_h + 38}" fill="{COLOR_SUBTLE}" '
-        f'font-size="10" text-anchor="middle">Scaling Intervals (Keys Written)</text>'
+        f'font-size="9" text-anchor="middle">Scaling Intervals (Keys Written)</text>'
     )
 
     # Series 1: Cached polyline
@@ -367,44 +366,45 @@ def generate_footprint_svg(records, out_path):
     # Title & Subtitle
     svg.append(
         f'<text x="32" y="34" fill="{COLOR_TEXT}" font-size="16" font-weight="bold">'
-        f'TurboFox Resource Footprint Scaling</text>'
+        f'Resource Footprint Scaling</text>'
     )
     svg.append(
-        f'<text x="32" y="52" fill="{COLOR_SUBTLE}" font-size="11">'
-        f'Resident memory and disk footprint across intervals (lookup_cache enabled vs disabled)</text>'
+        f'<text x="32" y="56" fill="{COLOR_SUBTLE}" font-size="11">'
+        f'Resident memory and disk footprint across intervals</text>'
     )
 
     # Legends (3 series)
-    leg_x1 = 0x01C2  # 450 px
+    leg_x1 = 0x01CC  # 460 px
+    leg_y1 = 0x1A    # 26 px
     svg.append(
-        f'<line x1="{leg_x1}" y1="34" x2="{leg_x1 + 20}" y2="34" '
+        f'<line x1="{leg_x1}" y1="{leg_y1}" x2="{leg_x1 + 20}" y2="{leg_y1}" '
         f'stroke="{COLOR_MEM_CACHED}" stroke-width="2.5"/>'
     )
-    svg.append(f'<circle cx="{leg_x1 + 10}" cy="34" r="4.0" fill="{COLOR_MEM_CACHED}"/>')
+    svg.append(f'<circle cx="{leg_x1 + 10}" cy="{leg_y1}" r="4.0" fill="{COLOR_MEM_CACHED}"/>')
     svg.append(
-        f'<text x="{leg_x1 + 25}" y="38" fill="{COLOR_TEXT}" font-size="10">'
+        f'<text x="{leg_x1 + 25}" y="{leg_y1 + 4}" fill="{COLOR_TEXT}" font-size="10">'
         f'RAM (lookup_cache enabled)</text>'
     )
 
-    leg_x2 = leg_x1 + 0x00C8  # 650 px
+    leg_x2 = 0x02BC  # 700 px
     svg.append(
-        f'<line x1="{leg_x2}" y1="34" x2="{leg_x2 + 20}" y2="34" '
+        f'<line x1="{leg_x2}" y1="{leg_y1}" x2="{leg_x2 + 20}" y2="{leg_y1}" '
         f'stroke="{COLOR_MEM_UNCACHED}" stroke-width="2.5" stroke-dasharray="4,2"/>'
     )
-    svg.append(f'<circle cx="{leg_x2 + 10}" cy="34" r="4.0" fill="{COLOR_MEM_UNCACHED}"/>')
+    svg.append(f'<circle cx="{leg_x2 + 10}" cy="{leg_y1}" r="4.0" fill="{COLOR_MEM_UNCACHED}"/>')
     svg.append(
-        f'<text x="{leg_x2 + 25}" y="38" fill="{COLOR_TEXT}" font-size="10">'
+        f'<text x="{leg_x2 + 25}" y="{leg_y1 + 4}" fill="{COLOR_TEXT}" font-size="10">'
         f'RAM (lookup_cache disabled)</text>'
     )
 
-    leg_x3 = leg_x2 + 0x00CE  # 856 px
+    leg_y2 = 0x2E    # 46 px
     svg.append(
-        f'<line x1="{leg_x3}" y1="34" x2="{leg_x3 + 20}" y2="34" '
+        f'<line x1="{leg_x1}" y1="{leg_y2}" x2="{leg_x1 + 20}" y2="{leg_y2}" '
         f'stroke="{COLOR_DISK}" stroke-width="2.5" stroke-dasharray="2,2"/>'
     )
-    svg.append(f'<circle cx="{leg_x3 + 10}" cy="34" r="4.0" fill="{COLOR_DISK}"/>')
+    svg.append(f'<circle cx="{leg_x1 + 10}" cy="{leg_y2}" r="4.0" fill="{COLOR_DISK}"/>')
     svg.append(
-        f'<text x="{leg_x3 + 25}" y="38" fill="{COLOR_TEXT}" font-size="10">'
+        f'<text x="{leg_x1 + 25}" y="{leg_y2 + 4}" fill="{COLOR_TEXT}" font-size="10">'
         f'Disk Footprint</text>'
     )
 
@@ -439,10 +439,18 @@ def generate_footprint_svg(records, out_path):
             f'font-size="11" text-anchor="middle">N={format_n(n)}</text>'
         )
 
-    # Bottom caption
+    # Bottom caption and note
+    note_text = (
+        "NOTE: Resource footprints are measured immediately after TurboFox::open "
+        "on a database pre-populated with N KV entries"
+    )
     svg.append(
-        f'<text x="{p_x + p_w / 2.0:.1f}" y="{p_y + p_h + 38}" fill="{COLOR_SUBTLE}" '
-        f'font-size="10" text-anchor="middle">Scaling Intervals (Keys Written)</text>'
+        f'<text x="{p_x + p_w / 2.0:.1f}" y="{p_y + p_h + 36}" fill="{COLOR_SUBTLE}" '
+        f'font-size="9" text-anchor="middle">Scaling Intervals (Keys Written)</text>'
+    )
+    svg.append(
+        f'<text x="32" y="{p_y + p_h + 54}" fill="{COLOR_SUBTLE}" '
+        f'font-size="8" font-style="italic" text-anchor="start">{note_text}</text>'
     )
 
     # Series 1: Enabled Memory
@@ -501,19 +509,39 @@ def generate_footprint_svg(records, out_path):
             f'<circle cx="{xc:.1f}" cy="{yc_disk:.1f}" r="4.0" fill="{COLOR_DISK}"/>'
         )
 
-        # Labels: Disk above (center), Enabled below-left, Disabled below-right
+        # Place disk label above point if higher elevation, else below
+        if yc_disk <= min(yc_mem_c, yc_mem_u):
+            y_disk_lbl = yc_disk - 9.0
+        else:
+            y_disk_lbl = yc_disk + 15.0
+
         svg.append(
-            f'<text x="{xc:.1f}" y="{yc_disk - 9:.1f}" fill="{COLOR_DISK}" '
+            f'<text x="{xc:.1f}" y="{y_disk_lbl:.1f}" fill="{COLOR_DISK}" '
             f'font-size="9" font-weight="bold" text-anchor="middle">'
             f'{format_bytes(r["db_size_bytes"])}</text>'
         )
+
+        # Stagger memory labels vertically based on elevation
+        if yc_mem_c <= yc_mem_u:
+            y_mem_c_lbl = yc_mem_c - 9.0
+            y_mem_u_lbl = yc_mem_u + 15.0
+        else:
+            y_mem_u_lbl = yc_mem_u - 9.0
+            y_mem_c_lbl = yc_mem_c + 15.0
+
+        # Avoid collision between disk label and adjacent memory labels
+        if abs(y_disk_lbl - y_mem_c_lbl) < 10.0:
+            y_mem_c_lbl += 12.0 if y_mem_c_lbl >= y_disk_lbl else -12.0
+        if abs(y_disk_lbl - y_mem_u_lbl) < 10.0:
+            y_mem_u_lbl += 12.0 if y_mem_u_lbl >= y_disk_lbl else -12.0
+
         svg.append(
-            f'<text x="{xc - 8:.1f}" y="{yc_mem_c + 15:.1f}" fill="{COLOR_MEM_CACHED}" '
+            f'<text x="{xc - 8:.1f}" y="{y_mem_c_lbl:.1f}" fill="{COLOR_MEM_CACHED}" '
             f'font-size="9" font-weight="bold" text-anchor="end">'
             f'{format_bytes(r["cached_mem"])}</text>'
         )
         svg.append(
-            f'<text x="{xc + 8:.1f}" y="{yc_mem_u + 15:.1f}" fill="{COLOR_MEM_UNCACHED}" '
+            f'<text x="{xc + 8:.1f}" y="{y_mem_u_lbl:.1f}" fill="{COLOR_MEM_UNCACHED}" '
             f'font-size="9" font-weight="bold" text-anchor="start">'
             f'{format_bytes(r["uncached_mem"])}</text>'
         )
@@ -527,8 +555,9 @@ def generate_footprint_svg(records, out_path):
 
 if __name__ == "__main__":
     in_file = sys.argv[1] if len(sys.argv) > 1 else "tmp/results/turbofox_benchmark_results.json"
-    if len(sys.argv) > 2 and os.path.isdir(sys.argv[2]):
+    if len(sys.argv) > 2 and (os.path.isdir(sys.argv[2]) or sys.argv[2].endswith(os.sep)):
         out_dir = sys.argv[2]
+        os.makedirs(out_dir, exist_ok=True)
         latency_out = os.path.join(out_dir, "scale_perf_latency.svg")
         footprint_out = os.path.join(out_dir, "scale_perf_footprint.svg")
     else:

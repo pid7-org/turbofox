@@ -23,6 +23,8 @@ barriers
   - [Zero Rehash](#zero-rehash)
   - [Torn-Write Protection](#torn-write-protection)
   - [Durability Model](#durability-model)
+  - [RAII Safety](#raii-safety)
+  - [Graceful Shutdown](#graceful-shutdown)
   - [TurboList](#turbolist)
   - [Storage Topography](#storage-topography)
   - [Operational Invariants](#operational-invariants)
@@ -140,6 +142,34 @@ return a lightweight `TurboTicket` bound to a monotonic commit epoch:
   * A dedicated background sync thread flushes dirty pages up to the current epoch
   * Incorporates adaptive backoff under idle load to prevent write endurance wear on flash devices
 * `ticket.is_durable()` enables non-blocking checks to poll writeback completion asynchronously
+
+### RAII Safety
+
+> [!NOTE]
+>
+> `TurboFox` is RAII-safe with respect to system resource reclamation
+>
+> Dropping a database handle cleanly releases all allocated heap buffers, unmaps virtual memory
+> regions, and closes backing OS file descriptors alongside exclusive advisory file locks without
+> leaks
+
+### Graceful Shutdown
+
+> [!WARNING]
+>
+> RAII resource cleanup must not be conflated with durability guarantees
+>
+> Dropping an instance initiates a best-effort background flush, but Rust's `Drop` interface
+> discards return values, hence delayed writeback failures (such as physical I/O errors or storage
+> exhaustion) cannot be propagated to the caller and will fail silently
+>
+> Applications performing graceful shutdown must establish an explicit durability barrier before
+> dropping the instance:
+>
+> * Under periodic sync configurations, await outstanding write completion via `ticket.wait()`
+>   or poll `ticket.is_durable()`
+> * Under manual sync configurations, trigger a synchronous write barrier via `ticket.force()`
+>   or `db.sync()`, verifying the returned `Result`
 
 ### TurboList
 

@@ -110,6 +110,30 @@
 //! * [`TurboTicket::is_durable`] enables non-blocking checks to poll writeback completion
 //!   asynchronously
 //!
+//! ### RAII Safety
+//!
+//! `TurboFox` is RAII-safe with respect to system resource reclamation
+//!
+//! Dropping a database handle cleanly releases all allocated heap buffers, unmaps virtual memory
+//! regions, and closes backing OS file descriptors alongside exclusive advisory file locks without
+//! leaks
+//!
+//! ### Graceful Shutdown
+//!
+//! RAII resource cleanup must not be conflated with durability guarantees
+//!
+//! Dropping an instance initiates a best-effort background flush, but Rust's `Drop` interface
+//! discards return values, hence delayed writeback failures (such as physical I/O errors or storage
+//! exhaustion) cannot be propagated to the caller and will fail silently
+//!
+//! Applications performing graceful shutdown must establish an explicit durability barrier before
+//! dropping the instance:
+//!
+//! * Under periodic sync configurations, await outstanding write completion via
+//!   [`TurboTicket::wait`] or poll [`TurboTicket::is_durable`]
+//! * Under manual sync configurations, trigger a synchronous write barrier via
+//!   [`TurboTicket::force`] or [`TurboFox::sync`], verifying the returned [`TurboResult`]
+//!
 //! ### TurboList
 //!
 //! Ordered 1-to-N sequences co-exist inside the primary storage file:
@@ -242,6 +266,30 @@ use std::sync::Arc;
 ///
 /// Internally wraps an `Arc<Engine>`; cloning is cheap and shares the underlying memory mapping,
 /// hash table, and sync worker thread pool across threads
+///
+/// ## RAII Safety
+///
+/// `TurboFox` is RAII-safe with respect to system resource reclamation
+///
+/// Dropping a database handle cleanly releases all allocated heap buffers, unmaps virtual memory
+/// regions, and closes backing OS file descriptors alongside exclusive advisory file locks without
+/// leaks
+///
+/// ## Graceful Shutdown
+///
+/// RAII resource cleanup must not be conflated with durability guarantees
+///
+/// Dropping an instance initiates a best-effort background flush, but Rust's `Drop` interface
+/// discards return values, hence delayed writeback failures cannot be propagated to the caller and
+/// will fail silently
+///
+/// Applications performing graceful shutdown must establish an explicit durability barrier before
+/// dropping the instance:
+///
+/// * Under periodic sync configurations, await outstanding write completion via
+///   [`TurboTicket::wait`] or poll [`TurboTicket::is_durable`]
+/// * Under manual sync configurations, trigger a synchronous write barrier via
+///   [`TurboTicket::force`] or [`TurboFox::sync`], verifying the returned [`TurboResult`]
 ///
 /// ## Example
 ///

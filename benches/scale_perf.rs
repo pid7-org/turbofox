@@ -5,8 +5,6 @@ use common::{
 };
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Barrier;
-use std::thread;
 use std::time::Instant;
 use turbofox::{EvictionMode, TurboCfg, TurboFox};
 
@@ -32,27 +30,19 @@ fn print_scale_json(
     println!("}}");
 }
 
-#[inline(always)]
 fn run_worker(
-    tid: usize,
     db_path: &Path,
     lookup_cache: bool,
     workload: &'static str,
     num_intervals: usize,
     step: usize,
     val: [u8; VAL_SIZE],
-    barrier: &Barrier,
 ) {
-    pin_to_physical_core(tid);
-
     let create_cfg = TurboCfg::manual(db_path);
     let writer = TurboFox::create(create_cfg).expect("failed to create db");
     writer.evict(EvictionMode::PurgeAll).expect("evict failed");
-
     drop(writer);
     purge_directory_page_cache(db_path);
-
-    barrier.wait();
 
     let mut current_keys = 0x00;
     for interval_idx in 0x00..=num_intervals {
@@ -64,24 +54,10 @@ fn run_worker(
         let disk = opened_db.resident_bytes_on_disk() as u64;
         drop(opened_db);
 
-        barrier.wait();
-
-        if tid == 0x00 {
-            if interval_idx > 0x00 {
-                println!(",");
-            }
-
-            print_scale_json(workload, current_keys, disk, in_mem, latency_micros);
-        }
-
-        barrier.wait();
-
-        if tid == 0x01 {
+        if interval_idx > 0x00 {
             println!(",");
-            print_scale_json(workload, current_keys, disk, in_mem, latency_micros);
         }
-
-        barrier.wait();
+        print_scale_json(workload, current_keys, disk, in_mem, latency_micros);
 
         if interval_idx < num_intervals {
             let target_keys = (interval_idx + 0x01) * step;
@@ -97,16 +73,14 @@ fn run_worker(
             writer.evict(EvictionMode::PurgeAll).expect("evict failed");
             drop(writer);
 
-            barrier.wait();
-
             purge_directory_page_cache(db_path);
-
-            barrier.wait();
         }
     }
 }
 
 fn main() {
+    pin_to_physical_core(0x00);
+
     let total_keys = std::env::var("TURBOFOX_BENCH_OPS")
         .ok()
         .and_then(|v| {
@@ -128,36 +102,10 @@ fn main() {
 
     let val = [0x42u8; VAL_SIZE];
     let num_intervals = total_keys / step;
-    let barrier = Barrier::new(0x02);
 
-    thread::scope(|s| {
-        let t1 = s.spawn(|| {
-            run_worker(
-                0x00,
-                &db1_path,
-                false,
-                "lookup_cache_disabled",
-                num_intervals,
-                step,
-                val,
-                &barrier,
-            );
-        });
+    run_worker(&db1_path, false, "lookup_cache_disabled", num_intervals, step, val);
 
-        let t2 = s.spawn(|| {
-            run_worker(
-                0x01,
-                &db2_path,
-                true,
-                "lookup_cache_enabled",
-                num_intervals,
-                step,
-                val,
-                &barrier,
-            );
-        });
+    println!(",");
 
-        t1.join().expect("uncached worker thread panicked");
-        t2.join().expect("cached worker thread panicked");
-    });
+    run_worker(&db2_path, true, "lookup_cache_enabled", num_intervals, step, val);
 }

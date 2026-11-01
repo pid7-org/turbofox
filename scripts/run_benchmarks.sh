@@ -3,7 +3,7 @@
 set -euo pipefail
 
 DEFAULT_OPS="0x186A0" # 100,000 ops
-DEFAULT_THREADS="1,4"
+DEFAULT_THREADS="1"
 DEFAULT_SCALES="1000,10000,100000"
 DEFAULT_OUT="tmp/results/turbofox_benchmark_results.json"
 TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/turbofox-target}"
@@ -151,22 +151,16 @@ if [[ ${RUN_SCALE} -eq 1 ]]; then
   append_result "${json_out}"
 fi
 
-# 2. Run Unified Core KV Benchmark (threads=1,2, N=${OPS}, set 80/20, get/del 60/40)
+# 2. Run Unified Core KV Benchmark (threads=1, N=${OPS}, set 80/20, get/del 60/40)
 if [[ ${RUN_KV} -eq 1 ]]; then
-  taskset_cmd=""
+  taskset_single=""
   if command -v taskset >/dev/null 2>&1; then
-    physical_cpus=$(lscpu -p=CORE,CPU 2>/dev/null | grep -v '^#' | \
-      sort -u -t, -k1,1 | cut -d, -f2 | head -n 2 | paste -sd, -)
-    if [[ $(echo "${physical_cpus}" | tr -cd ',' | wc -c) -ge 1 ]]; then
-      taskset_cmd="taskset -c ${physical_cpus}"
-    else
-      taskset_cmd="taskset -c 0-1"
-    fi
+    taskset_single="taskset -c 0"
   fi
 
-  echo "Running kv_perf [set 80/20, get/del 60/40] (threads=1,2, N=${OPS})..." >&2
+  echo "Running kv_perf [set 80/20, get/del 60/40] (threads=1, N=${OPS})..." >&2
   drop_page_cache
-  json_out=$(${taskset_cmd} "${KV_BIN}")
+  json_out=$(${taskset_single} "${KV_BIN}")
   append_result "${json_out}"
 fi
 

@@ -11,9 +11,12 @@ COLOR_LINE = "#e1e4e8"      # Grid line
 COLOR_TEXT = "#24292f"      # Primary text
 COLOR_SUBTLE = "#57606a"    # Secondary text and axis ticks
 
-COLOR_1T = "#1e66f5" # Blue
-COLOR_2T = "#8839ef" # Mauve
-COLOR_4T = COLOR_2T
+WORKLOAD_COLORS = {
+    "set_perf": "#1e66f5", # Blue
+    "get_perf": "#179299", # Teal
+    "del_perf": "#8839ef", # Mauve
+}
+COLOR_FALLBACK = "#1e66f5"
 
 FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
@@ -65,8 +68,8 @@ def load_results(path):
         if isinstance(entry, dict):
             bench = entry.get("benchmark")
             wl = entry.get("workload")
-            thr = entry.get("threads")
-            lookup[(bench, wl, thr)] = entry
+            if (bench, wl) not in lookup:
+                lookup[(bench, wl)] = entry
     return lookup
 
 
@@ -81,20 +84,13 @@ def generate_svg(lookup, out_path):
 
     workloads = [
         wl for wl in CANDIDATE_WORKLOADS
-        if any(k[0] == wl[0] and k[1] == wl[1] for k in lookup)
+        if (wl[0], wl[1]) in lookup
     ]
     if not workloads:
         workloads = [CANDIDATE_WORKLOADS[0]]
 
-    active_threads = sorted({
-        k[2] for k in lookup
-        if any(k[0] == wl[0] and k[1] == wl[1] for wl in workloads) and k[2] is not None
-    })
-    if not active_threads:
-        active_threads = [2]
-
     # Limit y-axis to 100 µs with 5 intervals
-    max_lat = 100.0
+    max_lat = 40.0
     intervals = 5
 
     svg = []
@@ -109,34 +105,14 @@ def generate_svg(lookup, out_path):
     )
 
     # Title & Subtitle
-    if len(active_threads) == 1:
-        thr_label = f"{active_threads[0]} Threads"
-        sub_label = (
-            f"Tail latencies in microseconds across percentiles ({active_threads[0]} worker threads)"
-        )
-    else:
-        thr_label = " vs ".join(f"{t}T" for t in active_threads)
-        sub_label = "Tail latencies in microseconds across p50, p90, p99, and p9999"
-
     svg.append(
         f'<text x="32" y="32" fill="{COLOR_TEXT}" font-size="16" font-weight="bold">'
-        f'Operation Tail Latency ({thr_label})</text>'
+        f'Operation Tail Latency</text>'
     )
     svg.append(
-        f'<text x="32" y="48" fill="{COLOR_SUBTLE}" font-size="11">{sub_label}</text>'
+        f'<text x="32" y="48" fill="{COLOR_SUBTLE}" font-size="11">'
+        f'Tail latencies in microseconds across p50, p90, p99, and p9999</text>'
     )
-
-    # Legend
-    leg_x = svg_w - 0x0100
-    colors = [COLOR_1T, COLOR_4T]
-    for idx, thr in enumerate(active_threads):
-        c = colors[idx % len(colors)]
-        x_offset = leg_x + idx * 80
-        svg.append(f'<rect x="{x_offset}" y="24" width="12" height="12" rx="2" fill="{c}"/>')
-        svg.append(
-            f'<text x="{x_offset + 18}" y="34" fill="{COLOR_TEXT}" font-size="11">'
-            f'{thr} Thread{"s" if thr > 1 else ""}</text>'
-        )
 
     # Plot panel
     svg.append(
@@ -160,163 +136,51 @@ def generate_svg(lookup, out_path):
     # Layout: workload blocks
     graph_spacing = 24.0
     block_w = (p_w - (len(workloads) - 1) * graph_spacing) / len(workloads)
-    bar_w = 0x10 if len(workloads) <= 3 else 0x0E # 16px / 14px
-    bar_spacing = 0x04
+    bar_w = 0x18 if len(workloads) <= 3 else 0x14 # 24px / 20px
 
     for w_idx, (bench, wl, title) in enumerate(workloads):
+        wl_color = WORKLOAD_COLORS.get(bench, COLOR_FALLBACK)
         block_left = p_x + w_idx * (block_w + graph_spacing)
 
         p_sub_w = block_w / len(PERCENTILES)
         for p_idx, p_key in enumerate(PERCENTILES):
             center = block_left + p_sub_w * (p_idx + 0.5)
 
-            if len(active_threads) == 1:
-                thr = active_threads[0]
-                e = lookup.get((bench, wl, thr), {}).get("latency_micros", {})
-                v = get_latency_val(e, p_key)
-                overflow = v > max_lat
-                h = min((v / max_lat) * p_h, p_h)
-                y = p_y + p_h - h
-                bx = center - bar_w / 2
+            e = lookup.get((bench, wl), {}).get("latency_micros", {})
+            v = get_latency_val(e, p_key)
+            overflow = v > max_lat
+            h = min((v / max_lat) * p_h, p_h)
+            y = p_y + p_h - h
+            bx = center - bar_w / 2
 
+            svg.append(
+                f'<rect x="{bx:.1f}" y="{y:.1f}" width="{bar_w}" height="{h:.1f}" '
+                f'rx="3" fill="{wl_color}"/>'
+            )
+            if overflow:
                 svg.append(
-                    f'<rect x="{bx:.1f}" y="{y:.1f}" width="{bar_w}" height="{h:.1f}" '
-                    f'rx="3" fill="{COLOR_1T}"/>'
+                    f'<line x1="{bx:.1f}" y1="{p_y:.1f}" x2="{bx + bar_w:.1f}" y2="{p_y:.1f}" '
+                    f'stroke="#d20f39" stroke-width="2"/>'
                 )
-                if overflow:
-                    svg.append(
-                        f'<line x1="{bx:.1f}" y1="{p_y:.1f}" x2="{bx + bar_w:.1f}" y2="{p_y:.1f}" '
-                        f'stroke="#d20f39" stroke-width="2"/>'
-                    )
 
-                txt = f"{v:.0f}µs"
-                if overflow or h >= p_h - 24:
-                    bw = max(len(txt) * 5.8 + 8.0, 30.0)
-                    ty = p_y + 14
-                    svg.append(
-                        f'<rect x="{center - bw/2:.1f}" y="{ty - 10:.1f}" '
-                        f'width="{bw:.1f}" height="14" rx="3" '
-                        f'fill="{COLOR_BASE}" stroke="{COLOR_BORDER}" stroke-width="1"/>'
-                    )
-                    svg.append(
-                        f'<text x="{center:.1f}" y="{ty:.1f}" fill="{COLOR_1T}" '
-                        f'font-size="8" font-weight="bold" text-anchor="middle">{txt}</text>'
-                    )
-                else:
-                    svg.append(
-                        f'<text x="{center:.1f}" y="{y - 4:.1f}" fill="{COLOR_TEXT}" '
-                        f'font-size="8" text-anchor="middle">{txt}</text>'
-                    )
+            txt = f"{v:.1f}µs" if 0.0 < v < 10.0 else f"{v:.0f}µs"
+            if overflow or h >= p_h - 24:
+                bw = max(len(txt) * 5.8 + 8.0, 30.0)
+                ty = p_y + 14
+                svg.append(
+                    f'<rect x="{center - bw/2:.1f}" y="{ty - 10:.1f}" '
+                    f'width="{bw:.1f}" height="14" rx="3" '
+                    f'fill="{COLOR_BASE}" stroke="{COLOR_BORDER}" stroke-width="1"/>'
+                )
+                svg.append(
+                    f'<text x="{center:.1f}" y="{ty:.1f}" fill="{wl_color}" '
+                    f'font-size="8" font-weight="bold" text-anchor="middle">{txt}</text>'
+                )
             else:
-                t1, t2 = active_threads[0], active_threads[1]
-                e1 = lookup.get((bench, wl, t1), {}).get("latency_micros", {})
-                e4 = lookup.get((bench, wl, t2), {}).get("latency_micros", {})
-
-                b1_x = center - bar_w - (bar_spacing / 2)
-                b4_x = center + (bar_spacing / 2)
-
-                v1 = get_latency_val(e1, p_key)
-                v4 = get_latency_val(e4, p_key)
-
-                overflow1 = v1 > max_lat
-                overflow4 = v4 > max_lat
-
-                h1 = min((v1 / max_lat) * p_h, p_h)
-                h4 = min((v4 / max_lat) * p_h, p_h)
-
-                y1 = p_y + p_h - h1
-                y4 = p_y + p_h - h4
-
                 svg.append(
-                    f'<rect x="{b1_x:.1f}" y="{y1:.1f}" width="{bar_w}" height="{h1:.1f}" '
-                    f'rx="3" fill="{COLOR_1T}"/>'
+                    f'<text x="{center:.1f}" y="{y - 4:.1f}" fill="{COLOR_TEXT}" '
+                    f'font-size="8" text-anchor="middle">{txt}</text>'
                 )
-                svg.append(
-                    f'<rect x="{b4_x:.1f}" y="{y4:.1f}" width="{bar_w}" height="{h4:.1f}" '
-                    f'rx="3" fill="{COLOR_4T}"/>'
-                )
-
-                if overflow1:
-                    svg.append(
-                        f'<line x1="{b1_x:.1f}" y1="{p_y:.1f}" x2="{b1_x + bar_w:.1f}" y2="{p_y:.1f}" '
-                        f'stroke="#d20f39" stroke-width="2"/>'
-                    )
-                if overflow4:
-                    svg.append(
-                        f'<line x1="{b4_x:.1f}" y1="{p_y:.1f}" x2="{b4_x + bar_w:.1f}" y2="{p_y:.1f}" '
-                        f'stroke="#d20f39" stroke-width="2"/>'
-                    )
-
-                txt1 = f"{v1:.0f}µs"
-                txt4 = f"{v4:.0f}µs"
-
-                near_top1 = overflow1 or h1 >= p_h - 24
-                near_top4 = overflow4 or h4 >= p_h - 24
-
-                c1 = b1_x + bar_w / 2
-                c4 = b4_x + bar_w / 2
-
-                if near_top1 and near_top4:
-                    bw1 = max(len(txt1) * 5.8 + 8.0, 30.0)
-                    bw4 = max(len(txt4) * 5.8 + 8.0, 30.0)
-                    ty1 = p_y + 14
-                    ty4 = p_y + 30
-
-                    svg.append(
-                        f'<rect x="{c1 - bw1/2:.1f}" y="{ty1 - 10:.1f}" '
-                        f'width="{bw1:.1f}" height="14" rx="3" '
-                        f'fill="{COLOR_BASE}" stroke="{COLOR_BORDER}" stroke-width="1"/>'
-                    )
-                    svg.append(
-                        f'<text x="{c1:.1f}" y="{ty1:.1f}" fill="{COLOR_1T}" '
-                        f'font-size="8" font-weight="bold" text-anchor="middle">{txt1}</text>'
-                    )
-
-                    svg.append(
-                        f'<rect x="{c4 - bw4/2:.1f}" y="{ty4 - 10:.1f}" '
-                        f'width="{bw4:.1f}" height="14" rx="3" '
-                        f'fill="{COLOR_BASE}" stroke="{COLOR_BORDER}" stroke-width="1"/>'
-                    )
-                    svg.append(
-                        f'<text x="{c4:.1f}" y="{ty4:.1f}" fill="{COLOR_4T}" '
-                        f'font-size="8" font-weight="bold" text-anchor="middle">{txt4}</text>'
-                    )
-                else:
-                    if near_top1:
-                        bw1 = max(len(txt1) * 5.8 + 8.0, 30.0)
-                        ty1 = p_y + 14
-                        svg.append(
-                            f'<rect x="{c1 - bw1/2:.1f}" y="{ty1 - 10:.1f}" '
-                            f'width="{bw1:.1f}" height="14" rx="3" '
-                            f'fill="{COLOR_BASE}" stroke="{COLOR_BORDER}" stroke-width="1"/>'
-                        )
-                        svg.append(
-                            f'<text x="{c1:.1f}" y="{ty1:.1f}" fill="{COLOR_1T}" '
-                            f'font-size="8" font-weight="bold" text-anchor="middle">{txt1}</text>'
-                        )
-                    else:
-                        svg.append(
-                            f'<text x="{c1:.1f}" y="{y1 - 4:.1f}" fill="{COLOR_TEXT}" '
-                            f'font-size="8" text-anchor="middle">{txt1}</text>'
-                        )
-
-                    if near_top4:
-                        bw4 = max(len(txt4) * 5.8 + 8.0, 30.0)
-                        ty4 = p_y + 14
-                        svg.append(
-                            f'<rect x="{c4 - bw4/2:.1f}" y="{ty4 - 10:.1f}" '
-                            f'width="{bw4:.1f}" height="14" rx="3" '
-                            f'fill="{COLOR_BASE}" stroke="{COLOR_BORDER}" stroke-width="1"/>'
-                        )
-                        svg.append(
-                            f'<text x="{c4:.1f}" y="{ty4:.1f}" fill="{COLOR_4T}" '
-                            f'font-size="8" font-weight="bold" text-anchor="middle">{txt4}</text>'
-                        )
-                    else:
-                        svg.append(
-                            f'<text x="{c4:.1f}" y="{y4 - 4:.1f}" fill="{COLOR_TEXT}" '
-                            f'font-size="8" text-anchor="middle">{txt4}</text>'
-                        )
 
             svg.append(
                 f'<text x="{center:.1f}" y="{p_y + p_h + 16}" fill="{COLOR_SUBTLE}" '

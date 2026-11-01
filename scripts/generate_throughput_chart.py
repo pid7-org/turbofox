@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-"""Generate Catppuccin Latte KV throughput benchmark SVG"""
 
 import json
 import os
 import sys
 
-COLOR_BASE = "#eff1f5"
-COLOR_SURFACE = "#e6e9ef"
-COLOR_OVERLAY = "#ccd0da"
-COLOR_MUTED = "#8c8fa1"
-COLOR_SUBTLE = "#6c6f85"
-COLOR_TEXT = "#4c4f69"
-COLOR_BORDER = "#ccd0da"
-COLOR_LINE = "#bcc0cc"
+COLOR_BASE = "#fff"        # Plain white background
+COLOR_SURFACE = "#f8f9fa"   # Light neutral plot area surface
+COLOR_BORDER = "#d0d7de"    # Container border
+COLOR_LINE = "#e1e4e8"      # Grid line
+COLOR_TEXT = "#24292f"      # Primary text
+COLOR_SUBTLE = "#57606a"    # Secondary text and axis ticks
 
 COLOR_1T = "#1e66f5" # Blue
 COLOR_2T = "#8839ef" # Mauve
@@ -86,8 +83,8 @@ def generate_svg(lookup, out_path):
         active_threads = [2]
 
     # Find max throughput to scale Y axis
-    # Limit y-axis to 6.0 kops/s (6,000 ops/sec)
-    max_tp = 6000.0
+    # Limit y-axis to 1.2 Mops/s (1,200,000 ops/sec)
+    max_tp = 1_200_000.0
 
     svg = []
     svg.append(
@@ -108,11 +105,11 @@ def generate_svg(lookup, out_path):
         )
     else:
         thr_label = " vs ".join(f"{t}T" for t in active_threads)
-        sub_label = "Sustained operations per second across concurrent worker threads"
+        sub_label = f'Sustained operations per second across {thr_label} concurrent worker threads'
 
     svg.append(
         f'<text x="32" y="32" fill="{COLOR_TEXT}" font-size="16" font-weight="bold">'
-        f'TurboFox Operation Throughput ({thr_label})</text>'
+        f'Operation Throughput ({thr_label})</text>'
     )
     svg.append(
         f'<text x="32" y="48" fill="{COLOR_SUBTLE}" font-size="11">{sub_label}</text>'
@@ -136,7 +133,7 @@ def generate_svg(lookup, out_path):
         f'fill="{COLOR_SURFACE}" rx="6"/>'
     )
 
-    # Y-axis gridlines (0 to 6.0 kops/s in 1.0 kops/s intervals)
+    # Y-axis gridlines (0 to 1.2 Mops/s in 0.2 Mops/s intervals)
     for i in range(7):
         val = (max_tp / 6.0) * i
         y_pos = p_y + p_h - (val / max_tp) * p_h

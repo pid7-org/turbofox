@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-#
-# TurboFox AWS EC2 Instance Provisioner & Benchmark Initializer
-#
-# Execution:
-#   chmod +x scripts/init_ec2_bench.sh
-#   ./scripts/init_ec2_bench.sh
-#
-# Auto-run benchmarks after host setup:
-#   ./scripts/init_ec2_bench.sh --run --ops 0x186A0 --out results.json
 
 set -euo pipefail
 

@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-#
-# TurboFox AWS EC2 Benchmark Suite Runner
-# Delegates directly to unified run_benchmarks.sh orchestrator
-#
 
 set -euo pipefail
 

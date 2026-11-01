@@ -15,13 +15,15 @@ COLOR_BORDER = "#ccd0da"
 COLOR_LINE = "#bcc0cc"
 
 COLOR_1T = "#1e66f5" # Blue
-COLOR_4T = "#8839ef" # Mauve
+COLOR_2T = "#8839ef" # Mauve
+COLOR_4T = COLOR_2T
 
 FONT_STACK = (
     "ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace"
 )
 
 CANDIDATE_OPERATIONS = [
+    ("set_perf", "mixed_80_20_new_update", "SET", "SET (80/20 New/Update)"),
     ("set_perf", "mixed_60_40_new_update", "SET", "SET (60/40 New/Update)"),
     ("set_perf", "insert", "SET", "SET (Insert)"),
     ("get_perf", "mixed_60_40", "GET", "GET (60/40 Hit/Miss)"),
@@ -31,13 +33,23 @@ CANDIDATE_OPERATIONS = [
 
 def load_results(path):
     with open(path, "r", encoding="utf-8") as handle:
-        data = json.load(handle)
+        raw = handle.read().strip()
+    if not raw:
+        return {}
+
+    # Support raw comma-separated JSON objects as emitted by kv_perf benchmark
+    if not raw.startswith("[") and not (raw.startswith("{") and '"results"' in raw):
+        raw = f"[{raw}]"
+
+    data = json.loads(raw)
+    entries = data.get("results", data) if isinstance(data, dict) else data
     lookup = {}
-    for entry in data.get("results", []):
-        bench = entry.get("benchmark")
-        wl = entry.get("workload")
-        thr = entry.get("threads")
-        lookup[(bench, wl, thr)] = entry
+    for entry in entries:
+        if isinstance(entry, dict):
+            bench = entry.get("benchmark")
+            wl = entry.get("workload")
+            thr = entry.get("threads")
+            lookup[(bench, wl, thr)] = entry
     return lookup
 
 

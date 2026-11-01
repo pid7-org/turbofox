@@ -10,82 +10,82 @@
 <text x="762" y="38" fill="#24292f" font-size="11">lookup_cache Disabled</text>
 <rect x="80" y="75" width="880" height="360" fill="#f8f9fa" rx="6" stroke="#e1e4e8" stroke-width="1"/>
 <line x1="80" y1="415.0" x2="960" y2="415.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="68" y="419.0" fill="#57606a" font-size="10" text-anchor="end">550.0µs</text>
+<text x="68" y="419.0" fill="#57606a" font-size="10" text-anchor="end">2.2ms</text>
 <line x1="80" y1="335.0" x2="960" y2="335.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="68" y="339.0" fill="#57606a" font-size="10" text-anchor="end">937.5µs</text>
+<text x="68" y="339.0" fill="#57606a" font-size="10" text-anchor="end">2.8ms</text>
 <line x1="80" y1="255.0" x2="960" y2="255.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="68" y="259.0" fill="#57606a" font-size="10" text-anchor="end">1.3ms</text>
+<text x="68" y="259.0" fill="#57606a" font-size="10" text-anchor="end">3.4ms</text>
 <line x1="80" y1="175.0" x2="960" y2="175.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="68" y="179.0" fill="#57606a" font-size="10" text-anchor="end">1.7ms</text>
+<text x="68" y="179.0" fill="#57606a" font-size="10" text-anchor="end">3.9ms</text>
 <line x1="80" y1="95.0" x2="960" y2="95.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="68" y="99.0" fill="#57606a" font-size="10" text-anchor="end">2.1ms</text>
+<text x="68" y="99.0" fill="#57606a" font-size="10" text-anchor="end">4.5ms</text>
 <line x1="120.0" y1="75" x2="120.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
 <text x="120.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=0</text>
 <line x1="200.0" y1="75" x2="200.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="200.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=3.2K</text>
+<text x="200.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=6.6K</text>
 <line x1="280.0" y1="75" x2="280.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="280.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=6.4K</text>
+<text x="280.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=13.1K</text>
 <line x1="360.0" y1="75" x2="360.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="360.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=9.6K</text>
+<text x="360.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=19.7K</text>
 <line x1="440.0" y1="75" x2="440.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="440.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=12.8K</text>
+<text x="440.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=26.2K</text>
 <line x1="520.0" y1="75" x2="520.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="520.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=16K</text>
+<text x="520.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=32.8K</text>
 <line x1="600.0" y1="75" x2="600.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="600.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=19.2K</text>
+<text x="600.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=39.3K</text>
 <line x1="680.0" y1="75" x2="680.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="680.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=22.4K</text>
+<text x="680.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=45.9K</text>
 <line x1="760.0" y1="75" x2="760.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="760.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=25.6K</text>
+<text x="760.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=52.4K</text>
 <line x1="840.0" y1="75" x2="840.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="840.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=28.8K</text>
+<text x="840.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=59.0K</text>
 <line x1="920.0" y1="75" x2="920.0" y2="435" stroke="#e1e4e8" stroke-width="1"/>
-<text x="920.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=32K</text>
+<text x="920.0" y="453" fill="#24292f" font-size="11" text-anchor="middle">N=65.5K</text>
 <text x="520.0" y="473" fill="#57606a" font-size="9" text-anchor="middle">Scaling Intervals (Keys Written)</text>
-<polyline points="115.0,381.8 195.0,363.1 275.0,231.9 355.0,215.4 435.0,156.8 515.0,211.5 595.0,176.2 675.0,189.0 755.0,195.8 835.0,171.8 915.0,152.2" fill="none" stroke="#1e66f5" stroke-width="2.5"/>
-<polyline points="125.0,302.2 205.0,382.5 285.0,391.0 365.0,369.1 445.0,391.2 525.0,392.3 605.0,367.3 685.0,382.9 765.0,384.6 845.0,379.2 925.0,378.0" fill="none" stroke="#d20f39" stroke-width="2.5" stroke-dasharray="4,2"/>
-<circle cx="115.0" cy="381.8" r="4.5" fill="#1e66f5"/>
-<circle cx="125.0" cy="302.2" r="4.5" fill="#d20f39"/>
-<text x="125.0" y="293.2" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">1.1ms</text>
-<text x="115.0" y="397.8" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">710.9µs</text>
-<circle cx="195.0" cy="363.1" r="4.5" fill="#1e66f5"/>
-<circle cx="205.0" cy="382.5" r="4.5" fill="#d20f39"/>
-<text x="195.0" y="354.1" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">801.6µs</text>
-<text x="205.0" y="398.5" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">707.6µs</text>
-<circle cx="275.0" cy="231.9" r="4.5" fill="#1e66f5"/>
-<circle cx="285.0" cy="391.0" r="4.5" fill="#d20f39"/>
-<text x="275.0" y="222.9" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">1.4ms</text>
-<text x="285.0" y="407.0" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">666.2µs</text>
-<circle cx="355.0" cy="215.4" r="4.5" fill="#1e66f5"/>
-<circle cx="365.0" cy="369.1" r="4.5" fill="#d20f39"/>
-<text x="355.0" y="206.4" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">1.5ms</text>
-<text x="365.0" y="385.1" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">772.5µs</text>
-<circle cx="435.0" cy="156.8" r="4.5" fill="#1e66f5"/>
-<circle cx="445.0" cy="391.2" r="4.5" fill="#d20f39"/>
-<text x="435.0" y="147.8" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">1.8ms</text>
-<text x="445.0" y="407.2" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">665.4µs</text>
-<circle cx="515.0" cy="211.5" r="4.5" fill="#1e66f5"/>
-<circle cx="525.0" cy="392.3" r="4.5" fill="#d20f39"/>
-<text x="515.0" y="202.5" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">1.5ms</text>
-<text x="525.0" y="408.3" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">660.0µs</text>
-<circle cx="595.0" cy="176.2" r="4.5" fill="#1e66f5"/>
-<circle cx="605.0" cy="367.3" r="4.5" fill="#d20f39"/>
-<text x="595.0" y="167.2" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">1.7ms</text>
-<text x="605.0" y="383.3" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">781.0µs</text>
-<circle cx="675.0" cy="189.0" r="4.5" fill="#1e66f5"/>
-<circle cx="685.0" cy="382.9" r="4.5" fill="#d20f39"/>
-<text x="675.0" y="180.0" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">1.6ms</text>
-<text x="685.0" y="398.9" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">705.4µs</text>
-<circle cx="755.0" cy="195.8" r="4.5" fill="#1e66f5"/>
-<circle cx="765.0" cy="384.6" r="4.5" fill="#d20f39"/>
-<text x="755.0" y="186.8" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">1.6ms</text>
-<text x="765.0" y="400.6" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">697.4µs</text>
-<circle cx="835.0" cy="171.8" r="4.5" fill="#1e66f5"/>
-<circle cx="845.0" cy="379.2" r="4.5" fill="#d20f39"/>
-<text x="835.0" y="162.8" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">1.7ms</text>
-<text x="845.0" y="395.2" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">723.5µs</text>
-<circle cx="915.0" cy="152.2" r="4.5" fill="#1e66f5"/>
-<circle cx="925.0" cy="378.0" r="4.5" fill="#d20f39"/>
-<text x="915.0" y="143.2" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">1.8ms</text>
-<text x="925.0" y="394.0" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">729.0µs</text>
+<polyline points="115.0,339.3 195.0,322.9 275.0,258.3 355.0,250.3 435.0,255.9 515.0,242.8 595.0,243.7 675.0,249.4 755.0,267.2 835.0,254.6 915.0,253.1" fill="none" stroke="#1e66f5" stroke-width="2.5"/>
+<polyline points="125.0,241.4 205.0,355.4 285.0,299.0 365.0,281.2 445.0,287.9 525.0,293.1 605.0,277.5 685.0,183.0 765.0,286.1 845.0,212.8 925.0,194.6" fill="none" stroke="#d20f39" stroke-width="2.5" stroke-dasharray="4,2"/>
+<circle cx="115.0" cy="339.3" r="4.5" fill="#1e66f5"/>
+<circle cx="125.0" cy="241.4" r="4.5" fill="#d20f39"/>
+<text x="125.0" y="232.4" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.4ms</text>
+<text x="115.0" y="355.3" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">2.8ms</text>
+<circle cx="195.0" cy="322.9" r="4.5" fill="#1e66f5"/>
+<circle cx="205.0" cy="355.4" r="4.5" fill="#d20f39"/>
+<text x="195.0" y="313.9" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">2.9ms</text>
+<text x="205.0" y="371.4" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">2.7ms</text>
+<circle cx="275.0" cy="258.3" r="4.5" fill="#1e66f5"/>
+<circle cx="285.0" cy="299.0" r="4.5" fill="#d20f39"/>
+<text x="275.0" y="249.3" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">3.3ms</text>
+<text x="285.0" y="315.0" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.0ms</text>
+<circle cx="355.0" cy="250.3" r="4.5" fill="#1e66f5"/>
+<circle cx="365.0" cy="281.2" r="4.5" fill="#d20f39"/>
+<text x="355.0" y="241.3" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">3.4ms</text>
+<text x="365.0" y="297.2" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.2ms</text>
+<circle cx="435.0" cy="255.9" r="4.5" fill="#1e66f5"/>
+<circle cx="445.0" cy="287.9" r="4.5" fill="#d20f39"/>
+<text x="435.0" y="246.9" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">3.3ms</text>
+<text x="445.0" y="303.9" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.1ms</text>
+<circle cx="515.0" cy="242.8" r="4.5" fill="#1e66f5"/>
+<circle cx="525.0" cy="293.1" r="4.5" fill="#d20f39"/>
+<text x="515.0" y="233.8" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">3.4ms</text>
+<text x="525.0" y="309.1" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.1ms</text>
+<circle cx="595.0" cy="243.7" r="4.5" fill="#1e66f5"/>
+<circle cx="605.0" cy="277.5" r="4.5" fill="#d20f39"/>
+<text x="595.0" y="234.7" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">3.4ms</text>
+<text x="605.0" y="293.5" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.2ms</text>
+<circle cx="675.0" cy="249.4" r="4.5" fill="#1e66f5"/>
+<circle cx="685.0" cy="183.0" r="4.5" fill="#d20f39"/>
+<text x="685.0" y="174.0" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.8ms</text>
+<text x="675.0" y="265.4" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">3.4ms</text>
+<circle cx="755.0" cy="267.2" r="4.5" fill="#1e66f5"/>
+<circle cx="765.0" cy="286.1" r="4.5" fill="#d20f39"/>
+<text x="755.0" y="258.2" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">3.3ms</text>
+<text x="765.0" y="302.1" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.1ms</text>
+<circle cx="835.0" cy="254.6" r="4.5" fill="#1e66f5"/>
+<circle cx="845.0" cy="212.8" r="4.5" fill="#d20f39"/>
+<text x="845.0" y="203.8" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.6ms</text>
+<text x="835.0" y="270.6" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">3.4ms</text>
+<circle cx="915.0" cy="253.1" r="4.5" fill="#1e66f5"/>
+<circle cx="925.0" cy="194.6" r="4.5" fill="#d20f39"/>
+<text x="925.0" y="185.6" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">3.8ms</text>
+<text x="915.0" y="269.1" fill="#1e66f5" font-size="10" font-weight="bold" text-anchor="middle">3.4ms</text>
 </svg>

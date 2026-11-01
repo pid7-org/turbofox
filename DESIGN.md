@@ -189,26 +189,33 @@ Contiguous buffers allocate blocks according to total framed length:
   ```
   [ CRC32 (4 B, LE) ][ klen (1 B) ][ Key Bytes (klen) ][ 0-Padding ]
   ```
+  Keys with $\text{klen} > 0xF3$ (243 B, up to `MAX_KEY_LEN = 0xFF`) span across $0x02$ consecutive
+  pools in the DBuf chain; serialization streams payload bytes skipping trailing 8-byte metadata
 - **List Item Value Framing**:
   Allocates $\lceil (6 + \text{vlen}) / 8 \rceil$ contiguous buffers
   ```
   [ CRC32 (4 B, LE) ][ vlen (2 B, LE) ][ Value Bytes (vlen) ][ 0-Padding ]
   ```
+  Items with $\text{vlen} > 0xF2$ (242 B, up to `MAX_VAL_LEN = 0xFFFF`) span across consecutive
+  pools in the allocation chain; payload data skips trailing 8-byte metadata (`next_dbuf` and `bmap`)
+  between pools, committed atomically via multi-slot OCC transactions
 
 #### Two-Phase Read Process (List Key and List Item Value)
 
 - **List Key Read**:
   1. Read single 8 B buffer at `dbuf_idx`; contains `[ CRC32 (4 B) ][ klen (1 B) ][ Key[0..2] ]`
   2. Inspect `klen` (Byte 4); if `klen <= 3`, key payload resides entirely within initial buffer
-  3. If `klen > 3`, compute remaining buffers: $N = \lceil (\text{klen} - 3) / 8 \rceil$;
-     read exactly $N$ contiguous buffers starting at `dbuf_idx + 1`
-  4. Concatenate bytes and verify CRC32
+  3. If `klen > 3`, compute total required buffers $N = \lceil (5 + \text{klen}) / 8 \rceil$;
+     if allocation fits within pool, read slice from single DBuf; otherwise load spanned pools
+     via `DBufSlotCache` and stream bytes across pool boundaries
+  4. Verify CRC32 over `[klen (1 B), Key]`
 - **List Item Value Read**:
   1. Read single 8 B buffer at `dbuf_idx`; contains `[ CRC32 (4 B) ][ vlen (2 B) ][ Val[0..1] ]`
   2. Inspect `vlen` (Bytes 4..5, LE); if `vlen <= 2`, value resides entirely within initial buffer
-  3. If `vlen > 2`, compute remaining buffers: $N = \lceil (\text{vlen} - 2) / 8 \rceil$;
-     read exactly $N$ contiguous buffers starting at `dbuf_idx + 1`
-  4. Concatenate bytes and verify CRC32
+  3. If `vlen > 2`, compute total required buffers $N = \lceil (6 + \text{vlen}) / 8 \rceil$;
+     if allocation fits within pool, read slice from single DBuf; otherwise load spanned pools
+     via `DBufSlotCache` and stream bytes across pool boundaries
+  4. Verify CRC32 over `[vlen (2 B), Val]`
 
 Global buffer address translation;
 for global buffer index $B$:
@@ -547,18 +554,25 @@ Slot 0 `Metadata.total_entries` is flushed on `sync()`
 
 - Key registered in Bucket with byte 0 bit 7 set to 1 (`offsets[i][0] & 0x80 != 0`);
   stores `adjarr_idx` (relative array index) and `global_buf_idx` (key payload)
-- DBuf stores `[ CRC32 ][ klen (1 B) ][ Key ][ Pad ]`
+- DBuf stores `[ CRC32 ][ klen (1 B) ][ Key ][ Pad ]`, spanning pools when $\text{klen} > 0xF3$
 - Values stored across chained `AdjArrayList` nodes (4 items per 20 B array)
 - `append`:
   Locate tail array;
   if all 4 entries occupied, allocate new array from AdjArr block;
-  link `prev.next_arr_idx = new_arr_idx`
+  link `prev.next_arr_idx = new_arr_idx`;
+  allocate item buffers via `find_free_databuf_span`; write spanned payload skipping trailing
+  pool metadata; commit bucket, array block, and all touched DBuf slots via atomic OCC transaction
 - `pop`:
-  Read tail item via two-phase read, clear DBuf buffers, decrement array count;
+  Read tail item via two-phase read, unmark item buffers across all spanned pools, decrement
+  array count; stage touched DBuf slots and array blocks into OCC transaction;
   if array becomes empty, return to block bitmap
 - `first` / `last` / `get_at(idx)` / `iter`:
   Traverse array chains;
-  load item values via two-phase DBuf buffer reads, validating CRC32 per item
+  load item values via two-phase DBuf buffer reads across pool boundaries, validating CRC32
+- `clear` / `del`:
+  Unmark key buffers across all spanned key pools;
+  traverse array chain, reading each item's `vlen` and unmarking spanned item buffers;
+  reclaim arrays to block bitmaps; mark bucket tombstone and commit all touched slots in single tx
 
 ## 8. Lifecycle & Versioning
 

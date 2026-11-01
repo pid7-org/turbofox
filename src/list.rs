@@ -104,7 +104,7 @@ impl TurboList {
     /// ## Errors
     ///
     /// * [`TurboError::PayloadTooLarge`](crate::TurboError::PayloadTooLarge) if item payload
-    ///   exceeds maximum capacity (1002 bytes)
+    ///   exceeds maximum capacity (65,535 bytes)
     /// * [`TurboError::Storage`](crate::TurboError::Storage) if allocating storage space fails
     ///
     /// ## Example

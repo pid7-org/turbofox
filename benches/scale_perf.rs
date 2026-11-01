@@ -43,6 +43,7 @@ fn run_bench(db_path: &Path, num_intervals: usize, step: usize, val: [u8; VAL_SI
         if let Ok(warmup_db) = TurboFox::open(warmup_cfg) {
             let _ = warmup_db.resident_bytes_in_memory();
             let _ = warmup_db.evict(EvictionMode::PurgeAll);
+
             drop(warmup_db);
         }
 
@@ -50,6 +51,7 @@ fn run_bench(db_path: &Path, num_intervals: usize, step: usize, val: [u8; VAL_SI
         if let Ok(warmup_db) = TurboFox::open(warmup_cached) {
             let _ = warmup_db.resident_bytes_in_memory();
             let _ = warmup_db.evict(EvictionMode::PurgeAll);
+
             drop(warmup_db);
         }
 
@@ -58,6 +60,16 @@ fn run_bench(db_path: &Path, num_intervals: usize, step: usize, val: [u8; VAL_SI
 
     let mut current_keys = 0x00;
     for interval_idx in 0x00..=num_intervals {
+        let cached_cfg = TurboCfg::manual(db_path).with_lookup_cache(true);
+        let t1 = Instant::now();
+        let cached_db = TurboFox::open(cached_cfg).expect("open cached failed");
+        let cached_lat = (t1.elapsed().as_nanos() as f64) / NANOS_PER_MICRO;
+        let cached_mem = cached_db.resident_bytes_in_memory().expect("in-mem query failed") as u64;
+        let cached_disk = cached_db.resident_bytes_on_disk() as u64;
+        cached_db.evict(EvictionMode::PurgeAll).expect("evict failed");
+        drop(cached_db);
+        purge_directory_page_cache(db_path);
+
         let uncached_cfg = TurboCfg::manual(db_path).with_lookup_cache(false);
         let t0 = Instant::now();
         let uncached_db = TurboFox::open(uncached_cfg).expect("open uncached failed");
@@ -67,16 +79,6 @@ fn run_bench(db_path: &Path, num_intervals: usize, step: usize, val: [u8; VAL_SI
         let uncached_disk = uncached_db.resident_bytes_on_disk() as u64;
         uncached_db.evict(EvictionMode::PurgeAll).expect("evict failed");
         drop(uncached_db);
-        purge_directory_page_cache(db_path);
-
-        let cached_cfg = TurboCfg::manual(db_path).with_lookup_cache(true);
-        let t1 = Instant::now();
-        let cached_db = TurboFox::open(cached_cfg).expect("open cached failed");
-        let cached_lat = (t1.elapsed().as_nanos() as f64) / NANOS_PER_MICRO;
-        let cached_mem = cached_db.resident_bytes_in_memory().expect("in-mem query failed") as u64;
-        let cached_disk = cached_db.resident_bytes_on_disk() as u64;
-        cached_db.evict(EvictionMode::PurgeAll).expect("evict failed");
-        drop(cached_db);
         purge_directory_page_cache(db_path);
 
         if interval_idx > 0x00 {

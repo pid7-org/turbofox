@@ -17,13 +17,13 @@
 <text x="98" y="146.8" fill="#57606a" font-size="10" text-anchor="end">1.00 Mops/s</text>
 <line x1="110" y1="85.0" x2="960" y2="85.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
 <text x="98" y="89.0" fill="#57606a" font-size="10" text-anchor="end">1.20 Mops/s</text>
-<rect x="215.7" y="337.8" width="72" height="94.2" rx="4" fill="#1e66f5"/>
-<text x="251.7" y="331.8" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">325.9 kops/s</text>
+<rect x="215.7" y="430.6" width="72" height="1.4" rx="4" fill="#1e66f5"/>
+<text x="251.7" y="424.6" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">4.8 kops/s</text>
 <text x="251.7" y="452.0" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">SET (80/20 New/Update)</text>
-<rect x="499.0" y="112.0" width="72" height="320.0" rx="4" fill="#179299"/>
-<text x="535.0" y="106.0" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">1.11 Mops/s</text>
+<rect x="499.0" y="130.3" width="72" height="301.7" rx="4" fill="#179299"/>
+<text x="535.0" y="124.3" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">1.04 Mops/s</text>
 <text x="535.0" y="452.0" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">GET (60/40 Hit/Miss)</text>
-<rect x="782.3" y="166.5" width="72" height="265.5" rx="4" fill="#8839ef"/>
-<text x="818.3" y="160.5" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">918.2 kops/s</text>
+<rect x="782.3" y="182.9" width="72" height="249.1" rx="4" fill="#8839ef"/>
+<text x="818.3" y="176.9" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">861.3 kops/s</text>
 <text x="818.3" y="452.0" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">DEL (60/40 Hit/Miss)</text>
 </svg>

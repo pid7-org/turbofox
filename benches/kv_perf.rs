@@ -33,7 +33,8 @@ fn generate_set_80_20_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]
             keys.push(make_key(HIT_PREFIX, thread_id as u16, new_count as u32));
             new_count += 0x01;
         } else {
-            let target_id = (update_count % new_count) as u32;
+            let rand_val = (update_count as u64).wrapping_mul(0x517C_C1B7_2722_0A95);
+            let target_id = (rand_val % (new_count as u64)) as u32;
             keys.push(make_key(HIT_PREFIX, thread_id as u16, target_id));
             update_count += 0x01;
         }
@@ -88,11 +89,13 @@ fn run_tier(thread_count: usize, total_ops: usize, is_first: &mut bool) {
                         Ok(t) => break t,
                         Err(turbofox::TurboError::ResourceBusy(_)) => {
                             attempts += 0x01;
-                            if attempts >= 0x64 {
+                            if attempts >= 0x0400 {
                                 panic!("set failed: max OCC retries reached");
                             }
 
-                            thread::yield_now();
+                            let backoff_us =
+                                (attempts as u64 * 0x04) + ((tid as u64 * 0x07) % 0x11);
+                            thread::sleep(std::time::Duration::from_micros(backoff_us));
                         }
                         Err(e) => panic!("set failed: {e:?}"),
                     }
@@ -195,11 +198,13 @@ fn run_tier(thread_count: usize, total_ops: usize, is_first: &mut bool) {
                         Ok(r) => break r,
                         Err(turbofox::TurboError::ResourceBusy(_)) => {
                             attempts += 0x01;
-                            if attempts >= 0x64 {
+                            if attempts >= 0x0400 {
                                 panic!("del failed: max OCC retries reached");
                             }
 
-                            thread::yield_now();
+                            let backoff_us =
+                                (attempts as u64 * 0x04) + ((tid as u64 * 0x07) % 0x11);
+                            thread::sleep(std::time::Duration::from_micros(backoff_us));
                         }
                         Err(e) => panic!("del failed: {e:?}"),
                     }

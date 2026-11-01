@@ -135,7 +135,7 @@ jobs:
         include:
           - os: macos-15
             arch: aarch64
-          - os: macos-14
+          - os: macos-26
             arch: aarch64
     runs-on: ${{ matrix.os }}
     steps:

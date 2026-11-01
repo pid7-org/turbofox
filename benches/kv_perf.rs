@@ -52,7 +52,7 @@ fn run_tier(thread_count: usize, total_ops: usize, is_first: &mut bool) {
 
     let hint_ops = calculate_capacity_hint_ops(total_ops);
     let hint = CapacityHint::new().with_kv(hint_ops, KEY_SIZE, VAL_SIZE);
-    let turbo_cfg = TurboCfg::manual(&db_path).with_capacity_hint(hint);
+    let turbo_cfg = TurboCfg::manual(&db_path).with_capacity_hint(hint).with_lookup_cache(true);
     let db = Arc::new(TurboFox::create(turbo_cfg).expect("failed to create db"));
 
     let ops_per_thread = total_ops / thread_count;

@@ -37,6 +37,25 @@ fn run_bench(db_path: &Path, num_intervals: usize, step: usize, val: [u8; VAL_SI
     drop(writer);
     purge_directory_page_cache(db_path);
 
+    // Untimed warmup to prime dynamic loader, CPU governor, and memory mapping paths
+    {
+        let warmup_cfg = TurboCfg::manual(db_path).with_lookup_cache(false);
+        if let Ok(warmup_db) = TurboFox::open(warmup_cfg) {
+            let _ = warmup_db.resident_bytes_in_memory();
+            let _ = warmup_db.evict(EvictionMode::PurgeAll);
+            drop(warmup_db);
+        }
+
+        let warmup_cached = TurboCfg::manual(db_path).with_lookup_cache(true);
+        if let Ok(warmup_db) = TurboFox::open(warmup_cached) {
+            let _ = warmup_db.resident_bytes_in_memory();
+            let _ = warmup_db.evict(EvictionMode::PurgeAll);
+            drop(warmup_db);
+        }
+
+        purge_directory_page_cache(db_path);
+    }
+
     let mut current_keys = 0x00;
     for interval_idx in 0x00..=num_intervals {
         let uncached_cfg = TurboCfg::manual(db_path).with_lookup_cache(false);

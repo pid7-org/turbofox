@@ -243,9 +243,9 @@ Sustained key-value operations per second across single-thread worker configurat
 
 | Workload               | Throughput    |
 |:-----------------------|:--------------|
-| SET (80/20 New/Update) | 4.84 kops/s   |
-| GET (60/40 Hit/Miss)   | 1.04 Mops/s   |
-| DEL (60/40 Hit/Miss)   | 861.28 kops/s |
+| SET (80/20 New/Update) | 26.12 kops/s  |
+| GET (60/40 Hit/Miss)   | 1.07 Mops/s   |
+| DEL (60/40 Hit/Miss)   | 827.00 kops/s |
 
 ### Tail Latency Profile Under Concurrency
 
@@ -255,12 +255,12 @@ Percentile latency distributions (p50 to p9999)
 
 | Workload              | p50     | p90     | p99       | p9999       |
 |:----------------------|:--------|:--------|:----------|:------------|
-| SET: 80/20 New/Update | 1.47 µs | 7.40 µs | _1.77 ms_ | _88.01 ms_  |
-| GET: 60/40 Hit/Miss   | 0.90 µs | 1.13 µs | 1.42 µs   | 5.18 µs     |
-| DEL: 60/40 Hit/Miss   | 1.13 µs | 1.39 µs | 3.62 µs   | 8.12 µs     |
+| SET: 80/20 New/Update | 1.42 µs | 1.76 µs | _1.37 ms_ | _5.03 ms_   |
+| GET: 60/40 Hit/Miss   | 0.87 µs | 1.11 µs | 1.39 µs   | 6.18 µs     |
+| DEL: 60/40 Hit/Miss   | 1.07 µs | 1.36 µs | 5.00 µs   | 11.30 µs    |
 
 > [!TIP]
-> Sub-1.5 µs median latencies (p50 <= 1.47 µs across all operations)
+> Sub-1.5 µs median latencies (p50 <= 1.42 µs across all operations)
 
 ### Database Open Latency Scaling
 
@@ -270,20 +270,20 @@ Initialization duration across scaling key intervals comparing disabled vs enabl
 
 | Scale (Entries) | Lookup Cache Disabled | Lookup Cache Enabled |
 |:----------------|:----------------------|:---------------------|
-| 0               | 1.38 ms               | 1.04 ms              |
-| 6,553           | 1.20 ms               | 2.97 ms              |
-| 13,106          | 3.05 ms               | 3.24 ms              |
-| 19,659          | 3.20 ms               | 3.43 ms              |
-| 26,212          | 3.03 ms               | 3.37 ms              |
-| 32,765          | 2.94 ms               | 3.26 ms              |
-| 39,318          | 3.12 ms               | 3.65 ms              |
-| 45,871          | 3.75 ms               | 3.44 ms              |
-| 52,424          | 3.27 ms               | 3.55 ms              |
-| 58,977          | 2.90 ms               | 3.38 ms              |
-| 65,530          | 3.53 ms               | 3.40 ms              |
+| 0               | 2.89 ms               | 2.96 ms              |
+| 6,553           | 2.86 ms               | 3.12 ms              |
+| 13,106          | 2.86 ms               | 3.19 ms              |
+| 19,659          | 2.99 ms               | 3.36 ms              |
+| 26,212          | 2.87 ms               | 3.24 ms              |
+| 32,765          | 3.02 ms               | 3.39 ms              |
+| 39,318          | 3.02 ms               | 3.39 ms              |
+| 45,871          | 2.94 ms               | 3.89 ms              |
+| 52,424          | 3.02 ms               | 4.28 ms              |
+| 58,977          | 3.18 ms               | 3.44 ms              |
+| 65,530          | 3.58 ms               | 3.92 ms              |
 
 > [!TIP]
-> Cold-open latency remains flat (~1.0 ms to 3.8 ms) up to 0x0001_0000 entries regardless of caching
+> Cold-open latency remains flat (~2.9 ms to 4.3 ms) up to 0x0001_0000 entries regardless of caching
 
 ### Resource Footprint Scaling
 

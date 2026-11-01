@@ -10,8 +10,9 @@ use crate::common::{
     OCC_MAX_RETRIES, ROOT_NODE_SLOT, SLOT_SIZE, Slot,
 };
 use crate::dbuf::{
-    DBuf, mark_spanned_buffers, read_kv_payload_spanned, unmark_spanned_buffers,
-    verify_key_spanned, write_kv_payload_spanned,
+    DBuf, mark_spanned_buffers, read_kv_payload_spanned, read_list_val_payload_spanned,
+    unmark_spanned_buffers, verify_key_spanned, verify_list_key_spanned, write_kv_payload_spanned,
+    write_list_key_payload_spanned, write_list_val_payload_spanned,
 };
 use crate::error::{TurboError, TurboResult};
 use crate::hash::{hash_key, trie_child_idx};
@@ -531,7 +532,7 @@ impl Engine {
     pub(crate) fn find_free_databuf(
         &self,
         needed: usize,
-        exclude_slot: usize,
+        exclude_slots: &[usize],
     ) -> TurboResult<DbufAllocPlan> {
         let hint_hop = self.active_dbuf_hint.load(Ordering::Relaxed);
         let start_slot = self.locate_databuf_slot(hint_hop).unwrap_or(DATABUF_HEAD_SLOT) as usize;
@@ -544,7 +545,7 @@ impl Engine {
         let mut wrapped = false;
 
         loop {
-            if curr == exclude_slot {
+            if exclude_slots.contains(&curr) {
                 let next =
                     self.mmap.read_exact::<DBuf, _, _>(curr, |d| d.next_dbuf_index() as usize)?;
 
@@ -631,7 +632,7 @@ impl Engine {
             actual_tail = next;
             actual_tail_hop += 1;
 
-            if actual_tail != exclude_slot {
+            if !exclude_slots.contains(&actual_tail) {
                 let (_, alloc_opt) = self.mmap.read_exact::<DBuf, _, _>(actual_tail, |d| {
                     let next = d.next_dbuf_index() as usize;
                     let mut mutated = *d;
@@ -660,10 +661,10 @@ impl Engine {
     pub(crate) fn find_free_databuf_span(
         &self,
         needed: usize,
-        exclude_slot: usize,
+        exclude_slots: &[usize],
     ) -> TurboResult<DbufSpanPlan> {
         if needed <= DBUF_BUF_COUNT {
-            let plan = self.find_free_databuf(needed, exclude_slot)?;
+            let plan = self.find_free_databuf(needed, exclude_slots)?;
             let start_global_buf = DBuf::global_buf_idx(plan.pool_hop, plan.local_idx);
 
             return Ok(DbufSpanPlan {
@@ -1077,7 +1078,7 @@ impl Engine {
                             let mut freed_old = orig_old_dbuf;
                             freed_old.free_contiguous(old_local_idx, old_req);
 
-                            let mut plan = self.find_free_databuf_span(req, old_dbuf_slot)?;
+                            let mut plan = self.find_free_databuf_span(req, &[old_dbuf_slot])?;
                             let mut mutated_refs: Vec<DBuf> =
                                 plan.pools.iter().map(|(_, _, m)| *m).collect();
 
@@ -1179,7 +1180,7 @@ impl Engine {
                                 old_pools.push((slot, orig, mutated));
                             }
 
-                            let mut plan = self.find_free_databuf_span(req, 0)?;
+                            let mut plan = self.find_free_databuf_span(req, &[])?;
                             let mut mutated_refs: Vec<DBuf> =
                                 plan.pools.iter().map(|(_, _, m)| *m).collect();
 
@@ -1260,7 +1261,7 @@ impl Engine {
                     }
                 }
                 ProbeResult::Vacant(target_entry_idx) => {
-                    let mut plan = self.find_free_databuf_span(req, 0)?;
+                    let mut plan = self.find_free_databuf_span(req, &[])?;
                     let mut mutated_refs: Vec<DBuf> =
                         plan.pools.iter().map(|(_, _, m)| *m).collect();
 
@@ -1330,7 +1331,7 @@ impl Engine {
                         return Err(TurboError::CollisionLimit);
                     }
 
-                    let mut plan = self.find_free_databuf_span(req, 0)?;
+                    let mut plan = self.find_free_databuf_span(req, &[])?;
                     let mut mutated_refs: Vec<DBuf> =
                         plan.pools.iter().map(|(_, _, m)| *m).collect();
 
@@ -1540,9 +1541,6 @@ impl Engine {
         }
 
         let req_item = DBuf::required_list_val_buffers(item.len());
-        if req_item > DBUF_BUF_COUNT {
-            return Err(TurboError::PayloadTooLarge);
-        }
 
         let hash = hash_key(key);
         for attempt in 0..OCC_MAX_RETRIES {
@@ -1560,14 +1558,22 @@ impl Engine {
                         return Err(TurboError::InvalidType("Key is a KV entry"));
                     }
 
-                    let mut item_plan = self.find_free_databuf(req_item, 0)?;
-                    item_plan
-                        .mutated
-                        .write_list_val_payload(item_plan.local_idx, item)
-                        .map_err(|_| TurboError::PayloadTooLarge)?;
+                    let mut item_plan = self.find_free_databuf_span(req_item, &[])?;
+                    let mut mutated_refs: Vec<DBuf> =
+                        item_plan.pools.iter().map(|(_, _, m)| *m).collect();
 
-                    let item_buf_idx =
-                        DBuf::global_buf_idx(item_plan.pool_hop, item_plan.local_idx);
+                    write_list_val_payload_spanned(
+                        &mut mutated_refs,
+                        item_plan.start_global_buf,
+                        item,
+                    )
+                    .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                    for (i, (_, _, m)) in item_plan.pools.iter_mut().enumerate() {
+                        *m = mutated_refs[i];
+                    }
+
+                    let item_buf_idx = item_plan.start_global_buf;
 
                     let mut curr_arr_idx = entry.adjarr_idx();
                     let mut prev_info: Option<(u32, usize, AdjArrayBlock, usize)> = None;
@@ -1669,12 +1675,14 @@ impl Engine {
                         }
                     }
 
-                    for i in 0..DBUF_SLOTS {
-                        let orig_s = item_plan.orig.as_slots()[i];
-                        let new_s = item_plan.mutated.as_slots()[i];
+                    for (slot, orig, mutated) in &item_plan.pools {
+                        for i in 0..DBUF_SLOTS {
+                            let orig_s = orig.as_slots()[i];
+                            let new_s = mutated.as_slots()[i];
 
-                        if orig_s != new_s {
-                            changes.push((item_plan.start_slot + i, orig_s, new_s));
+                            if orig_s != new_s {
+                                changes.push((slot + i, orig_s, new_s));
+                            }
                         }
                     }
 
@@ -1699,22 +1707,40 @@ impl Engine {
                 ProbeResult::Vacant(target_entry_idx) => {
                     let req_key = DBuf::required_list_key_buffers(key.len());
 
-                    let mut key_plan = self.find_free_databuf(req_key, 0)?;
-                    key_plan
-                        .mutated
-                        .write_list_key_payload(key_plan.local_idx, key)
-                        .map_err(|_| TurboError::PayloadTooLarge)?;
+                    let mut key_plan = self.find_free_databuf_span(req_key, &[])?;
+                    let mut key_mutated_refs: Vec<DBuf> =
+                        key_plan.pools.iter().map(|(_, _, m)| *m).collect();
 
-                    let key_buf_idx = DBuf::global_buf_idx(key_plan.pool_hop, key_plan.local_idx);
+                    write_list_key_payload_spanned(
+                        &mut key_mutated_refs,
+                        key_plan.start_global_buf,
+                        key,
+                    )
+                    .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    let mut item_plan = self.find_free_databuf(req_item, key_plan.start_slot)?;
-                    item_plan
-                        .mutated
-                        .write_list_val_payload(item_plan.local_idx, item)
-                        .map_err(|_| TurboError::PayloadTooLarge)?;
+                    for (i, (_, _, m)) in key_plan.pools.iter_mut().enumerate() {
+                        *m = key_mutated_refs[i];
+                    }
 
-                    let item_buf_idx =
-                        DBuf::global_buf_idx(item_plan.pool_hop, item_plan.local_idx);
+                    let key_buf_idx = key_plan.start_global_buf;
+                    let key_slots: Vec<usize> = key_plan.pools.iter().map(|(s, _, _)| *s).collect();
+
+                    let mut item_plan = self.find_free_databuf_span(req_item, &key_slots)?;
+                    let mut item_mutated_refs: Vec<DBuf> =
+                        item_plan.pools.iter().map(|(_, _, m)| *m).collect();
+
+                    write_list_val_payload_spanned(
+                        &mut item_mutated_refs,
+                        item_plan.start_global_buf,
+                        item,
+                    )
+                    .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                    for (i, (_, _, m)) in item_plan.pools.iter_mut().enumerate() {
+                        *m = item_mutated_refs[i];
+                    }
+
+                    let item_buf_idx = item_plan.start_global_buf;
 
                     let (arr_idx, block_slot, orig_block, mut mut_block) =
                         self.find_free_adjarr_array(0)?;
@@ -1744,31 +1770,24 @@ impl Engine {
                         }
                     }
 
-                    if key_plan.start_slot == item_plan.start_slot {
+                    for (slot, orig, mutated) in &key_plan.pools {
                         for i in 0..DBUF_SLOTS {
-                            let orig_s = key_plan.orig.as_slots()[i];
-                            let new_s = item_plan.mutated.as_slots()[i];
+                            let orig_s = orig.as_slots()[i];
+                            let new_s = mutated.as_slots()[i];
 
                             if orig_s != new_s {
-                                changes.push((key_plan.start_slot + i, orig_s, new_s));
+                                changes.push((slot + i, orig_s, new_s));
                             }
                         }
-                    } else {
+                    }
+
+                    for (slot, orig, mutated) in &item_plan.pools {
                         for i in 0..DBUF_SLOTS {
-                            let orig_s = key_plan.orig.as_slots()[i];
-                            let new_s = key_plan.mutated.as_slots()[i];
+                            let orig_s = orig.as_slots()[i];
+                            let new_s = mutated.as_slots()[i];
 
                             if orig_s != new_s {
-                                changes.push((key_plan.start_slot + i, orig_s, new_s));
-                            }
-                        }
-
-                        for i in 0..DBUF_SLOTS {
-                            let orig_s = item_plan.orig.as_slots()[i];
-                            let new_s = item_plan.mutated.as_slots()[i];
-
-                            if orig_s != new_s {
-                                changes.push((item_plan.start_slot + i, orig_s, new_s));
+                                changes.push((slot + i, orig_s, new_s));
                             }
                         }
                     }
@@ -1800,22 +1819,40 @@ impl Engine {
 
                     let req_key = DBuf::required_list_key_buffers(key.len());
 
-                    let mut key_plan = self.find_free_databuf(req_key, 0)?;
-                    key_plan
-                        .mutated
-                        .write_list_key_payload(key_plan.local_idx, key)
-                        .map_err(|_| TurboError::PayloadTooLarge)?;
+                    let mut key_plan = self.find_free_databuf_span(req_key, &[])?;
+                    let mut key_mutated_refs: Vec<DBuf> =
+                        key_plan.pools.iter().map(|(_, _, m)| *m).collect();
 
-                    let key_buf_idx = DBuf::global_buf_idx(key_plan.pool_hop, key_plan.local_idx);
+                    write_list_key_payload_spanned(
+                        &mut key_mutated_refs,
+                        key_plan.start_global_buf,
+                        key,
+                    )
+                    .map_err(|_| TurboError::PayloadTooLarge)?;
 
-                    let mut item_plan = self.find_free_databuf(req_item, key_plan.start_slot)?;
-                    item_plan
-                        .mutated
-                        .write_list_val_payload(item_plan.local_idx, item)
-                        .map_err(|_| TurboError::PayloadTooLarge)?;
+                    for (i, (_, _, m)) in key_plan.pools.iter_mut().enumerate() {
+                        *m = key_mutated_refs[i];
+                    }
 
-                    let item_buf_idx =
-                        DBuf::global_buf_idx(item_plan.pool_hop, item_plan.local_idx);
+                    let key_buf_idx = key_plan.start_global_buf;
+                    let key_slots: Vec<usize> = key_plan.pools.iter().map(|(s, _, _)| *s).collect();
+
+                    let mut item_plan = self.find_free_databuf_span(req_item, &key_slots)?;
+                    let mut item_mutated_refs: Vec<DBuf> =
+                        item_plan.pools.iter().map(|(_, _, m)| *m).collect();
+
+                    write_list_val_payload_spanned(
+                        &mut item_mutated_refs,
+                        item_plan.start_global_buf,
+                        item,
+                    )
+                    .map_err(|_| TurboError::PayloadTooLarge)?;
+
+                    for (i, (_, _, m)) in item_plan.pools.iter_mut().enumerate() {
+                        *m = item_mutated_refs[i];
+                    }
+
+                    let item_buf_idx = item_plan.start_global_buf;
 
                     let (arr_idx, block_slot, orig_block, mut mut_block) =
                         self.find_free_adjarr_array(0)?;
@@ -1868,31 +1905,24 @@ impl Engine {
                         }
                     }
 
-                    if key_plan.start_slot == item_plan.start_slot {
+                    for (slot, orig, mutated) in &key_plan.pools {
                         for i in 0..DBUF_SLOTS {
-                            let orig_s = key_plan.orig.as_slots()[i];
-                            let new_s = item_plan.mutated.as_slots()[i];
+                            let orig_s = orig.as_slots()[i];
+                            let new_s = mutated.as_slots()[i];
 
                             if orig_s != new_s {
-                                changes.push((key_plan.start_slot + i, orig_s, new_s));
+                                changes.push((slot + i, orig_s, new_s));
                             }
                         }
-                    } else {
+                    }
+
+                    for (slot, orig, mutated) in &item_plan.pools {
                         for i in 0..DBUF_SLOTS {
-                            let orig_s = key_plan.orig.as_slots()[i];
-                            let new_s = key_plan.mutated.as_slots()[i];
+                            let orig_s = orig.as_slots()[i];
+                            let new_s = mutated.as_slots()[i];
 
                             if orig_s != new_s {
-                                changes.push((key_plan.start_slot + i, orig_s, new_s));
-                            }
-                        }
-
-                        for i in 0..DBUF_SLOTS {
-                            let orig_s = item_plan.orig.as_slots()[i];
-                            let new_s = item_plan.mutated.as_slots()[i];
-
-                            if orig_s != new_s {
-                                changes.push((item_plan.start_slot + i, orig_s, new_s));
+                                changes.push((slot + i, orig_s, new_s));
                             }
                         }
                     }
@@ -2014,18 +2044,39 @@ impl Engine {
         }
 
         let (pool_hop, local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
-        let Ok(dbuf_slot) = self.locate_databuf_slot(pool_hop) else {
-            return false;
-        };
+        let req_key = DBuf::required_list_key_buffers(key.len());
 
-        let Ok(matches) = self
-            .mmap
-            .read_exact::<DBuf, _, _>(dbuf_slot as usize, |d| d.verify_list_key(local_idx, key))
-        else {
-            return false;
-        };
+        if local_idx + req_key <= DBUF_BUF_COUNT {
+            let Ok(dbuf_slot) = self.locate_databuf_slot(pool_hop) else {
+                return false;
+            };
 
-        matches
+            let Ok(matches) = self.mmap.read_exact::<DBuf, _, _>(dbuf_slot as usize, |d| {
+                d.verify_list_key(local_idx, key)
+            }) else {
+                return false;
+            };
+
+            matches
+        } else {
+            let start_pool = pool_hop;
+            let end_pool = (entry.buf_idx() + (req_key as u32) - 1) / (DBUF_BUF_COUNT as u32);
+
+            let mut dbufs = Vec::with_capacity((end_pool - start_pool + 1) as usize);
+            for p in start_pool..=end_pool {
+                let Ok(slot) = self.locate_databuf_slot(p) else {
+                    return false;
+                };
+
+                let Ok(dbuf) = self.mmap.read_exact::<DBuf, _, _>(slot as usize, |d| *d) else {
+                    return false;
+                };
+
+                dbufs.push(dbuf);
+            }
+
+            verify_list_key_spanned(&dbufs, entry.buf_idx(), key)
+        }
     }
 
     /// Ref: `DESIGN.md` §7.4
@@ -2093,14 +2144,53 @@ impl Engine {
                 .read_list_vlen(item_local_idx)
                 .map_err(|_| TurboError::CorruptedPayload("List item invalid index"))?;
 
-            let val_bytes = orig_item_dbuf
-                .read_list_val_payload(item_local_idx, vlen)
-                .map_err(|_| TurboError::CorruptedPayload("List item CRC mismatch"))?
-                .to_vec();
-
             let req_item = DBuf::required_list_val_buffers(vlen);
-            let mut freed_item_dbuf = orig_item_dbuf;
-            freed_item_dbuf.free_contiguous(item_local_idx, req_item);
+
+            let val_bytes = if item_local_idx + req_item <= DBUF_BUF_COUNT {
+                orig_item_dbuf
+                    .read_list_val_payload(item_local_idx, vlen)
+                    .map_err(|_| TurboError::CorruptedPayload("List item CRC mismatch"))?
+                    .to_vec()
+            } else {
+                let start_pool = item_pool_hop;
+                let end_pool =
+                    (popped_entry.buf_idx() + (req_item as u32) - 1) / (DBUF_BUF_COUNT as u32);
+                let mut dbufs = Vec::with_capacity((end_pool - start_pool + 1) as usize);
+                dbufs.push(orig_item_dbuf);
+                for p in (start_pool + 1)..=end_pool {
+                    let slot = self.locate_databuf_slot(p)? as usize;
+                    let next_dbuf = self.mmap.read_exact::<DBuf, _, _>(slot, |d| *d)?;
+                    dbufs.push(next_dbuf);
+                }
+                read_list_val_payload_spanned(&dbufs, popped_entry.buf_idx(), vlen)
+                    .map_err(|_| TurboError::CorruptedPayload("List item CRC mismatch"))?
+            };
+
+            let mut freed_dbufs: Vec<(usize, DBuf, DBuf)> = Vec::new();
+            if item_local_idx + req_item <= DBUF_BUF_COUNT {
+                let mut freed_item_dbuf = orig_item_dbuf;
+                freed_item_dbuf.free_contiguous(item_local_idx, req_item);
+                freed_dbufs.push((item_dbuf_slot, orig_item_dbuf, freed_item_dbuf));
+            } else {
+                let start_pool = item_pool_hop;
+                let end_pool =
+                    (popped_entry.buf_idx() + (req_item as u32) - 1) / (DBUF_BUF_COUNT as u32);
+                let mut remaining = req_item;
+                for p in start_pool..=end_pool {
+                    let slot = self.locate_databuf_slot(p)? as usize;
+                    let orig_dbuf = if p == start_pool {
+                        orig_item_dbuf
+                    } else {
+                        self.mmap.read_exact::<DBuf, _, _>(slot, |d| *d)?
+                    };
+                    let mut freed_dbuf = orig_dbuf;
+                    let p_local = if p == start_pool { item_local_idx } else { 0 };
+                    let count = std::cmp::min(DBUF_BUF_COUNT - p_local, remaining);
+                    unmark_spanned_buffers(&mut freed_dbuf, p_local, count);
+                    remaining -= count;
+                    freed_dbufs.push((slot, orig_dbuf, freed_dbuf));
+                }
+            }
 
             let mut touched_blocks: Vec<(usize, AdjArrayBlock, AdjArrayBlock)> = Vec::new();
 
@@ -2149,12 +2239,14 @@ impl Engine {
                 }
             }
 
-            for i in 0..DBUF_SLOTS {
-                let orig_s = orig_item_dbuf.as_slots()[i];
-                let new_s = freed_item_dbuf.as_slots()[i];
+            for (dbuf_slot, orig_d, freed_d) in &freed_dbufs {
+                for i in 0..DBUF_SLOTS {
+                    let orig_s = orig_d.as_slots()[i];
+                    let new_s = freed_d.as_slots()[i];
 
-                if orig_s != new_s {
-                    changes.push((item_dbuf_slot + i, orig_s, new_s));
+                    if orig_s != new_s {
+                        changes.push((dbuf_slot + i, orig_s, new_s));
+                    }
                 }
             }
 
@@ -2275,11 +2367,29 @@ impl Engine {
             .read_list_vlen(local_idx)
             .map_err(|_| TurboError::CorruptedPayload("List item invalid index"))?;
 
-        let val = dbuf
-            .read_list_val_payload(local_idx, vlen)
-            .map_err(|_| TurboError::CorruptedPayload("List item CRC mismatch"))?;
+        let req = DBuf::required_list_val_buffers(vlen);
+        if local_idx + req <= DBUF_BUF_COUNT {
+            let val = dbuf
+                .read_list_val_payload(local_idx, vlen)
+                .map_err(|_| TurboError::CorruptedPayload("List item CRC mismatch"))?;
 
-        Ok(val.to_vec())
+            Ok(val.to_vec())
+        } else {
+            let start_pool = pool_hop;
+            let end_pool = (buf_idx + (req as u32) - 1) / (DBUF_BUF_COUNT as u32);
+
+            let mut dbufs = Vec::with_capacity((end_pool - start_pool + 1) as usize);
+            dbufs.push(dbuf);
+
+            for p in (start_pool + 1)..=end_pool {
+                let slot = self.locate_databuf_slot(p)? as usize;
+                let next_dbuf = self.mmap.read_exact::<DBuf, _, _>(slot, |d| *d)?;
+                dbufs.push(next_dbuf);
+            }
+
+            read_list_val_payload_spanned(&dbufs, buf_idx, vlen)
+                .map_err(|_| TurboError::CorruptedPayload("List item CRC mismatch"))
+        }
     }
 
     /// Ref: `DESIGN.md` §7.4
@@ -2559,20 +2669,29 @@ impl Engine {
                     let entry = bucket.entry(target_entry_idx);
 
                     let (key_pool_hop, key_local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
-                    let key_dbuf_slot = self.locate_databuf_slot(key_pool_hop)? as usize;
-
-                    let orig_key_dbuf =
-                        self.mmap.read_exact::<DBuf, _, _>(key_dbuf_slot, |d| *d)?;
-
                     let req_key = DBuf::required_list_key_buffers(key.len());
 
-                    let mut freed_key_dbuf = orig_key_dbuf;
-                    freed_key_dbuf.free_contiguous(key_local_idx, req_key);
+                    let mut touched_dbufs: std::collections::HashMap<usize, (DBuf, DBuf)> =
+                        std::collections::HashMap::new();
+
+                    let key_start_pool = key_pool_hop;
+                    let key_end_pool =
+                        (entry.buf_idx() + (req_key as u32) - 1) / (DBUF_BUF_COUNT as u32);
+                    let mut remaining_key = req_key;
+
+                    for p in key_start_pool..=key_end_pool {
+                        let slot = self.locate_databuf_slot(p)? as usize;
+                        let orig = self.mmap.read_exact::<DBuf, _, _>(slot, |d| *d)?;
+                        let mut mutated = orig;
+                        let p_local = if p == key_start_pool { key_local_idx } else { 0 };
+                        let count = std::cmp::min(DBUF_BUF_COUNT - p_local, remaining_key);
+                        unmark_spanned_buffers(&mut mutated, p_local, count);
+                        remaining_key -= count;
+                        let _ = touched_dbufs.insert(slot, (orig, mutated));
+                    }
 
                     let mut curr_arr_idx = entry.adjarr_idx();
                     let mut touched_blocks: Vec<(usize, AdjArrayBlock, AdjArrayBlock)> = Vec::new();
-                    let mut touched_item_dbufs: std::collections::HashMap<usize, (DBuf, DBuf)> =
-                        std::collections::HashMap::new();
 
                     loop {
                         let (block_hop, local_array) = decompose_relative_array_idx(curr_arr_idx);
@@ -2592,25 +2711,45 @@ impl Engine {
                             if !item_e.is_empty() {
                                 let (item_pool_hop, item_local_idx) =
                                     DBuf::decompose_buf_idx(item_e.buf_idx());
-                                let item_dbuf_slot =
+                                let item_start_slot =
                                     self.locate_databuf_slot(item_pool_hop)? as usize;
 
-                                let (_orig_d, mut_d) =
-                                    touched_item_dbufs.entry(item_dbuf_slot).or_insert_with(|| {
-                                        if item_dbuf_slot == key_dbuf_slot {
-                                            (orig_key_dbuf, freed_key_dbuf)
-                                        } else {
-                                            let d = self
-                                                .mmap
-                                                .read_exact::<DBuf, _, _>(item_dbuf_slot, |d| *d)
-                                                .unwrap();
-                                            (d, d)
-                                        }
-                                    });
+                                let first_dbuf = if let Some((_, mut_d)) =
+                                    touched_dbufs.get(&item_start_slot)
+                                {
+                                    *mut_d
+                                } else {
+                                    self.mmap.read_exact::<DBuf, _, _>(item_start_slot, |d| *d)?
+                                };
 
-                                let vlen = mut_d.read_list_vlen(item_local_idx).unwrap_or(0);
+                                let vlen = first_dbuf.read_list_vlen(item_local_idx).unwrap_or(0);
                                 let req_item = DBuf::required_list_val_buffers(vlen);
-                                mut_d.free_contiguous(item_local_idx, req_item);
+
+                                let item_start_pool = item_pool_hop;
+                                let item_end_pool = (item_e.buf_idx() + (req_item as u32) - 1)
+                                    / (DBUF_BUF_COUNT as u32);
+                                let mut remaining_item = req_item;
+
+                                for p in item_start_pool..=item_end_pool {
+                                    let slot = self.locate_databuf_slot(p)? as usize;
+                                    let p_local =
+                                        if p == item_start_pool { item_local_idx } else { 0 };
+                                    let count =
+                                        std::cmp::min(DBUF_BUF_COUNT - p_local, remaining_item);
+
+                                    let mut_d =
+                                        if let Some((_, mut_d)) = touched_dbufs.get_mut(&slot) {
+                                            mut_d
+                                        } else {
+                                            let orig =
+                                                self.mmap.read_exact::<DBuf, _, _>(slot, |d| *d)?;
+                                            let _ = touched_dbufs.insert(slot, (orig, orig));
+                                            &mut touched_dbufs.get_mut(&slot).unwrap().1
+                                        };
+
+                                    unmark_spanned_buffers(mut_d, p_local, count);
+                                    remaining_item -= count;
+                                }
                             }
                         }
 
@@ -2653,17 +2792,7 @@ impl Engine {
                         }
                     }
 
-                    if !touched_item_dbufs.contains_key(&key_dbuf_slot) {
-                        for i in 0..DBUF_SLOTS {
-                            let orig_s = orig_key_dbuf.as_slots()[i];
-                            let new_s = freed_key_dbuf.as_slots()[i];
-                            if orig_s != new_s {
-                                changes.push((key_dbuf_slot + i, orig_s, new_s));
-                            }
-                        }
-                    }
-
-                    for (dbuf_slot, (orig_d, mut_d)) in &touched_item_dbufs {
+                    for (dbuf_slot, (orig_d, mut_d)) in &touched_dbufs {
                         for i in 0..DBUF_SLOTS {
                             let orig_s = orig_d.as_slots()[i];
                             let new_s = mut_d.as_slots()[i];
@@ -2952,7 +3081,7 @@ mod tests {
         assert_eq!(engine.locate_databuf_slot(INITIAL_DATABUF_POOLS as u32).unwrap(), new_slot);
         assert_eq!(engine.databuf_slot_to_hop(new_slot).unwrap(), INITIAL_DATABUF_POOLS as u32);
 
-        let plan = engine.find_free_databuf(0x04, 0).unwrap();
+        let plan = engine.find_free_databuf(0x04, &[]).unwrap();
         assert_eq!(plan.start_slot, new_slot as usize);
         assert_eq!(plan.local_idx, 0);
 
@@ -3236,6 +3365,44 @@ mod tests {
         assert!(engine.del(b"clean_lst2").unwrap());
         assert_eq!(engine.list_len(b"clean_lst2").unwrap(), 0);
         assert!(!engine.del(b"clean_lst2").unwrap());
+
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_list_spanned_operations() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        // 255-byte key (spans across 2 DBufs)
+        let long_key = vec![0x37; MAX_KEY_LEN];
+        // 1024-byte item (spans across multiple DBufs)
+        let large_item1 = vec![0xAA; 1024];
+        let large_item2 = vec![0xBB; 2048];
+
+        let _ = engine.list_append(&long_key, &large_item1).unwrap();
+        let _ = engine.list_append(&long_key, &large_item2).unwrap();
+
+        assert_eq!(engine.list_len(&long_key).unwrap(), 2);
+        assert_eq!(engine.list_first(&long_key).unwrap(), Some(large_item1.clone()));
+        assert_eq!(engine.list_last(&long_key).unwrap(), Some(large_item2.clone()));
+        assert_eq!(engine.list_get_at(&long_key, 0).unwrap(), Some(large_item1.clone()));
+        assert_eq!(engine.list_get_at(&long_key, 1).unwrap(), Some(large_item2.clone()));
+
+        let items = engine.list_items(&long_key).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0], large_item1);
+        assert_eq!(items[1], large_item2);
+
+        // Pop last item
+        assert_eq!(engine.list_pop(&long_key).unwrap(), Some(large_item2));
+        assert_eq!(engine.list_len(&long_key).unwrap(), 1);
+
+        // Delete list and verify cleanup
+        assert!(engine.list_del(&long_key).unwrap());
+        assert_eq!(engine.list_len(&long_key).unwrap(), 0);
+        assert_eq!(engine.list_first(&long_key).unwrap(), None);
 
         engine.delete().unwrap();
     }

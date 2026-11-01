@@ -176,34 +176,28 @@
 //! - Storage: Dedicated local hardware NVMe SSD (`/mnt/nvme0n1`)
 //! - Kernel: Linux `7.0.0-1014-aws` (x86_64)
 //! - Workload: 0x10_0000 (1,048,576) operations per benchmark suite under uniform distribution
-//! - Concurrency: 1-thread baseline vs 2-thread concurrent worker evaluation
 //!
 //! ### Operation Throughput & Concurrency Scaling
 //!
-//! Sustained key-value operations per second across 1-thread and 2-thread worker configurations
+//! Sustained key-value operations per second across single-thread worker configuration
 //!
-//! | Workload               | 1 Thread Throughput | 2 Thread Throughput | Scaling Ratio |
-//! |:-----------------------|:--------------------|:--------------------|:--------------|
-//! | SET (80/20 New/Update) | 4.86 kops/s         | 4.70 kops/s         | 0.97x         |
-//! | GET (60/40 Hit/Miss)   | 1.03 Mops/s         | 1.03 Mops/s         | 1.00x         |
-//! | DEL (60/40 Hit/Miss)   | 864.98 kops/s       | 884.01 kops/s       | 1.02x         |
+//! | Workload               | Throughput    |
+//! |:-----------------------|:--------------|
+//! | SET (80/20 New/Update) | 4.84 kops/s   |
+//! | GET (60/40 Hit/Miss)   | 1.04 Mops/s   |
+//! | DEL (60/40 Hit/Miss)   | 861.28 kops/s |
 //!
 //! ### Tail Latency Profile Under Concurrency
 //!
-//! Percentile latency distributions (p50 to p9999) comparing 1T baseline against 2T concurrent
-//! workers
+//! Percentile latency distributions (p50 to p9999)
 //!
-//! | Workload              | Threads | p50     | p90     | p99       | p9999       |
-//! |:----------------------|:--------|:--------|:--------|:----------|:------------|
-//! | SET: 80/20 New/Update | 1T      | 1.38 µs | 8.13 µs | _1.78 ms_ | _87.95 ms_  |
-//! | SET: 80/20 New/Update | 2T      | 1.38 µs | 8.15 µs | _3.97 ms_ | _166.99 ms_ |
-//! | GET: 60/40 Hit/Miss   | 1T      | 0.91 µs | 1.13 µs | 1.41 µs   | 5.27 µs     |
-//! | GET: 60/40 Hit/Miss   | 2T      | 0.91 µs | 1.13 µs | 1.41 µs   | 5.79 µs     |
-//! | DEL: 60/40 Hit/Miss   | 1T      | 1.14 µs | 1.38 µs | 3.70 µs   | 8.29 µs     |
-//! | DEL: 60/40 Hit/Miss   | 2T      | 1.11 µs | 1.35 µs | 3.67 µs   | 8.45 µs     |
+//! | Workload              | p50     | p90     | p99       | p9999       |
+//! |:----------------------|:--------|:--------|:----------|:------------|
+//! | SET: 80/20 New/Update | 1.47 µs | 7.40 µs | _1.77 ms_ | _88.01 ms_  |
+//! | GET: 60/40 Hit/Miss   | 0.90 µs | 1.13 µs | 1.42 µs   | 5.18 µs     |
+//! | DEL: 60/40 Hit/Miss   | 1.13 µs | 1.39 µs | 3.62 µs   | 8.12 µs     |
 //!
-//! **TIP**: Sub-1.5 µs median latencies (p50 <= 1.38 µs across all operations) sustained across
-//! 1T and 2T
+//! **TIP**: Sub-1.5 µs median latencies (p50 <= 1.47 µs across all operations)
 //!
 //! ### Database Open Latency Scaling
 //!
@@ -211,19 +205,19 @@
 //!
 //! | Scale (Entries) | Lookup Cache Disabled | Lookup Cache Enabled |
 //! |:----------------|:----------------------|:---------------------|
-//! | 0               | 3.44 ms               | 2.77 ms              |
-//! | 6,553           | 2.66 ms               | 2.88 ms              |
-//! | 13,106          | 3.05 ms               | 3.33 ms              |
-//! | 19,659          | 3.17 ms               | 3.38 ms              |
-//! | 26,212          | 3.12 ms               | 3.34 ms              |
-//! | 32,765          | 3.09 ms               | 3.43 ms              |
-//! | 39,318          | 3.20 ms               | 3.43 ms              |
-//! | 45,871          | 3.85 ms               | 3.39 ms              |
-//! | 52,424          | 3.14 ms               | 3.27 ms              |
-//! | 58,977          | 3.64 ms               | 3.35 ms              |
-//! | 65,530          | 3.76 ms               | 3.36 ms              |
+//! | 0               | 1.38 ms               | 1.04 ms              |
+//! | 6,553           | 1.20 ms               | 2.97 ms              |
+//! | 13,106          | 3.05 ms               | 3.24 ms              |
+//! | 19,659          | 3.20 ms               | 3.43 ms              |
+//! | 26,212          | 3.03 ms               | 3.37 ms              |
+//! | 32,765          | 2.94 ms               | 3.26 ms              |
+//! | 39,318          | 3.12 ms               | 3.65 ms              |
+//! | 45,871          | 3.75 ms               | 3.44 ms              |
+//! | 52,424          | 3.27 ms               | 3.55 ms              |
+//! | 58,977          | 2.90 ms               | 3.38 ms              |
+//! | 65,530          | 3.53 ms               | 3.40 ms              |
 //!
-//! **TIP**: Cold-open latency remains flat (~2.6 ms to 3.8 ms) up to 0x0001_0000 entries regardless
+//! **TIP**: Cold-open latency remains flat (~1.0 ms to 3.8 ms) up to 0x0001_0000 entries regardless
 //! of caching
 //!
 //! ### Resource Footprint Scaling

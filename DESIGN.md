@@ -181,6 +181,9 @@ Contiguous buffers allocate blocks according to total framed length:
   ```
   [ CRC32 (4 B, LE) ][ Key Bytes (klen) ][ Value Bytes (vlen) ][ 0-Padding ]
   ```
+  Payloads exceeding a single DBuf pool (combined payload $> 244$ B, up to `MAX_VAL_LEN = 0xFFFF`)
+  span across consecutive pools in the allocation chain; payload data skips the 8-byte trailing
+  metadata (`next_dbuf` and `bmap`) between pools, committed atomically via multi-slot OCC transactions
 - **List Key Framing**:
   Allocates $\lceil (5 + \text{klen}) / 8 \rceil$ contiguous buffers
   ```
@@ -431,7 +434,9 @@ Every internal expansion strictly preserves 256 B alignment:
   When `extra_node_count == 0`, allocates 4 new Nodes (4 slots = 256 B = 1 x 256 B);
   uses 1 immediately and caches 3 in Metadata stack
 - **DBuf Expansion**:
-  Allocates 4 new DBuf pools (16 slots = 1024 B = 4 x 256 B = 124 buffers of 8 B);
+  Allocates new DBuf pools based on required capacity;
+  if $P_{\text{needed}} = \lceil K / 31 \rceil$ pools are needed, the chain expands by
+  $\max(4, 4 \times P_{\text{needed}})$ pools (padded by $4\times$ to multiples of 4 slots);
   zero-initializes bitmaps and buffers;
   appends to DBuf allocation chain via `next_dbuf`;
   registers new slot indices into in-memory `DBufSlotCache` under `growth_mutex`

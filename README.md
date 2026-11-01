@@ -197,8 +197,8 @@ Unified single-file storage container managed across memory-mapped virtual addre
 Constraints callers must design for:
 
 * Key length bounded between 0x01 and 0xFF bytes (255 B)
-* Maximum single-entry payload capacity is 1004 bytes for key-value entries and 1002 bytes for list
-  items; larger payloads return `TurboError::PayloadTooLarge`
+* Maximum single-entry payload capacity is bounded by `MAX_VAL_LEN` (65,535 bytes) for key-value
+  entries and 1002 bytes for list items; larger payloads return `TurboError::PayloadTooLarge`
 * Multi-entry writes commit via OCC with conflict detection (retries up to 0x20 times before
   surfacing contention errors)
 * Thread-safe (`Send + Sync`) within a single process via `Arc<TurboFox>`

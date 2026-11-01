@@ -58,7 +58,6 @@
 //! * [`TurboFox::create`]: Strict creation; initializes physical pages and format metadata;
 //!   fails with [`TurboError::Storage`] if storage files already exist
 //!
-//!
 //! TurboFox provides three distinct initialization entry points to match operational requirements,
 //!
 //! | Method           | Target Exists | Target Missing | Target Corrupt | Recommended Use Case                     |
@@ -74,7 +73,7 @@
 //!
 //! ### Zero Rehash
 //!
-//! Primary key routing uses 32-bit XxHash32 with persistent index chaining:
+//! Primary key routing uses 32-bit XxHash32 with persistent index chaining,
 //!
 //! * Key entries are permanently anchored without global table redistribution, eliminating
 //!   stop-the-world rehashing pauses and maintaining bounded p99 write latency
@@ -83,7 +82,7 @@
 //!
 //! ### Torn-Write Protection
 //!
-//! Point reads execute concurrently without reader-writer locks or shared mutex acquisition:
+//! Point reads execute concurrently without reader-writer locks or shared mutex acquisition,
 //!
 //! * Reading automatically validates payload CRC32 integrity alongside byte-level key equality
 //! * Concurrent writes or partial page flushes that cause torn reads fail safely via
@@ -94,17 +93,15 @@
 //! ### Durability Model
 //!
 //! Mutations (`set`, `del`, `append`, `pop`) commit immediately via optimistic concurrency control
-//! and return a lightweight [`TurboTicket`] bound to a monotonic commit epoch:
+//! and return a lightweight [`TurboTicket`] bound to a monotonic commit epoch,
 //!
 //! * Decouples memory-speed writes from physical NVMe writeback latency, where durability
 //!   guarantees depend on the configured sync strategy
-//! * Manual Mode (`sync_interval: None`):
-//!   * The engine performs no automatic background flushing
+//! * Manual Mode (`sync_interval: None`)
 //!   * The caller must invoke `db.sync()` or block on `ticket.wait()` to guarantee crash safety on
 //!     disk
 //!   * Un-flushed mutations remain volatile against OS kernel panics or host power loss
-//! * Periodic Sync Mode (`sync_interval: Some(dur)`):
-//!   * A dedicated background sync thread flushes dirty pages up to the current epoch
+//! * Periodic Sync Mode (`sync_interval: Some(dur)`)
 //!   * Incorporates adaptive backoff under idle load to prevent write endurance wear on flash
 //!     devices
 //! * [`TurboTicket::is_durable`] enables non-blocking checks to poll writeback completion
@@ -127,7 +124,7 @@
 //! exhaustion) cannot be propagated to the caller and will fail silently
 //!
 //! Applications performing graceful shutdown must establish an explicit durability barrier before
-//! dropping the instance:
+//! dropping the instance,
 //!
 //! * Under periodic sync configurations, await outstanding write completion via
 //!   [`TurboTicket::wait`] or poll [`TurboTicket::is_durable`]
@@ -136,7 +133,7 @@
 //!
 //! ### TurboList
 //!
-//! Ordered 1-to-N sequences co-exist inside the primary storage file:
+//! Ordered 1-to-N sequences co-exist inside the primary storage file,
 //!
 //! * Eliminates secondary index tables, auxiliary catalog files, and relational join overhead
 //! * Provides ordered, append-only lists with amortized O(1) appends and pops
@@ -146,7 +143,7 @@
 //!
 //! ### Storage Topography
 //!
-//! Unified single-file storage container managed across memory-mapped virtual address space:
+//! Unified single-file storage container managed across memory-mapped virtual address space,
 //!
 //! * Initial file footprint begins at only 16 KiB on standard host systems
 //! * Virtual memory space reserves up to `MAX_DB_LEN` (256 GiB) upfront while physical disk pages
@@ -156,7 +153,7 @@
 //!
 //! ### Operational Invariants
 //!
-//! Constraints callers must design for:
+//! Constraints callers must design for,
 //!
 //! * Key length bounded between 0x01 and 0xFF bytes (255 B)
 //! * Maximum single-entry payload capacity is 1004 bytes for key-value entries and 1002 bytes for
@@ -172,12 +169,13 @@
 //!
 //! ### Evaluation Environment
 //!
-//! Benchmarks execute on dedicated cloud instances with direct NVMe storage:
+//! Benchmarks execute on dedicated cloud instances with direct NVMe storage,
 //!
 //! - Instance: AWS EC2 `c5d.large` (2 vCPUs, Intel Xeon Platinum 8223CL CPU @ 3.00 GHz)
 //! - Memory: 0x04 GiB DDR4 system RAM
 //! - Storage: Dedicated local hardware NVMe SSD (`/mnt/nvme0n1`)
-//! - Workload: 0x0004_0000 (262,144) operations per benchmark suite under uniform distribution
+//! - Kernel: Linux `7.0.0-1014-aws` (x86_64)
+//! - Workload: 0x10_0000 (1,048,576) operations per benchmark suite under uniform distribution
 //! - Concurrency: 1-thread baseline vs 2-thread concurrent worker evaluation
 //!
 //! ### Operation Throughput & Concurrency Scaling
@@ -186,47 +184,68 @@
 //!
 //! | Workload               | 1 Thread Throughput | 2 Thread Throughput | Scaling Ratio |
 //! |:-----------------------|:--------------------|:--------------------|:--------------|
-//! | SET (60/40 New/Update) | 11.66 kops/s        | 6.60 kops/s         | 0.57x         |
-//! | GET (60/40 Hit/Miss)   | 1.13 Mops/s         | 1.45 Mops/s         | 1.28x         |
-//! | DEL (60/40 Hit/Miss)   | 925.51 kops/s       | 1.23 Mops/s         | 1.33x         |
+//! | SET (80/20 New/Update) | 4.86 kops/s         | 4.70 kops/s         | 0.97x         |
+//! | GET (60/40 Hit/Miss)   | 1.03 Mops/s         | 1.03 Mops/s         | 1.00x         |
+//! | DEL (60/40 Hit/Miss)   | 864.98 kops/s       | 884.01 kops/s       | 1.02x         |
 //!
 //! ### Tail Latency Profile Under Concurrency
 //!
-//! Percentile latency distributions (p50 to p99.9) comparing 1T baseline against 2T concurrent
+//! Percentile latency distributions (p50 to p9999) comparing 1T baseline against 2T concurrent
 //! workers
 //!
-//! | Workload              | Threads | p50     | p90     | p99       | p99.9    |
-//! |:----------------------|:--------|:--------|:--------|:----------|:---------|
-//! | SET: 60/40 New/Update | 1T      | 1.27 µs | 4.46 µs | 131.84 µs | 50.59 ms |
-//! | SET: 60/40 New/Update | 2T      | 1.97 µs | 7.89 µs | 1.36 ms   | 63.11 ms |
-//! | GET: 60/40 Hit/Miss   | 1T      | 0.84 µs | 0.98 µs | 1.25 µs   | 5.35 µs  |
-//! | GET: 60/40 Hit/Miss   | 2T      | 1.32 µs | 1.53 µs | 1.81 µs   | 13.78 µs |
-//! | DEL: 60/40 Hit/Miss   | 1T      | 1.11 µs | 1.25 µs | 3.12 µs   | 8.89 µs  |
-//! | DEL: 60/40 Hit/Miss   | 2T      | 1.67 µs | 1.91 µs | 4.66 µs   | 14.34 µs |
+//! | Workload              | Threads | p50     | p90     | p99       | p9999       |
+//! |:----------------------|:--------|:--------|:--------|:----------|:------------|
+//! | SET: 80/20 New/Update | 1T      | 1.38 µs | 8.13 µs | _1.78 ms_ | _87.95 ms_  |
+//! | SET: 80/20 New/Update | 2T      | 1.38 µs | 8.15 µs | _3.97 ms_ | _166.99 ms_ |
+//! | GET: 60/40 Hit/Miss   | 1T      | 0.91 µs | 1.13 µs | 1.41 µs   | 5.27 µs     |
+//! | GET: 60/40 Hit/Miss   | 2T      | 0.91 µs | 1.13 µs | 1.41 µs   | 5.79 µs     |
+//! | DEL: 60/40 Hit/Miss   | 1T      | 1.14 µs | 1.38 µs | 3.70 µs   | 8.29 µs     |
+//! | DEL: 60/40 Hit/Miss   | 2T      | 1.11 µs | 1.35 µs | 3.67 µs   | 8.45 µs     |
 //!
-//! **TIP**: Sub-2 µs median latencies (p50 <= 1.67 µs for reads and deletes)
-//! sustained across 1T and 2T
+//! **TIP**: Sub-1.5 µs median latencies (p50 <= 1.38 µs across all operations) sustained across
+//! 1T and 2T
 //!
 //! ### Database Open Latency Scaling
 //!
-//! Database open latency across scaling entry intervals comparing mmap baseline against in-memory
-//! index
+//! Initialization duration across scaling key intervals comparing disabled vs enabled lookup cache
 //!
-//! | Scale (Entries) | Without Memory Index | With Memory Index |
-//! |:----------------|:---------------------|:------------------|
-//! | 10K             | 45.8 µs              | 12.51 ms          |
-//! | 20K             | 52.1 µs              | 29.05 ms          |
-//! | 30K             | 53.4 µs              | 46.99 ms          |
-//! | 40K             | 55.0 µs              | 61.47 ms          |
-//! | 50K             | 56.1 µs              | 96.27 ms          |
-//! | 60K             | 57.2 µs              | 97.65 ms          |
-//! | 70K             | 58.4 µs              | 113.64 ms         |
-//! | 80K             | 59.9 µs              | 142.87 ms         |
-//! | 90K             | 61.1 µs              | 184.94 ms         |
-//! | 100K            | 62.0 µs              | 209.85 ms         |
+//! | Scale (Entries) | Lookup Cache Disabled | Lookup Cache Enabled |
+//! |:----------------|:----------------------|:---------------------|
+//! | 0               | 3.44 ms               | 2.77 ms              |
+//! | 6,553           | 2.66 ms               | 2.88 ms              |
+//! | 13,106          | 3.05 ms               | 3.33 ms              |
+//! | 19,659          | 3.17 ms               | 3.38 ms              |
+//! | 26,212          | 3.12 ms               | 3.34 ms              |
+//! | 32,765          | 3.09 ms               | 3.43 ms              |
+//! | 39,318          | 3.20 ms               | 3.43 ms              |
+//! | 45,871          | 3.85 ms               | 3.39 ms              |
+//! | 52,424          | 3.14 ms               | 3.27 ms              |
+//! | 58,977          | 3.64 ms               | 3.35 ms              |
+//! | 65,530          | 3.76 ms               | 3.36 ms              |
 //!
-//! **TIP**: Without in-memory index, database open maintains O(1) instantaneous memory-mapping
-//! latency (~50 µs)
+//! **TIP**: Cold-open latency remains flat (~2.6 ms to 3.8 ms) up to 0x0001_0000 entries regardless
+//! of caching
+//!
+//! ### Resource Footprint Scaling
+//!
+//! Resident memory (RAM) and storage growth across scaling key intervals
+//!
+//! | Scale (Entries) | Disk Footprint  | RAM (Cache Disabled)  | RAM (Cache Enabled)  |
+//! |:----------------|:----------------|:----------------------|:---------------------|
+//! | 0               | 16 KiB          | 4 KiB                 | 24 KiB               |
+//! | 6,553           | 816 KiB         | 4 KiB                 | 72 KiB               |
+//! | 13,106          | 1.06 MiB        | 4 KiB                 | 72 KiB               |
+//! | 19,659          | 1.20 MiB        | 4 KiB                 | 72 KiB               |
+//! | 26,212          | 1.41 MiB        | 4 KiB                 | 72 KiB               |
+//! | 32,765          | 1.70 MiB        | 4 KiB                 | 72 KiB               |
+//! | 39,318          | 2.31 MiB        | 4 KiB                 | 72 KiB               |
+//! | 45,871          | 2.97 MiB        | 4 KiB                 | 72 KiB               |
+//! | 52,424          | 3.58 MiB        | 4 KiB                 | 72 KiB               |
+//! | 58,977          | 4.17 MiB        | 4 KiB                 | 72 KiB               |
+//! | 65,530          | 4.91 MiB        | 4 KiB                 | 72 KiB               |
+//!
+//! **TIP**: Zero-memory-overhead baseline retains a constant 0x04 KB resident footprint at any key
+//! scale
 
 #![allow(unsafe_op_in_unsafe_fn)]
 #![deny(
@@ -284,7 +303,7 @@ use std::sync::Arc;
 /// will fail silently
 ///
 /// Applications performing graceful shutdown must establish an explicit durability barrier before
-/// dropping the instance:
+/// dropping the instance,
 ///
 /// * Under periodic sync configurations, await outstanding write completion via
 ///   [`TurboTicket::wait`] or poll [`TurboTicket::is_durable`]

@@ -156,8 +156,8 @@
 //! Constraints callers must design for,
 //!
 //! * Key length bounded between 0x01 and 0xFF bytes (255 B)
-//! * Maximum single-entry payload capacity is 1004 bytes for key-value entries and 1002 bytes for
-//!   list items; larger payloads return [`TurboError::PayloadTooLarge`]
+//! * Maximum single-entry payload capacity is bounded by MAX_VAL_LEN (65,535 bytes) for key-value
+//!   entries and 1002 bytes for list items; larger payloads return [`TurboError::PayloadTooLarge`]
 //! * Multi-entry writes commit via OCC with conflict detection (retries up to 0x100 times before
 //!   surfacing contention errors)
 //! * Thread-safe (`Send + Sync`) within a single process via `Arc<TurboFox>`
@@ -440,8 +440,8 @@ impl TurboFox {
     /// Commits the entry immediately for concurrent readers and returns a [`TurboTicket`] tracking
     /// background write durability
     ///
-    /// Key length must not exceed [`crate::MAX_KEY_LEN`] bytes and total entry payload must not
-    /// exceed engine storage capacity (1004 bytes)
+    /// Key length must not exceed [`crate::MAX_KEY_LEN`] bytes and value length must not exceed
+    /// [`crate::MAX_VAL_LEN`] bytes (65,535 bytes)
     ///
     /// ## Crash Safe Durability
     ///

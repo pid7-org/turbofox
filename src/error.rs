@@ -101,7 +101,7 @@ pub enum TurboError {
     /// Key type mismatch such as key-value operations on list structures
     InvalidType(&'static str),
 
-    /// Key or value payload exceeds engine storage limits (1004 bytes for KV pairs)
+    /// Key or value payload exceeds engine storage limits (MAX_VAL_LEN = 65,535 B for KV pairs)
     PayloadTooLarge,
 
     /// Payload data failed CRC32 validation or offset integrity

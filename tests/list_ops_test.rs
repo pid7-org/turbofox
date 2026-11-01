@@ -175,18 +175,18 @@ fn ok_turbofox_list_spanned_lifecycle_and_popping() {
 
     let item_1k = vec![0xAA; 0x0400];
     let item_4k = vec![0xBB; 0x1000];
-    let item_16k = vec![0xCC; 0x4000];
+    let item_max = vec![0xCC; 0xFFFF];
 
     list.append(&item_1k).unwrap();
     list.append(&item_4k).unwrap();
-    list.append(&item_16k).unwrap();
+    list.append(&item_max).unwrap();
 
     assert_eq!(list.len().unwrap(), 3);
     assert_eq!(list.first().unwrap(), Some(item_1k.clone()));
-    assert_eq!(list.last().unwrap(), Some(item_16k.clone()));
+    assert_eq!(list.last().unwrap(), Some(item_max.clone()));
 
     // LIFO popping
-    assert_eq!(list.pop().unwrap(), Some(item_16k));
+    assert_eq!(list.pop().unwrap(), Some(item_max));
     assert_eq!(list.len().unwrap(), 2);
     assert_eq!(list.last().unwrap(), Some(item_4k.clone()));
 
@@ -251,16 +251,40 @@ fn ok_turbofox_list_max_payload_and_limit_matrix() {
     let max_item2 = vec![0x7B; 0xFFFF];
 
     let list = db.list(&max_key);
-    list.append(&max_item1).unwrap();
-    list.append(&max_item2).unwrap();
+    assert_eq!(list.key(), &max_key[..]);
+    assert!(list.is_empty().unwrap());
+    assert_eq!(list.len().unwrap(), 0);
+    assert_eq!(list.first().unwrap(), None);
+    assert_eq!(list.last().unwrap(), None);
+    assert_eq!(list.get_at(0).unwrap(), None);
 
+    list.append(&max_item1).unwrap();
+    assert_eq!(list.len().unwrap(), 1);
+    assert!(!list.is_empty().unwrap());
+    assert_eq!(list.first().unwrap(), Some(max_item1.clone()));
+    assert_eq!(list.last().unwrap(), Some(max_item1.clone()));
+    assert_eq!(list.get_at(0).unwrap(), Some(max_item1.clone()));
+
+    list.append(&max_item2).unwrap();
     assert_eq!(list.len().unwrap(), 2);
-    assert_eq!(list.first().unwrap(), Some(max_item1));
-    assert_eq!(list.last().unwrap(), Some(max_item2));
+    assert_eq!(list.first().unwrap(), Some(max_item1.clone()));
+    assert_eq!(list.last().unwrap(), Some(max_item2.clone()));
+    assert_eq!(list.get_at(0).unwrap(), Some(max_item1.clone()));
+    assert_eq!(list.get_at(1).unwrap(), Some(max_item2.clone()));
+    assert_eq!(list.get_at(2).unwrap(), None);
+
+    let collected: Vec<Vec<u8>> = list.iter().unwrap().collect();
+    assert_eq!(collected, vec![max_item1.clone(), max_item2.clone()]);
+
+    assert_eq!(list.pop().unwrap(), Some(max_item2));
+    assert_eq!(list.len().unwrap(), 1);
+    assert_eq!(list.last().unwrap(), Some(max_item1));
 
     assert!(list.clear().unwrap());
     assert_eq!(list.len().unwrap(), 0);
     assert!(list.is_empty().unwrap());
+    assert_eq!(list.first().unwrap(), None);
+    assert_eq!(list.last().unwrap(), None);
 
     drop(list);
     db.delete().unwrap();
@@ -315,7 +339,7 @@ fn ok_turbofox_list_spanned_reopen_and_durability() {
     let max_key = vec![0x4B; 0xFF];
     let item_1k = vec![0x11; 0x0400];
     let item_8k = vec![0x22; 0x2000];
-    let item_32k = vec![0x33; 0x8000];
+    let item_max = vec![0x33; 0xFFFF];
 
     {
         let cfg = TurboCfg::manual(&path);
@@ -324,7 +348,7 @@ fn ok_turbofox_list_spanned_reopen_and_durability() {
 
         let t1 = list.append(&item_1k).unwrap();
         let t2 = list.append(&item_8k).unwrap();
-        let t3 = list.append(&item_32k).unwrap();
+        let t3 = list.append(&item_max).unwrap();
 
         t1.force().unwrap();
         t2.force().unwrap();
@@ -339,9 +363,9 @@ fn ok_turbofox_list_spanned_reopen_and_durability() {
         assert_eq!(list.len().unwrap(), 3);
         assert_eq!(list.get_at(0).unwrap(), Some(item_1k.clone()));
         assert_eq!(list.get_at(1).unwrap(), Some(item_8k));
-        assert_eq!(list.get_at(2).unwrap(), Some(item_32k.clone()));
+        assert_eq!(list.get_at(2).unwrap(), Some(item_max.clone()));
 
-        assert_eq!(list.pop().unwrap(), Some(item_32k));
+        assert_eq!(list.pop().unwrap(), Some(item_max));
         assert_eq!(list.len().unwrap(), 2);
 
         let item_4k = vec![0x44; 0x1000];

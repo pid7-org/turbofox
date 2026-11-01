@@ -1,5 +1,5 @@
 use tempfile::tempdir;
-use turbofox::{MAX_KEY_LEN, MAX_VAL_LEN, TurboCfg, TurboError, TurboFox};
+use turbofox::{EvictionMode, MAX_KEY_LEN, MAX_VAL_LEN, TurboCfg, TurboError, TurboFox};
 
 /// Ref: `DESIGN.md` §7.1, §7.2, §7.3
 #[test]
@@ -233,7 +233,7 @@ fn ok_turbofox_kv_spanned_reopen_and_durability() {
         (b"key_512".to_vec(), vec![0xAAu8; 512]),
         (b"key_2048".to_vec(), vec![0xBBu8; 2048]),
         (b"key_16k".to_vec(), vec![0xCCu8; 16384]),
-        (b"key_32k".to_vec(), vec![0xDDu8; 32768]),
+        (vec![0x4D; MAX_KEY_LEN], vec![0xDDu8; MAX_VAL_LEN]),
     ];
 
     // Write all entries
@@ -414,31 +414,45 @@ fn ok_turbofox_kv_max_payload_transitions() {
     let max_k = vec![0x7A; MAX_KEY_LEN];
     let max_v = vec![0x7B; MAX_VAL_LEN];
 
+    assert!(db.is_empty());
+    assert!(!db.contains_key(&max_k).unwrap());
+
     // 1: Insert maximum payload pair (255 B key + 65,535 B val)
-    db.set(&max_k, &max_v).unwrap();
+    let ticket = db.set(&max_k, &max_v).unwrap();
+    assert!(ticket.epoch() > 0);
     assert_eq!(db.total_entries(), 1);
+    assert!(!db.is_empty());
+    assert!(db.contains_key(&max_k).unwrap());
     assert_eq!(db.get(&max_k).unwrap(), Some(max_v.clone()));
 
-    // 2: Overwrite in-place contracting to 1 byte
+    // 2: Test eviction with preserve headers and purge all
+    db.evict(EvictionMode::PreserveHeaders).unwrap();
+    assert_eq!(db.get(&max_k).unwrap(), Some(max_v.clone()));
+    db.evict(EvictionMode::PurgeAll).unwrap();
+    assert_eq!(db.get(&max_k).unwrap(), Some(max_v.clone()));
+
+    // 3: Overwrite in-place contracting to 1 byte
     let v_tiny = vec![0x09];
     db.set(&max_k, &v_tiny).unwrap();
     assert_eq!(db.total_entries(), 1);
     assert_eq!(db.get(&max_k).unwrap(), Some(v_tiny));
 
-    // 3: Overwrite expanding back to maximum payload
+    // 4: Overwrite expanding back to maximum payload
     let max_v2 = vec![0x7C; MAX_VAL_LEN];
     db.set(&max_k, &max_v2).unwrap();
     assert_eq!(db.total_entries(), 1);
     assert_eq!(db.get(&max_k).unwrap(), Some(max_v2.clone()));
 
-    // 4: Failed overwrite beyond limit preserves current value
+    // 5: Failed overwrite beyond limit preserves current value
     let v_oversize = vec![0xFF; MAX_VAL_LEN + 1];
     assert!(matches!(db.set(&max_k, &v_oversize), Err(TurboError::PayloadTooLarge)));
     assert_eq!(db.get(&max_k).unwrap(), Some(max_v2));
 
-    // 5: Clean deletion of max payload entry
+    // 6: Clean deletion of max payload entry
     assert!(db.del(&max_k).unwrap());
     assert_eq!(db.total_entries(), 0);
+    assert!(db.is_empty());
+    assert!(!db.contains_key(&max_k).unwrap());
     assert_eq!(db.get(&max_k).unwrap(), None);
 
     db.delete().unwrap();

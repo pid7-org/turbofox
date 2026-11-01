@@ -151,7 +151,7 @@ if [[ ${RUN_SCALE} -eq 1 ]]; then
   append_result "${json_out}"
 fi
 
-# 2. Run Unified Core KV Benchmark (threads=1,2, N=256K, set/get/del 60/40)
+# 2. Run Unified Core KV Benchmark (threads=1,2, N=${OPS}, set 80/20, get/del 60/40)
 if [[ ${RUN_KV} -eq 1 ]]; then
   taskset_cmd=""
   if command -v taskset >/dev/null 2>&1; then
@@ -164,7 +164,7 @@ if [[ ${RUN_KV} -eq 1 ]]; then
     fi
   fi
 
-  echo "Running kv_perf [set/get/del 60/40] (threads=1,2, N=256K)..." >&2
+  echo "Running kv_perf [set 80/20, get/del 60/40] (threads=1,2, N=${OPS})..." >&2
   drop_page_cache
   json_out=$(${taskset_cmd} "${KV_BIN}")
   append_result "${json_out}"

@@ -11,7 +11,7 @@ use std::time::Instant;
 use turbofox::{CapacityHint, TurboCfg, TurboFox};
 
 const TOTAL_OPS: usize = 0x0008_0000;
-const THREAD_CONFIGS: [usize; 0x02] = [0x01, 0x02];
+const THREAD_CONFIGS: [usize; 0x01] = [0x01];
 
 fn generate_set_80_20_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]> {
     let new_target = (count * 0x50) / 0x64;

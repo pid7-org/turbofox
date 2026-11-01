@@ -30,14 +30,7 @@ fn print_scale_json(
     println!("}}");
 }
 
-fn run_worker(
-    db_path: &Path,
-    lookup_cache: bool,
-    workload: &'static str,
-    num_intervals: usize,
-    step: usize,
-    val: [u8; VAL_SIZE],
-) {
+fn run_bench(db_path: &Path, num_intervals: usize, step: usize, val: [u8; VAL_SIZE]) {
     let create_cfg = TurboCfg::manual(db_path);
     let writer = TurboFox::create(create_cfg).expect("failed to create db");
     writer.evict(EvictionMode::PurgeAll).expect("evict failed");
@@ -46,18 +39,39 @@ fn run_worker(
 
     let mut current_keys = 0x00;
     for interval_idx in 0x00..=num_intervals {
-        let cfg = TurboCfg::manual(db_path).with_lookup_cache(lookup_cache);
+        let uncached_cfg = TurboCfg::manual(db_path).with_lookup_cache(false);
         let t0 = Instant::now();
-        let opened_db = TurboFox::open(cfg).expect("open failed");
-        let latency_micros = (t0.elapsed().as_nanos() as f64) / NANOS_PER_MICRO;
-        let in_mem = opened_db.resident_bytes_in_memory().expect("in-mem query failed") as u64;
-        let disk = opened_db.resident_bytes_on_disk() as u64;
-        drop(opened_db);
+        let uncached_db = TurboFox::open(uncached_cfg).expect("open uncached failed");
+        let uncached_lat = (t0.elapsed().as_nanos() as f64) / NANOS_PER_MICRO;
+        let uncached_mem =
+            uncached_db.resident_bytes_in_memory().expect("in-mem query failed") as u64;
+        let uncached_disk = uncached_db.resident_bytes_on_disk() as u64;
+        uncached_db.evict(EvictionMode::PurgeAll).expect("evict failed");
+        drop(uncached_db);
+        purge_directory_page_cache(db_path);
+
+        let cached_cfg = TurboCfg::manual(db_path).with_lookup_cache(true);
+        let t1 = Instant::now();
+        let cached_db = TurboFox::open(cached_cfg).expect("open cached failed");
+        let cached_lat = (t1.elapsed().as_nanos() as f64) / NANOS_PER_MICRO;
+        let cached_mem = cached_db.resident_bytes_in_memory().expect("in-mem query failed") as u64;
+        let cached_disk = cached_db.resident_bytes_on_disk() as u64;
+        cached_db.evict(EvictionMode::PurgeAll).expect("evict failed");
+        drop(cached_db);
+        purge_directory_page_cache(db_path);
 
         if interval_idx > 0x00 {
             println!(",");
         }
-        print_scale_json(workload, current_keys, disk, in_mem, latency_micros);
+        print_scale_json(
+            "lookup_cache_disabled",
+            current_keys,
+            uncached_disk,
+            uncached_mem,
+            uncached_lat,
+        );
+        println!(",");
+        print_scale_json("lookup_cache_enabled", current_keys, cached_disk, cached_mem, cached_lat);
 
         if interval_idx < num_intervals {
             let target_keys = (interval_idx + 0x01) * step;
@@ -96,16 +110,10 @@ fn main() {
     let _ = fs::create_dir_all(&bench_dir_path);
 
     let step = (total_keys / 0x0A).max(0x01);
-    let (_bench_dir1, db1_path) =
-        BenchDir::new(Some(bench_dir_path.clone()), "scale_perf_uncached");
-    let (_bench_dir2, db2_path) = BenchDir::new(Some(bench_dir_path), "scale_perf_cached");
+    let (_bench_dir, db_path) = BenchDir::new(Some(bench_dir_path), "scale_perf");
 
     let val = [0x42u8; VAL_SIZE];
     let num_intervals = total_keys / step;
 
-    run_worker(&db1_path, false, "lookup_cache_disabled", num_intervals, step, val);
-
-    println!(",");
-
-    run_worker(&db2_path, true, "lookup_cache_enabled", num_intervals, step, val);
+    run_bench(&db_path, num_intervals, step, val);
 }

@@ -183,7 +183,7 @@
 //! TurboFox is an embedded key-value storage engine engineered around memory-mapped persistence,
 //! optimistic concurrency control, and zero-rehash index chaining
 //!
-//! ### Zero Rehash
+//! ### Zero Global Rehash
 //!
 //! Primary key routing uses 32-bit XxHash32 with persistent index chaining,
 //!

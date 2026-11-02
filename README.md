@@ -1,19 +1,19 @@
+<img src="assets/banner.png" width="100%" alt="TurboFox" />
+
 [![Crates.io](https://img.shields.io/crates/v/turbofox?style=flat-square&logo=rust&logoColor=eff1f5&color=1e66f5&labelColor=4c4f69)](https://crates.io/crates/turbofox)
 [![Docs.rs](https://img.shields.io/docsrs/turbofox?style=flat-square&logo=docs.rs&logoColor=eff1f5&color=179299&labelColor=4c4f69)](https://docs.rs/turbofox)
 [![Tests](https://img.shields.io/github/actions/workflow/status/pid7-org/turbofox/tests.yaml?style=flat-square&logo=github&logoColor=eff1f5&label=tests&color=40a02b&labelColor=4c4f69)](https://github.com/pid7-org/turbofox/actions/workflows/tests.yaml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.86.0-fe640b?style=flat-square&logo=rust&logoColor=eff1f5&labelColor=4c4f69)](#usage)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-8839ef?style=flat-square&logo=open-source-initiative&logoColor=eff1f5&labelColor=4c4f69)](LICENSE-MIT)
 
-# TurboFox 🦊🚀
-
-An embedded, memory-mapped key-value engine providing lock-free concurrency and explicit sync
-barriers
+TurboFox is an embedded, memory-mapped key-value engine providing lock-free concurrency & explicit
+sync barriers
 
 > [!IMPORTANT]
-> `turbofox` is under active development and past the initial MVP phase, but is not yet reliable
+> _TurboFox_ is under active development
 >
-> Architecture and disk layout remain subject to breaking changes; production use is discouraged,
-> but not prohibited, given _you assume all the risks_
+> Architecture and disk layout remain subject to breaking changes, hence production use is
+> discouraged but not prohibited, given _you assume all the risks_
 
 ## Index
 
@@ -25,7 +25,7 @@ barriers
   - [Page Eviction & Resource Telemetry](#page-eviction--resource-telemetry)
 - [Lifecycle & Initialization](#lifecycle--initialization)
 - [Architecture Guarantees](#architecture-guarantees)
-  - [Zero Rehash](#zero-rehash)
+  - [Zero Global Rehash](#zero-rehash)
   - [Torn-Write Protection](#torn-write-protection)
   - [Durability Model](#durability-model)
   - [RAII Safety](#raii-safety)
@@ -220,7 +220,7 @@ optimistic concurrency control, and zero-rehash index chaining
 
 Reference documentation and method signatures are available on [docs.rs](https://docs.rs/turbofox)
 
-### Zero Rehash
+### Zero Global Rehash
 
 Primary key routing uses 32-bit XxHash32 with persistent index chaining:
 

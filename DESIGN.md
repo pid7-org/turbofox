@@ -12,7 +12,7 @@ Slot (T)           64 B      1          8 B        Base IO / spinlock concurrenc
 AdjArrayBlock      128 B     2          8 B        1-to-N list index block
 Metadata           64 B      1          8 B        Engine configuration, heads, and spare nodes
 Node               64 B      1          8 B        Internal 15-way trie routing node
-Bucket             256 B     4          8 B        21-entry leaf bucket
+Bucket             256 B     4          8 B        32-entry leaf bucket
 DBuf               256 B     4          8 B        Contiguous payload buffer pool
 Physical Page 4K   4096 B    64         4096 B     Host filesystem growth quantum
 Physical Page 16K  16384 B   256        16384 B    Host filesystem growth quantum
@@ -93,70 +93,46 @@ Offset   Type      Field             Description
 
 ### 3.2 Node (64 Bytes, 1 Slot, `align(8)`)
 
-A Node is an internal trie routing structure with up to 15 child Buckets or lower-level Nodes. It
-occupies exactly one slot (64 B),
+A Node is an internal trie routing structure with up to 15 child Buckets or lower-level Nodes; it
+occupies exactly one slot (64 B):
 
 ```
 Offset   Type        Field           Description
 -------+-----------+---------------+--------------------------------------------------
-0..3     u32         flag            Discriminator flag (0x0000_0000 = Node)
+0..3     u32         flag            Child component type bitmap (0 = Bucket, 1 = Node)
 4..63    [u32; 15]   bucket_indices  Slot indices of 15 child Buckets or Nodes
 ```
 
-- `flag`: Always `0x0000_0000` for a `Node`; used to identify the component type during traversal.
+- `flag`: Bits 0..14 form a bitmask indicating child component type for each index $i \in [0, 14]$
+  (`0` = leaf Bucket, `1` = child Node); bits 15..31 are reserved (`0x0000`)
 - `bucket_indices[i]`: Absolute slot index of the child component associated with slice
-  $i \in [0, 14]$.
+  $i \in [0, 14]$
 
 ### 3.3 Bucket (256 Bytes, 4 Slots, `align(8)`)
 
-A Bucket is a leaf-level hash table that holds up to 21 entries. It occupies exactly four slots
-(256 B),
+A Bucket is a leaf-level hash table holding up to 32 entries; it occupies exactly four slots
+(256 B) with zero per-bucket header overhead:
 
 ```
-Offset   Type        Field    Description
--------+-----------+--------+---------------------------------------------------------
-0..3     u32         flag     Discriminator flag (0x0000_0001 = Bucket)
-4..87    [u32; 21]   hashes   Normalized key hashes (0 = empty, 1 = tombstone, >= 2)
-88..255  [u64; 21]   offsets  Packed entry metadata (flags, lengths, buffer index)
+Offset    Type        Field    Description
+--------+-----------+--------+--------------------------------------------------------
+0..127    [u32; 32]   hashes   Normalized key hashes (0 = empty, 1 = tomb, >= 2 valid)
+128..255  [u32; 32]   offsets  Global DBuf buffer indices (global_buf_idx)
 ```
 
-#### Hash Sentinels (`hashes[i]`)
+#### Hash Encoding & Sentinels (`hashes[i]`)
 
-- `0x0000_0000`: Empty slot sentinel
-- `0x0000_0001`: Tombstone (deleted) sentinel
-- `>= 0x0000_0002`: Valid normalized XxHash32 hash
+- `0x0000_0000`: Empty slot sentinel (`HASH_EMPTY`)
+- `0x0000_0001`: Tombstone (deleted) sentinel (`HASH_TOMBSTONE`)
+- Bit 31 Discriminator:
+  - Bit 31 = `0`: *KV Entry* (`hash & 0x7FFF_FFFF`, normalized $\ge 2$)
+  - Bit 31 = `1`: *List Entry* (`hash | 0x8000_0000`, normalized $\ge 2^{31}$)
+- KV and List keyspaces are completely disjoint; identical keys do not collide
 
-#### Entry Offset Encoding (`offsets[i]`, 8 Bytes)
+#### Entry Buffer Index (`offsets[i]`, 4 Bytes)
 
-Each entry uses an 8-byte packed representation to distinguish KV entries from List heads. The first
-bit in memory (Byte 0, Bit 7, mask `0x80`) is the discriminator,
-
-- `offsets[i][0] & 0x80 == 0x00`: *KV Entry*
-- `offsets[i][0] & 0x80 == 0x80`: *List Entry*
-
-*KV Entry Format (8 Bytes)*:
-```
-Byte 0          Byte 1      Bytes 2..3 (LE)  Bytes 4..7 (LE)
-+-------------+-----------+----------------+------------------------+
-| Flags (0x0) | klen (u8) | vlen (u16)     | global_buf_idx (u32)   |
-+-------------+-----------+----------------+------------------------+
-```
-- `Byte 0 (flags)`: Bit 7 is `0` (`isKV`); bits 0..6 reserved (`0x00`)
-- `Byte 1 (klen)`: Key byte length (1..255)
-- `Bytes 2..3 (vlen)`: Value byte length in little-endian (0..65535)
-- `Bytes 4..7 (global_buf_idx)`: Global 8 B DBuf buffer index in little-endian
-
-*List Entry Format (8 Bytes)*:
-```
-Bytes 0..3 (Big-Endian u32)                    Bytes 4..7 (LE)
-+--------------------------------------------+------------------------+
-| Flag (Bit 31 = 1) | adjarr_idx (Bits 0..30) | global_buf_idx (u32)  |
-+--------------------------------------------+------------------------+
-```
-- `Bytes 0..3 (flag | adjarr_idx)`:
-  Packed as Big-Endian `u32` (Bit 31 = 1, Bits 0..30 = relative array index);
-  evaluates identically as `(bytes[0] & 0x80) != 0`
-- `Bytes 4..7 (global_buf_idx)`: Global 8 B DBuf buffer index holding key framing
+Each offset stores a `u32` global buffer index (`global_buf_idx`) pointing to the entry framing
+head in DBuf; length metadata and list pointer array heads are stored in the payload buffer header
 
 ### 3.4 DBuf (256 Bytes, 4 Slots, `align(8)`)
 
@@ -179,51 +155,60 @@ Offset    Type            Field      Description
 
 #### Payload Framing (8-Byte Alignment)
 
-Payloads are stored in contiguous buffers. The number of buffers allocated is determined by the
-total framed length,
+Payloads are stored in contiguous buffers; buffer 0 stores the 8 B descriptor header:
 
 - *KV Framing*:
-  Allocates $\lceil (4 + \text{klen} + \text{vlen}) / 8 \rceil$ contiguous buffers
+  Allocates $1 + \lceil (\text{klen} + \text{vlen}) / 8 \rceil$ contiguous buffers
   ```
-  [ CRC32 (4 B, LE) ][ Key Bytes (klen) ][ Value Bytes (vlen) ][ 0-Padding ]
+  Buffer 0 (Header, 8 B):
+  [ CRC32 (4 B, LE) ][ klen (1 B) ][ vlen (3 B, LE) ]
+
+  Buffers 1..N (Payload):
+  [ Key Bytes (klen) ][ Value Bytes (vlen) ][ 0-Padding ]
   ```
-  Payloads larger than one DBuf pool (combined payload $> 244$ B, up to `MAX_VAL_LEN = 0xFFFF`) span
-  consecutive pools in the allocation chain. Data skips the 8-byte trailing metadata (`next_dbuf`
-  and `bmap`) at each pool boundary. These writes are committed atomically through multi-slot OCC
-  transactions.
+  `vlen` supports up to 16,777,215 B (`0x00FF_FFFF`), fully covering `MAX_VAL_LEN = 0xFFFF`;
+  CRC32 is computed over `[klen (1 B), vlen (3 B), Key, Value]`
+
 - *List Key Framing*:
-  Allocates $\lceil (5 + \text{klen}) / 8 \rceil$ contiguous buffers
+  Allocates $1 + \lceil \text{klen} / 8 \rceil$ contiguous buffers
   ```
-  [ CRC32 (4 B, LE) ][ klen (1 B) ][ Key Bytes (klen) ][ 0-Padding ]
+  Buffer 0 (Header, 8 B):
+  [ CRC32 (4 B, LE) ][ klen (1 B) ][ adjarr_idx (3 B, LE) ]
+
+  Buffers 1..N (Payload):
+  [ Key Bytes (klen) ][ 0-Padding ]
   ```
-  Keys with $\text{klen} > 0xF3$ (243 B, up to `MAX_KEY_LEN = 0xFF`) span two consecutive pools in
-  the DBuf chain. Serialization streams the payload across the pools, skipping the trailing 8-byte
-  metadata at each boundary.
+  `adjarr_idx` supports up to 16,777,215 relative array indices; CRC32 is computed over
+  `[klen (1 B), adjarr_idx (3 B), Key]`
+
 - *List Item Value Framing*:
   Allocates $\lceil (6 + \text{vlen}) / 8 \rceil$ contiguous buffers
   ```
   [ CRC32 (4 B, LE) ][ vlen (2 B, LE) ][ Value Bytes (vlen) ][ 0-Padding ]
   ```
   Items with $\text{vlen} > 0xF2$ (242 B, up to `MAX_VAL_LEN = 0xFFFF`) span consecutive pools in
-  the allocation chain. Payload data skips the trailing 8-byte metadata (`next_dbuf` and `bmap`) at
-  each pool boundary. These writes are committed atomically through multi-slot OCC transactions.
+  the allocation chain; payload data skips the trailing 8-byte metadata (`next_dbuf` and `bmap`) at
+  each pool boundary; these writes are committed atomically through multi-slot OCC transactions
 
-#### Two-Phase Read Process (List Key and List Item Value)
+#### Fast 2-Buffer Read Process (KV and List Key)
 
-- *List Key Read*:
-  1. Read single 8 B buffer at `dbuf_idx`; contains `[ CRC32 (4 B) ][ klen (1 B) ][ Key[0..2] ]`
-  2. Inspect `klen` (Byte 4); if `klen <= 3`, key payload resides entirely within initial buffer
-  3. If `klen > 3`, compute total required buffers $N = \lceil (5 + \text{klen}) / 8 \rceil$;
-     if allocation fits within pool, read slice from single DBuf; otherwise load spanned pools
-     via `DBufSlotCache` and stream bytes across pool boundaries
-  4. Verify CRC32 over `[klen (1 B), Key]`
-- *List Item Value Read*:
-  1. Read single 8 B buffer at `dbuf_idx`; contains `[ CRC32 (4 B) ][ vlen (2 B) ][ Val[0..1] ]`
-  2. Inspect `vlen` (Bytes 4..5, LE); if `vlen <= 2`, value resides entirely within initial buffer
-  3. If `vlen > 2`, compute total required buffers $N = \lceil (6 + \text{vlen}) / 8 \rceil$;
-     if allocation fits within pool, read slice from single DBuf; otherwise load spanned pools
-     via `DBufSlotCache` and stream bytes across pool boundaries
-  4. Verify CRC32 over `[vlen (2 B), Val]`
+1. Read buffer 0 (Header, 8 B) and buffer 1 (Key prefix up to 8 B)
+2. Inspect `klen` (Byte 4); if `klen != key.len()`, hash collision is rejected immediately
+3. If `key.len() <= 8`, key equality is verified directly against buffer 1
+4. If `local_idx < 30`, buffers 0 and 1 are contiguous in the local DBuf; if `local_idx == 30`,
+   buffer 1 resides at local buffer 0 of `next_dbuf` (boundary-safe multi-pool read)
+5. If key matches and `key.len() > 8`, load spanned buffers via `DBufSlotCache` to verify full key
+6. For KV: extract `vlen` from bytes 5..7, stream remaining value bytes, and verify CRC32
+7. For List: extract `adjarr_idx` from bytes 5..7 to access the `AdjArrayList` head
+
+#### List Item Value Read Process
+
+1. Read single 8 B buffer at `dbuf_idx`; contains `[ CRC32 (4 B) ][ vlen (2 B) ][ Val[0..1] ]`
+2. Inspect `vlen` (Bytes 4..5, LE); if `vlen <= 2`, value resides entirely within initial buffer
+3. If `vlen > 2`, compute total required buffers $N = \lceil (6 + \text{vlen}) / 8 \rceil$;
+   if allocation fits within pool, read slice from single DBuf; otherwise load spanned pools
+   via `DBufSlotCache` and stream bytes across pool boundaries
+4. Verify CRC32 over `[vlen (2 B), Val]`
 
 A global buffer index $B$ is translated as follows:
 $$\text{pool\\_hop} = \lfloor B / 31 \rfloor$$
@@ -296,16 +281,24 @@ Follow the `next_adjarr_idx` block chain for `block_hop` steps, then access `arr
 ### 4.1 Key Hash Normalization
 
 Keys are hashed with `twox_hash::XxHash32`, initialized with seed `0x00` (the default `SEED` is the
-fastest option).
+fastest option); bit 31 partitions KV and List keyspaces:
 
 ```rs
-let h = hasher.finish() as u32;
-let hash = if h < 2 { h + 2 } else { h };
+let raw = hasher.finish() as u32;
+
+// KV Hash: bit 31 = 0; normalized to >= 2 to preserve sentinels
+let kv_hash = {
+    let h = raw & 0x7FFF_FFFF;
+    if h < 2 { h + 2 } else { h }
+};
+
+// List Hash: bit 31 = 1; always >= 0x8000_0000 > 1 (sentinel-safe)
+let list_hash = raw | 0x8000_0000;
 ```
 
-- `0`: Empty slot sentinel
-- `1`: Tombstone (deleted) sentinel
-- `>= 2`: Valid normalized key hash
+- `0x0000_0000`: Empty slot sentinel (`HASH_EMPTY`)
+- `0x0000_0001`: Tombstone (deleted) sentinel (`HASH_TOMBSTONE`)
+- `>= 0x0000_0002`: Valid normalized key hash
 
 ### 4.2 Hash Bit-Slicing & 15-Way Folding
 
@@ -330,24 +323,27 @@ Depth 7: bits 28..31 -> raw slice 0..15 -> fold (15 -> 0) -> child_idx 0..14
 Depth 8+: (depth % 8) cyclically wraps back to bits 0..3
 ```
 
-### 4.3 Trie Traversal & 21-Entry Leaf Probing
+### 4.3 Trie Traversal & 32-Entry Leaf Probing
 
 Lookups, inserts, and deletes all start at `ROOT_NODE_SLOT` (1 / `0x01`) with `depth = 0`:
 
-1. Read the current Node slot and obtain `target_slot = bucket_indices[child_idx]`.
-2. Read `target_slot` and inspect the `flag` at Byte 0:
-  - If `flag == 0x0000_0000` (`Node`), increment `depth` and repeat from step 1 using the child
-    Node.
-  - If `flag == 0x0000_0001` (`Bucket`), scan all 21 candidate hashes (`hashes[0..20]`):
-    - The 21 `u32` hashes occupy 84 bytes and are checked using vectorized or unrolled scalar
-      scanning.
-    - On a hash match, compare the key bytes in DBuf. The key is found only if the bytes also match.
-    - `0x0000_0000` marks an unused slot, so the key is absent.
-    - `0x0000_0001` marks a tombstone; record the first available index for insertion.
+1. Read the current Node slot and obtain `child_idx = trie_child_idx(hash, depth)`
+2. Check `(node.flag & (1 << child_idx)) != 0` directly from the parent Node:
+   - If `true` (`1` = child Node): set `curr_slot = node.bucket_indices[child_idx]`, increment
+     `depth`, and repeat from step 1 using the child Node
+   - If `false` (`0` = leaf Bucket): set `target_slot = node.bucket_indices[child_idx]` and proceed
+     to leaf probing
+3. Read `target_slot` (256 B) and scan all 32 candidate hashes (`hashes[0..31]`):
+   - The 32 `u32` hashes occupy 128 bytes and are checked using vectorized SIMD (AVX2 loads 4x
+     256-bit vectors; SSE2/NEON load 8x 128-bit vectors, eliminating scalar tail loops)
+   - On a hash match, execute the fast 2-buffer read path to verify `klen` and key bytes in DBuf;
+     the key is found only if length and bytes match
+   - `0x0000_0000` marks an unused slot, so the key is absent
+   - `0x0000_0001` marks a tombstone; record the first available index for insertion
 
 ### 4.4 Bucket Splitting, Atomic Re-hashing & Depth Guard
 
-A Bucket split is triggered when an insertion targets a Bucket that already contains 21 active
+A Bucket split is triggered when an insertion targets a Bucket that already contains 32 active
 entries,
 
 1. *Depth limit:* Assert `depth < MAX_TRIE_DEPTH` (`0x08`). If the depth limit has been reached,
@@ -365,16 +361,18 @@ entries,
   component headers in private space while holding `growth_mutex`. Release the mutex when these
   reservations are complete.
 4. *Preparation in private allocated space:* Initialize all 14 new Buckets as empty
-  (`flag = 0x0000_0001`, with zeroed hashes and offsets). Set
-  `new_node.bucket_indices[0] = existing_bucket_slot` and
-  `new_node.bucket_indices[1..14] = new_bucket_slots[0..13]`. Rehash the 21 existing entries and the
-  new 22nd entry using the folded 4-bit slice at `depth + 1`. Compact entries with `child_idx == 0`
-  into the existing Bucket; write entries with `child_idx` in `1..14` to their corresponding new
-  Buckets. The new child slots remain beyond the original `free_slot_marker` and are therefore
-  invisible to concurrent readers.
+  (zeroed hashes and offsets); set
+  `new_node.flag = 0x0000_0000` (all 15 children initially Buckets),
+  `new_node.bucket_indices[0] = existing_bucket_slot`, and
+  `new_node.bucket_indices[1..14] = new_bucket_slots[0..13]`; rehash the 32 existing entries and
+  the new 33rd entry using the folded 4-bit slice at `depth + 1`; compact entries with
+  `child_idx == 0` into the existing Bucket; write entries with `child_idx` in `1..14` to their
+  corresponding new Buckets; the new child slots remain beyond the original `free_slot_marker`
+  and are therefore invisible to concurrent readers
 5. *Atomic OCC publication:* Commit a transaction that validates and updates the following:
-   - *Parent Node slot:* Replace the pointer to the existing Bucket with `new_node_slot`.
-   - *Existing Bucket (4 slots):* Replace its contents with the compacted `child_idx == 0` entries.
+   - *Parent Node slot:* Replace the pointer to the existing Bucket with `new_node_slot`, and set
+     bit `parent_child_idx` in `parent.flag` (`mutated_parent.flag |= 1 << parent_child_idx`)
+   - *Existing Bucket (4 slots):* Replace its contents with the compacted `child_idx == 0` entries
    - *DBuf slots:* Write the allocated key and value payloads.
 
   Readers move atomically from the old Bucket to the new Node. This prevents partially published
@@ -500,67 +498,70 @@ value in `Metadata.total_entries` at Slot 0 is flushed during `sync()`.
 
 ### 7.1 `get(key: &[u8]) -> Result<Option<Vec<u8>>>`
 
-1. Compute `hash = hash_key(key)` and initialize `curr_slot = ROOT_NODE_SLOT` and `depth = 0`.
-2. At `curr_slot`, calculate `raw = (hash >> (4 * (depth % 8))) & 0x0F`.
-3. Calculate `child_idx = if raw >= 15 { 0 } else { raw }`.
-4. Read the slot at `next_slot = node.bucket_indices[child_idx]`.
-5. If `flag == 0x0000_0000` (`Node`), set `curr_slot = next_slot`, increment `depth`, and return to
-   step 2.
-6. If `flag == 0x0000_0001` (`Bucket`), scan `hashes[0..20]`:
-  - If `hashes[i] == hash`, inspect `offsets[i]`. If bit 7 of byte 0 is set
-    (`offsets[i][0] & 0x80 != 0`), return `Err(InvalidType("Key is a list"))`. Otherwise, read the
-    payload from DBuf buffer `global_buf_idx`, validate CRC32 and key equality, then return
-    `Ok(Some(value_bytes))`.
-  - If `hashes[i] == 0`, return `Ok(None)`.
-  - If all 21 slots are scanned without a match, return `Ok(None)`.
+1. Compute `hash = hash_kv(key)` (`raw & 0x7FFF_FFFF`, normalized $\ge 2$) and initialize
+   `curr_slot = ROOT_NODE_SLOT` and `depth = 0`
+2. At `curr_slot`, calculate `raw = (hash >> (4 * (depth % 8))) & 0x0F`
+3. Calculate `child_idx = if raw >= 15 { 0 } else { raw }`
+4. Inspect `(curr_node.flag & (1 << child_idx)) != 0` directly from the current Node:
+   - If `true` (`Node`): set `curr_slot = curr_node.bucket_indices[child_idx]`, increment `depth`,
+     and return to step 2
+   - If `false` (`Bucket`): set `bucket_slot = curr_node.bucket_indices[child_idx]`
+5. Read `bucket_slot` (256 B) and scan `hashes[0..31]`:
+   - If `hashes[i] == hash`, execute the fast 2-buffer read path at `offsets[i]`
+     (`global_buf_idx`); verify `klen == key.len()` and key equality; if match, read value
+     payload using `vlen` from header, validate CRC32, and return `Ok(Some(value_bytes))`
+   - If `hashes[i] == 0`, return `Ok(None)`
+   - If all 32 slots are scanned without a match, return `Ok(None)`
 
 ### 7.2 `set(key: &[u8], val: &[u8]) -> Result<TurboTicket>`
 
-1. Validate that `key.len() <= 255` and `val.len() <= 65535`.
-2. Traverse the trie to the leaf Bucket as described in Section 4.3.
+1. Validate that `key.len() <= 255` and `val.len() <= 65535`
+2. Compute `hash = hash_kv(key)` and traverse the trie to leaf Bucket (Section 4.3)
 3. If the key already exists in the Bucket:
-  - If `new_len <= old_allocated`, overwrite the value payload in place through an OCC transaction.
-  - If the payload grows, allocate new contiguous 8 B buffers in the DBuf chain, write the new
-    frame, update `offsets[i]`, and commit through an OCC transaction.
+   - Read header buffer at `offsets[i]` to inspect `old_vlen` and allocated buffer count
+   - If `new_len <= old_allocated`, overwrite the value payload in place through an OCC transaction
+   - If the payload grows, allocate new contiguous 8 B buffers in the DBuf chain, write the new
+     frame, update `offsets[i]`, and commit through an OCC transaction
 4. If the key is not present:
-  - If the Bucket contains an empty slot or tombstone, allocate contiguous 8 B buffers from the
-    active DBuf chain, write `[ CRC32 ][ Key ][ Val ][ Pad ]`, and commit an OCC transaction that
-    updates the DBuf bitmap, DBuf buffer slots, Bucket hash, and Bucket offset.
-  - If the Bucket is full (21 active entries), perform the atomic split described in Section 4.4.
-    This allocates 14 child Buckets, rehashes the entries, publishes the new Node, and inserts the
-    key.
+   - If the Bucket contains an empty slot or tombstone, allocate contiguous 8 B buffers from the
+     active DBuf chain, write header `[ CRC32 ][ klen ][ vlen ]` and payload
+     `[ Key ][ Val ][ Pad ]`, and commit an OCC transaction that updates the DBuf bitmap, DBuf
+     buffer slots, Bucket hash, and Bucket offset
+   - If the Bucket is full (32 active entries), perform the atomic split described in Section 4.4;
+     this allocates 14 child Buckets, rehashes the entries, publishes the new Node, sets the
+     parent Node bitmap, and inserts the key
 
 ### 7.3 `del(key: &[u8]) -> Result<bool>`
 
-1. Traverse the trie to the leaf Bucket as described in Section 4.3. If the key is absent, return
-  `Ok(false)`.
+1. Compute `hash = hash_kv(key)` and traverse trie to leaf Bucket (Section 4.3);
+   if the key is absent, return `Ok(false)`
 2. Commit the deletion atomically through OCC:
-  - Set `hashes[i] = 1` (tombstone).
-  - Clear the occupied bits in the DBuf `bmap`.
-  - Decrement the in-memory `total_entries` (`AtomicU64`). The `Metadata.total_entries` value in
-    Slot 0 is flushed during `sync()` to avoid writer cache-line contention on Slot 0.
-3. Return `Ok(true)`.
+   - Set `hashes[i] = 1` (tombstone)
+   - Clear the occupied bits in the DBuf `bmap` for all buffers spanned by the entry
+   - Decrement the in-memory `total_entries` (`AtomicU64`); the `Metadata.total_entries` value in
+     Slot 0 is flushed during `sync()` to avoid writer cache-line contention on Slot 0
+3. Return `Ok(true)`
 
 ### 7.4 List Operations (`TurboList`)
 
-- The key is registered in the Bucket with bit 7 of byte 0 set to 1 (`offsets[i][0] & 0x80 != 0`).
-  The entry stores `adjarr_idx` (relative array index) and `global_buf_idx` (key payload).
-- DBuf stores `[ CRC32 ][ klen (1 B) ][ Key ][ Pad ]`. The key spans multiple pools when
-  $\text{klen} > 0xF3$.
-- Values are stored in chained `AdjArrayList` nodes, with four items per 20 B array.
-- `append`: Locate the tail array. If all four entries are occupied, allocate a new array from an
-  AdjArr block and link it with `prev.next_arr_idx = new_arr_idx`. Allocate item buffers using
-  `find_free_databuf_span`, write the payload across pools while skipping trailing pool metadata,
-  and commit the Bucket, array block, and all affected DBuf slots in one atomic OCC transaction.
-- `pop`: Read the tail item using the two-phase read process. Clear its buffer occupancy across all
-  pools it spans, decrement the array count, and include the affected DBuf slots and array blocks in
-  the OCC transaction. If the array becomes empty, return it to the block bitmap.
+- The key is registered in the Bucket with bit 31 of hash set to 1 (`hash_list(key)`);
+  the entry stores `global_buf_idx` in `offsets[i]`
+- Buffer 0 of the DBuf frame stores `[ CRC32 (4 B) ][ klen (1 B) ][ adjarr_idx (3 B) ]`;
+  buffers $1..N$ store `[ Key ][ Pad ]`
+- Values are stored in chained `AdjArrayList` nodes, with four items per 20 B array
+- `append`: Locate the tail array using `adjarr_idx`; if all four entries are occupied,
+  allocate a new array from an AdjArr block and link it with `prev.next_arr_idx = new_arr_idx`;
+  allocate item buffers using `find_free_databuf_span`, write payload across pools skipping
+  trailing metadata, and commit the Bucket (if new list), array block, and affected DBuf slots
+  in one atomic transaction
+- `pop`: Read the tail item using the item value read process; clear buffer occupancy across all
+  spanned pools, decrement array count, and include affected slots in the OCC transaction;
+  if the array becomes empty, return it to the block bitmap
 - `first` / `last` / `get_at(idx)` / `iter`: Traverse the array chains and load item values through
-  two-phase DBuf reads across pool boundaries, validating CRC32.
-- `clear` / `del`: Clear the key buffers across every pool they span. Traverse the array chain, read
-  each item's `vlen`, and clear the corresponding item buffers. Return the arrays to their block
-  bitmaps, mark the Bucket entry as a tombstone, and commit all affected slots in a single
-  transaction.
+  DBuf reads across pool boundaries, validating CRC32
+- `clear` / `del`: Clear key buffers across every pool they span; traverse the array chain, read
+  each item's `vlen`, and clear corresponding item buffers; return arrays to block bitmaps,
+  mark the Bucket entry as a tombstone, and commit all affected slots in a single transaction
 
 ## 8. Lifecycle & Versioning
 
@@ -590,7 +591,7 @@ OS mapping, file creation, descriptor locking, and page validation are handled b
     `extra_nodes = [124, 125, 126, 127]`, `extra_node_count = 4`).
    - Slot 1: Root Node (`flag = 0x0`, `bucket_indices = [4, 8, 12, ..., 60]`).
    - Slots 2..3: AdjArr head block with zeroed headers and bitmaps, and `next_adjarr_idx = 0`.
-   - Slots 4..63: 15 Buckets on Page 0 (`flag = 0x1`, with zeroed hashes and offsets).
+   - Slots 4..63: 15 Buckets on Page 0 (zeroed hashes and offsets)
    - Slots 64..123: 15 DBuf pools on Page 1, chained as `64 -> 68 -> ... -> 120 -> 0`.
    - Slots 124..127: Four pre-allocated spare Nodes (`flag = 0x0`, with zeroed child indices).
 6. Flush the initial state with `mmap.sync()?` to ensure it is persisted to disk.

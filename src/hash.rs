@@ -5,7 +5,6 @@ use twox_hash::XxHash32;
 pub(crate) use crate::common::{MIN_VALID_HASH, SEED};
 
 pub(crate) const KV_HASH_MASK: u32 = 0x7FFF_FFFF;
-#[allow(dead_code)]
 pub(crate) const LIST_HASH_BIT: u32 = 0x8000_0000;
 
 /// Hash a key for Key-Value storage (bit 31 cleared to 0)
@@ -25,7 +24,6 @@ pub(crate) fn hash_kv_key(key: &[u8]) -> u32 {
 /// Hash a key for List storage (bit 31 set to 1)
 ///
 /// Ref: `DESIGN.md` §4.1
-#[allow(dead_code)]
 #[inline(always)]
 pub(crate) fn hash_list_key(key: &[u8]) -> u32 {
     let mut hasher = XxHash32::with_seed(SEED);
@@ -34,12 +32,6 @@ pub(crate) fn hash_list_key(key: &[u8]) -> u32 {
     let raw = hasher.finish() as u32;
 
     raw | LIST_HASH_BIT
-}
-
-/// Default key hasher routing to Key-Value keyspace
-#[inline(always)]
-pub(crate) fn hash_key(key: &[u8]) -> u32 {
-    hash_kv_key(key)
 }
 
 /// Trie child index calculation via folded 4-bit slicing
@@ -71,7 +63,6 @@ mod tests {
 
         for _ in 0..0x64 {
             assert_eq!(hash_kv_key(key), expected_kv);
-            assert_eq!(hash_key(key), expected_kv);
             assert_eq!(hash_list_key(key), expected_list);
         }
     }
@@ -171,7 +162,6 @@ mod tests {
             let h = raw & KV_HASH_MASK;
             let expected_kv = if h < MIN_VALID_HASH { h + MIN_VALID_HASH } else { h };
             assert_eq!(hash_kv_key(key), expected_kv);
-            assert_eq!(hash_key(key), expected_kv);
 
             let expected_list = raw | LIST_HASH_BIT;
             assert_eq!(hash_list_key(key), expected_list);
@@ -259,15 +249,15 @@ mod tests {
         }
 
         // Test folding edge cases
-        let mock_h15 = 15u32;
+        let mock_h15 = 0x0Fu32;
         assert_eq!(trie_child_idx(mock_h15, 0), 0);
-        assert_eq!(trie_child_idx(14, 0), 14);
+        assert_eq!(trie_child_idx(0x0E, 0), 0x0E);
 
         // Depth 7 partitioning verification
-        let slice_kv = (h_kv >> (4 * (7 % 8))) & 0x0F;
+        let slice_kv = (h_kv >> 0x1C) & 0x0F;
         assert!(slice_kv <= 7, "KV slice at depth 7 must have bit 3 = 0");
 
-        let slice_list = (h_list >> (4 * (7 % 8))) & 0x0F;
+        let slice_list = (h_list >> 0x1C) & 0x0F;
         assert!(slice_list >= 8, "List slice at depth 7 must have bit 3 = 1");
     }
 }

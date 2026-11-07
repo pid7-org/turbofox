@@ -119,8 +119,8 @@ fn main() {
     let total_keys = std::env::var("TURBOFOX_BENCH_OPS")
         .ok()
         .and_then(|v| {
-            if v.starts_with("0x") {
-                usize::from_str_radix(&v[0x02..], 0x10).ok()
+            if let Some(stripped) = v.strip_prefix("0x") {
+                usize::from_str_radix(stripped, 0x10).ok()
             } else {
                 v.parse().ok()
             }

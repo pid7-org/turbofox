@@ -388,10 +388,11 @@ pub(crate) fn select_probe_match_kernel() -> ProbeMatchFn {
     #[cfg(target_arch = "x86_64")]
     {
         match frozen_core::isa::detect_best_isa_extension() {
-            frozen_core::isa::ISAExtension::AVX2 => probe_match_avx2,
             frozen_core::isa::ISAExtension::SSE4_2
             | frozen_core::isa::ISAExtension::SSSE3
             | frozen_core::isa::ISAExtension::SSE2 => probe_match_sse2,
+            frozen_core::isa::ISAExtension::AVX2 => probe_match_avx2,
+            _ => unimplemented!(),
         }
     }
 
@@ -410,10 +411,11 @@ pub(crate) fn select_probe_full_kernel() -> ProbeFullFn {
     #[cfg(target_arch = "x86_64")]
     {
         match frozen_core::isa::detect_best_isa_extension() {
-            frozen_core::isa::ISAExtension::AVX2 => probe_full_avx2,
             frozen_core::isa::ISAExtension::SSE4_2
             | frozen_core::isa::ISAExtension::SSSE3
             | frozen_core::isa::ISAExtension::SSE2 => probe_full_sse2,
+            frozen_core::isa::ISAExtension::AVX2 => probe_full_avx2,
+            _ => unimplemented!(),
         }
     }
 

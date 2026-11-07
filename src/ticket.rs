@@ -214,4 +214,31 @@ mod tests {
 
         db.delete().unwrap();
     }
+
+    #[test]
+    fn ok_ticket_concurrency_and_cloning() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let db = TurboFox::create(cfg).unwrap();
+
+        let ticket = db.set(b"thread_key", b"thread_val").unwrap();
+        let epoch = ticket.epoch();
+        let mut handles = Vec::new();
+
+        for _ in 0..4 {
+            let t = ticket.clone();
+            handles.push(std::thread::spawn(move || {
+                assert_eq!(t.epoch(), epoch);
+                assert!(t.force().is_ok());
+                assert!(t.is_durable());
+                assert_eq!(t.wait().unwrap(), epoch);
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        db.delete().unwrap();
+    }
 }

@@ -164,11 +164,21 @@ mod tests {
         assert_eq!(meta.pop_extra_node(), Some(125));
         assert_eq!(meta.pop_extra_node(), Some(124));
         assert_eq!(meta.pop_extra_node(), None);
+        assert_eq!(meta.pop_extra_node(), None);
         assert_eq!(meta.extra_node_count, 0);
 
         assert!(meta.push_extra_node(200));
         assert_eq!(meta.extra_node_count, 1);
         assert_eq!(meta.pop_extra_node(), Some(200));
+
+        // Test stack capacity overflow
+        assert!(meta.push_extra_node(0x01));
+        assert!(meta.push_extra_node(0x02));
+        assert!(meta.push_extra_node(0x03));
+        assert!(meta.push_extra_node(0x04));
+        assert_eq!(meta.extra_node_count, 4);
+        assert!(!meta.push_extra_node(0x05));
+        assert_eq!(meta.extra_node_count, 4);
     }
 
     #[test]

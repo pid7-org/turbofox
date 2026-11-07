@@ -94,5 +94,31 @@ mod tests {
         assert!(node.is_child_node(0x0E));
         assert!(!node.is_child_node(1));
         assert!(!node.is_child_node(0x0D));
+
+        node.set_child_node(0x0E);
+        assert!(node.is_child_node(0x0E));
+    }
+
+    #[test]
+    fn ok_node_default_and_with_children() {
+        let def = Node::default();
+        let new_node = Node::new();
+        assert_eq!(def, new_node);
+
+        let mut children = [0u32; NODE_CHILDREN];
+        for i in 0..NODE_CHILDREN {
+            children[i] = (i as u32) + 1;
+        }
+
+        let custom = Node::with_children(children);
+        assert_eq!(custom.flag, NODE_FLAG);
+        assert_eq!(custom.bucket_indices, children);
+
+        let slot = custom.as_slot();
+        for i in 0..NODE_CHILDREN {
+            let offset = 4 + i * 4;
+            let bytes: [u8; 4] = slot[offset..offset + 4].try_into().unwrap();
+            assert_eq!(u32::from_ne_bytes(bytes), (i as u32) + 1);
+        }
     }
 }

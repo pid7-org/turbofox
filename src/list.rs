@@ -379,6 +379,36 @@ impl TurboList {
     pub fn clear(&self) -> TurboResult<bool> {
         self.engine.list_del(&self.key)
     }
+
+    /// Delete this [`TurboList`] and free its key, array, and payload buffers
+    ///
+    /// Returns `Ok(true)` if list was found and removed, `Ok(false)` if absent
+    ///
+    /// ## Errors
+    ///
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if storage removal fails
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbofox::{TurboCfg, TurboFox};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let path = dir.path();
+    /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
+    /// let list = db.list(b"to_delete");
+    ///
+    /// list.append(b"data").unwrap();
+    /// assert!(list.del().unwrap());
+    /// assert_eq!(list.len().unwrap(), 0);
+    ///
+    /// drop(list);
+    /// db.delete().unwrap();
+    /// ```
+    #[inline(always)]
+    pub fn del(&self) -> TurboResult<bool> {
+        self.engine.list_del(&self.key)
+    }
 }
 
 /// Iterator snapshot over item payloads in a [`TurboList`]

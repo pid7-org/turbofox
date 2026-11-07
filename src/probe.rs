@@ -254,6 +254,64 @@ pub(crate) unsafe fn open_address_avx2(
     probe_full_avx2(hashes, target)
 }
 
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub(crate) unsafe fn probe_match_avx512f(hashes: &[u32; BUCKET_ENTRIES], target: u32) -> u32 {
+    use core::arch::x86_64::*;
+
+    let ptr = hashes.as_ptr() as *const __m512i;
+    let v_target = _mm512_set1_epi32(target as i32);
+
+    let h0 = _mm512_loadu_si512(ptr);
+    let h1 = _mm512_loadu_si512(ptr.add(1));
+
+    let m0 = _mm512_cmpeq_epi32_mask(h0, v_target);
+    let m1 = _mm512_cmpeq_epi32_mask(h1, v_target);
+
+    (m0 as u32) | ((m1 as u32) << 0x10)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub(crate) unsafe fn probe_full_avx512f(
+    hashes: &[u32; BUCKET_ENTRIES],
+    target: u32,
+) -> SimdProbeMask {
+    use core::arch::x86_64::*;
+
+    let ptr = hashes.as_ptr() as *const __m512i;
+
+    let v_empty = _mm512_setzero_si512();
+    let v_target = _mm512_set1_epi32(target as i32);
+    let v_tomb = _mm512_set1_epi32(HASH_TOMBSTONE as i32);
+
+    let h0 = _mm512_loadu_si512(ptr);
+    let h1 = _mm512_loadu_si512(ptr.add(1));
+
+    let m0 = _mm512_cmpeq_epi32_mask(h0, v_target);
+    let m1 = _mm512_cmpeq_epi32_mask(h1, v_target);
+    let match_mask = (m0 as u32) | ((m1 as u32) << 0x10);
+
+    let e0 = _mm512_cmpeq_epi32_mask(h0, v_empty);
+    let e1 = _mm512_cmpeq_epi32_mask(h1, v_empty);
+    let empty_mask = (e0 as u32) | ((e1 as u32) << 0x10);
+
+    let t0 = _mm512_cmpeq_epi32_mask(h0, v_tomb);
+    let t1 = _mm512_cmpeq_epi32_mask(h1, v_tomb);
+    let tomb_mask = (t0 as u32) | ((t1 as u32) << 0x10);
+
+    SimdProbeMask { match_mask, empty_mask, tomb_mask }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+pub(crate) unsafe fn open_address_avx512f(
+    hashes: &[u32; BUCKET_ENTRIES],
+    target: u32,
+) -> SimdProbeMask {
+    probe_full_avx512f(hashes, target)
+}
+
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
 pub(crate) unsafe fn probe_match_neon(hashes: &[u32; BUCKET_ENTRIES], target: u32) -> u32 {
@@ -388,11 +446,13 @@ pub(crate) fn select_probe_match_kernel() -> ProbeMatchFn {
     #[cfg(target_arch = "x86_64")]
     {
         match frozen_core::isa::detect_best_isa_extension() {
+            frozen_core::isa::ISAExtension::AVX512BW | frozen_core::isa::ISAExtension::AVX512F => {
+                probe_match_avx512f
+            }
+            frozen_core::isa::ISAExtension::AVX2 => probe_match_avx2,
             frozen_core::isa::ISAExtension::SSE4_2
             | frozen_core::isa::ISAExtension::SSSE3
             | frozen_core::isa::ISAExtension::SSE2 => probe_match_sse2,
-            frozen_core::isa::ISAExtension::AVX2 => probe_match_avx2,
-            _ => unimplemented!(),
         }
     }
 
@@ -411,11 +471,13 @@ pub(crate) fn select_probe_full_kernel() -> ProbeFullFn {
     #[cfg(target_arch = "x86_64")]
     {
         match frozen_core::isa::detect_best_isa_extension() {
+            frozen_core::isa::ISAExtension::AVX512BW | frozen_core::isa::ISAExtension::AVX512F => {
+                probe_full_avx512f
+            }
+            frozen_core::isa::ISAExtension::AVX2 => probe_full_avx2,
             frozen_core::isa::ISAExtension::SSE4_2
             | frozen_core::isa::ISAExtension::SSSE3
             | frozen_core::isa::ISAExtension::SSE2 => probe_full_sse2,
-            frozen_core::isa::ISAExtension::AVX2 => probe_full_avx2,
-            _ => unimplemented!(),
         }
     }
 
@@ -454,7 +516,12 @@ pub(crate) fn probe_kernel() -> ProbeKernelFn {
 
 #[inline(always)]
 pub(crate) fn probe_match(hashes: &[u32; BUCKET_ENTRIES], target: u32) -> u32 {
-    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    {
+        unsafe { probe_match_avx512f(hashes, target) }
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2", not(target_feature = "avx512f")))]
     {
         unsafe { probe_match_avx2(hashes, target) }
     }
@@ -465,6 +532,7 @@ pub(crate) fn probe_match(hashes: &[u32; BUCKET_ENTRIES], target: u32) -> u32 {
     }
 
     #[cfg(not(any(
+        all(target_arch = "x86_64", target_feature = "avx512f"),
         all(target_arch = "x86_64", target_feature = "avx2"),
         all(target_arch = "aarch64", target_feature = "neon")
     )))]
@@ -476,7 +544,12 @@ pub(crate) fn probe_match(hashes: &[u32; BUCKET_ENTRIES], target: u32) -> u32 {
 
 #[inline(always)]
 pub(crate) fn probe_full(hashes: &[u32; BUCKET_ENTRIES], target: u32) -> SimdProbeMask {
-    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    {
+        unsafe { probe_full_avx512f(hashes, target) }
+    }
+
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx2", not(target_feature = "avx512f")))]
     {
         unsafe { probe_full_avx2(hashes, target) }
     }
@@ -487,6 +560,7 @@ pub(crate) fn probe_full(hashes: &[u32; BUCKET_ENTRIES], target: u32) -> SimdPro
     }
 
     #[cfg(not(any(
+        all(target_arch = "x86_64", target_feature = "avx512f"),
         all(target_arch = "x86_64", target_feature = "avx2"),
         all(target_arch = "aarch64", target_feature = "neon")
     )))]
@@ -574,7 +648,7 @@ mod tests {
     fn ok_avx2_equivalence_with_scalar() {
         use frozen_core::isa::{ISAExtension, detect_best_isa_extension};
 
-        if detect_best_isa_extension() != ISAExtension::AVX2 {
+        if detect_best_isa_extension() < ISAExtension::AVX2 {
             return;
         }
 
@@ -603,6 +677,43 @@ mod tests {
             let scalar_m = unsafe { probe_match_scalar(hashes, target) };
             let avx2_m = unsafe { probe_match_avx2(hashes, target) };
             assert_eq!(scalar_m, avx2_m);
+        }
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn ok_avx512f_equivalence_with_scalar() {
+        use frozen_core::isa::{ISAExtension, detect_best_isa_extension};
+
+        if detect_best_isa_extension() < ISAExtension::AVX512F {
+            return;
+        }
+
+        let target = 0x9ABC_DEF0;
+        let mut mixed = [0x02u32; BUCKET_ENTRIES];
+        mixed[0] = target;
+        mixed[1] = HASH_EMPTY;
+        mixed[2] = HASH_TOMBSTONE;
+        mixed[7] = target;
+        mixed[0x0F] = target;
+        mixed[0x14] = target;
+        mixed[0x1F] = target;
+
+        let test_cases = [
+            [0x02; BUCKET_ENTRIES],
+            [HASH_EMPTY; BUCKET_ENTRIES],
+            [HASH_TOMBSTONE; BUCKET_ENTRIES],
+            mixed,
+        ];
+
+        for hashes in &test_cases {
+            let scalar_res = unsafe { probe_full_scalar(hashes, target) };
+            let avx512_res = unsafe { probe_full_avx512f(hashes, target) };
+            assert_eq!(scalar_res, avx512_res);
+
+            let scalar_m = unsafe { probe_match_scalar(hashes, target) };
+            let avx512_m = unsafe { probe_match_avx512f(hashes, target) };
+            assert_eq!(scalar_m, avx512_m);
         }
     }
 

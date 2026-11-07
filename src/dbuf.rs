@@ -33,7 +33,7 @@ const _: () = assert!(LIST_KEY_HEADER_SIZE == 8);
 const _: () = assert!(LIST_VAL_HEADER_SIZE == 6);
 const _: () = assert!(DBUF_BUF_COUNT == 0x1F);
 const _: () = assert!(DBUF_PAYLOAD_SIZE == 0xF8);
-const _: () = assert!(DBUF_SIZE % Slot::SIZE == 0);
+const _: () = assert!(DBUF_SIZE.is_multiple_of(Slot::SIZE));
 const _: () = assert!(DBUF_SIZE / Slot::SIZE == DBUF_SLOTS);
 const _: () = assert!(DBUF_FULL_BIT == 0x8000_0000);
 const _: () = assert!(DBUF_OCCUPANCY_MASK == 0x7FFF_FFFF);

@@ -171,7 +171,7 @@ const _: () = assert!(core::mem::size_of::<AdjArrayBlock>() == ADJ_ARR_SLOTS * S
 const _: () = assert!(core::mem::size_of::<[AdjArrayList; ADJ_ARRAYS_PER_BLOCK]>() == 0x78);
 
 const _: () = assert!(ADJ_ARR_SIZE == ADJ_ARR_SLOTS * Slot::SIZE);
-const _: () = assert!(ADJ_ARR_SIZE % Slot::SIZE == 0);
+const _: () = assert!(ADJ_ARR_SIZE.is_multiple_of(Slot::SIZE));
 const _: () = assert!(ADJ_ARR_OCCUPIED_MASK == 0x003F);
 const _: () = assert!(ADJ_ARRAYS_PER_BLOCK * ADJ_LIST_SIZE == 0x78);
 const _: () = assert!((1u16 << ADJ_ARRAYS_PER_BLOCK) - 1 == ADJ_ARR_OCCUPIED_MASK);

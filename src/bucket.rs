@@ -58,7 +58,7 @@ const _: () = assert!(core::mem::size_of::<Bucket>() == BUCKET_SLOTS * Slot::SIZ
 const _: () = assert!(HASH_EMPTY == 0);
 const _: () = assert!(HASH_TOMBSTONE == 1);
 const _: () = assert!(BUCKET_ENTRIES == 0x20);
-const _: () = assert!(BUCKET_SIZE % Slot::SIZE == 0);
+const _: () = assert!(BUCKET_SIZE.is_multiple_of(Slot::SIZE));
 
 const _: () = assert!(core::mem::align_of::<BucketEntry>() == 4);
 const _: () = assert!(core::mem::size_of::<BucketEntry>() == 8);

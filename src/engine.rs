@@ -474,10 +474,10 @@ impl Engine {
             return Ok(DATABUF_HEAD_SLOT);
         }
 
-        if let Some(ref cache) = self.dbuf_slot_cache {
-            if let Some(slot) = cache.get(pool_hop) {
-                return Ok(slot);
-            }
+        if let Some(ref cache) = self.dbuf_slot_cache
+            && let Some(slot) = cache.get(pool_hop)
+        {
+            return Ok(slot);
         }
 
         let mut start_hop = 0u32;
@@ -1620,16 +1620,11 @@ impl Engine {
                         }
                     }
 
-                    if let Some((_, prev_block_slot, prev_orig_block, _)) = prev_opt {
-                        if prev_block_slot != last_block_slot
-                            && !touched_blocks.iter().any(|(s, _, _)| *s == prev_block_slot)
-                        {
-                            touched_blocks.push((
-                                prev_block_slot,
-                                prev_orig_block,
-                                prev_orig_block,
-                            ));
-                        }
+                    if let Some((_, prev_block_slot, prev_orig_block, _)) = prev_opt
+                        && prev_block_slot != last_block_slot
+                        && !touched_blocks.iter().any(|(s, _, _)| *s == prev_block_slot)
+                    {
+                        touched_blocks.push((prev_block_slot, prev_orig_block, prev_orig_block));
                     }
 
                     let mut changes: Vec<(usize, Slot, Slot)> = Vec::new();
@@ -2190,12 +2185,11 @@ impl Engine {
                 }
             } else {
                 touched_blocks.push((last_block_slot, last_orig_block, mutated_last_block));
-                if let Some((_, prev_block_slot, prev_orig_block, _)) = prev_opt {
-                    if prev_block_slot != last_block_slot
-                        && !touched_blocks.iter().any(|(s, _, _)| *s == prev_block_slot)
-                    {
-                        touched_blocks.push((prev_block_slot, prev_orig_block, prev_orig_block));
-                    }
+                if let Some((_, prev_block_slot, prev_orig_block, _)) = prev_opt
+                    && prev_block_slot != last_block_slot
+                    && !touched_blocks.iter().any(|(s, _, _)| *s == prev_block_slot)
+                {
+                    touched_blocks.push((prev_block_slot, prev_orig_block, prev_orig_block));
                 }
             }
 
@@ -2312,11 +2306,11 @@ impl Engine {
 
             let array = block.array(local_arr);
             for i in (0..array.len()).rev() {
-                if let Some(e) = array.entry(i) {
-                    if !e.is_empty() {
-                        last_occupied_buf_idx = Some(e.buf_idx());
-                        break;
-                    }
+                if let Some(e) = array.entry(i)
+                    && !e.is_empty()
+                {
+                    last_occupied_buf_idx = Some(e.buf_idx());
+                    break;
                 }
             }
 
@@ -2583,14 +2577,14 @@ impl Engine {
 
                 let array = block.array(local_arr);
                 for i in 0..array.len() {
-                    if let Some(e) = array.entry(i) {
-                        if !e.is_empty() {
-                            match self.read_list_item_payload(e.buf_idx()) {
-                                Ok(payload) => items.push(payload),
-                                Err(_) => {
-                                    retry_needed = true;
-                                    break;
-                                }
+                    if let Some(e) = array.entry(i)
+                        && !e.is_empty()
+                    {
+                        match self.read_list_item_payload(e.buf_idx()) {
+                            Ok(payload) => items.push(payload),
+                            Err(_) => {
+                                retry_needed = true;
+                                break;
                             }
                         }
                     }

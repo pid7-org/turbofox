@@ -6,7 +6,7 @@ TARGETS=(
   "aarch64-unknown-linux-gnu"
 )
 
-MSRV="1.86.0"
+MSRV="1.89.0"
 
 echo "Running pre-commit checks..."
 

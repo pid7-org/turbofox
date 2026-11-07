@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::collapsible_if)]
 
 // life is too short to waste time optimizing benchmarks for windows and mac
 #[cfg(not(target_os = "linux"))]
@@ -9,7 +9,6 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 use tempfile::TempDir;
 
@@ -29,7 +28,6 @@ pub enum BenchDir {
 
 impl BenchDir {
     pub fn new(custom: Option<PathBuf>, bench_tag: &str) -> (Self, PathBuf) {
-        let custom = std::env::var_os("TURBOFOX_BENCH_DIR").map(PathBuf::from).or(custom);
         if let Some(mut path) = custom {
             path.push(format!("tf_{}_{}", bench_tag, std::process::id()));
             fs::create_dir_all(&path).expect("failed to create custom db dir");
@@ -154,6 +152,48 @@ pub fn generate_del_60_40_keys(thread_id: usize, count: usize) -> (Vec<[u8; KEY_
     (keys, hit_target)
 }
 
+pub fn generate_set_80_20_keys(thread_id: usize, count: usize) -> Vec<[u8; KEY_SIZE]> {
+    let new_target = (count * 0x50) / 0x64;
+    let mut new_count = 0x00;
+    let mut update_count = 0x00;
+    let mut keys = Vec::with_capacity(count);
+
+    for i in 0x00..count {
+        let is_new = if new_count < new_target {
+            let remaining_total = count - i;
+            let remaining_news = new_target - new_count;
+
+            (i * 0x50) % 0x64 < 0x50 || remaining_news >= remaining_total
+        } else {
+            false
+        };
+
+        if (is_new || new_count == 0x00) && new_count < new_target {
+            keys.push(make_key(HIT_PREFIX, thread_id as u16, new_count as u32));
+            new_count += 0x01;
+        } else {
+            let rand_val = (update_count as u64).wrapping_mul(0x517C_C1B7_2722_0A95);
+            let target_id = (rand_val % (new_count as u64)) as u32;
+            keys.push(make_key(HIT_PREFIX, thread_id as u16, target_id));
+            update_count += 0x01;
+        }
+    }
+
+    keys
+}
+
+#[inline(always)]
+pub fn spin_backoff(attempts: u32) {
+    if attempts < 0x08 {
+        let spins = 1u32 << attempts;
+        for _ in 0x00..spins {
+            std::hint::spin_loop();
+        }
+    } else {
+        std::thread::yield_now();
+    }
+}
+
 pub fn pin_to_physical_core(tid: usize) {
     let mut physical_cpus = Vec::new();
     let mut seen_cores = std::collections::HashSet::new();
@@ -186,18 +226,20 @@ pub fn pin_to_physical_core(tid: usize) {
         }
     }
 
-    if !physical_cpus.is_empty() {
-        let target_cpu = physical_cpus[tid % physical_cpus.len()];
+    let target_cpu = if !physical_cpus.is_empty() {
+        physical_cpus[tid % physical_cpus.len()]
+    } else {
+        tid % 0x40
+    };
 
-        if target_cpu < 0x40 {
-            let mask = 1u64 << target_cpu;
+    if target_cpu < 0x40 {
+        let mask = 1u64 << target_cpu;
 
-            unsafe extern "C" {
-                fn sched_setaffinity(pid: i32, cpusetsize: usize, mask: *const u64) -> i32;
-            }
-            unsafe {
-                let _ = sched_setaffinity(0x00, std::mem::size_of::<u64>(), &mask);
-            }
+        unsafe extern "C" {
+            fn sched_setaffinity(pid: i32, cpusetsize: usize, mask: *const u64) -> i32;
+        }
+        unsafe {
+            let _ = sched_setaffinity(0x00, std::mem::size_of::<u64>(), &mask);
         }
     }
 }
@@ -259,13 +301,11 @@ pub fn print_json_summary(s: &BenchSummary) {
 }
 
 pub fn drop_page_cache() {
-    let _ = Command::new("sync").status();
+    unsafe {
+        libc::sync();
+    }
     if let Ok(mut f) = fs::OpenOptions::new().write(true).open("/proc/sys/vm/drop_caches") {
         let _ = f.write_all(b"3\n");
-    } else {
-        let cmd = "(sync; echo 3 > /proc/sys/vm/drop_caches || \
-                   sudo -n sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches') >/dev/null 2>&1";
-        let _ = Command::new("sh").args(["-c", cmd]).status();
     }
 }
 

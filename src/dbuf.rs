@@ -988,4 +988,81 @@ mod tests {
         let read_v = read_list_val_payload_spanned(&dbufs_v, start_global_v, val.len()).unwrap();
         assert_eq!(read_v, val);
     }
+
+    #[test]
+    fn ok_dbuf_single_list_val_and_empty_kv() {
+        let mut dbuf = DBuf::new();
+        let item = b"isolated_list_item";
+        let req = DBuf::required_list_val_buffers(item.len());
+        let start = dbuf.alloc_contiguous(req).unwrap();
+
+        let mut dbufs = [dbuf];
+        write_list_val_payload_spanned(&mut dbufs, start as u32, item).unwrap();
+
+        let vlen = dbufs[0].read_list_vlen(start).unwrap();
+        assert_eq!(vlen, item.len());
+
+        let payload = dbufs[0].read_list_val_payload(start, vlen).unwrap();
+        assert_eq!(payload, item);
+
+        // Test empty KV value roundtrip
+        let mut kv_dbuf = DBuf::new();
+        let key = b"key_with_empty_val";
+        let val = b"";
+        let kv_req = DBuf::required_kv_buffers(key.len(), val.len());
+        let kv_start = kv_dbuf.alloc_contiguous(kv_req).unwrap();
+
+        kv_dbuf.write_kv_payload(kv_start, key, val).unwrap();
+        assert!(kv_dbuf.verify_key(kv_start, key));
+
+        let (read_k, read_v) = kv_dbuf.read_kv_payload(kv_start, key.len(), val.len()).unwrap();
+        assert_eq!(read_k, key);
+        assert_eq!(read_v, val);
+    }
+
+    #[test]
+    fn err_dbuf_spanned_crc_mismatch() {
+        let mut dbufs = vec![DBuf::new(); 2];
+        let key = b"multi_dbuf_crc_key";
+        let val = vec![0xEFu8; 0x0100]; // 256 B payload forces span
+
+        let start_global = 0x18u32;
+        let req = DBuf::required_kv_buffers(key.len(), val.len());
+
+        let mut remaining = req;
+        for (i, d) in dbufs.iter_mut().enumerate() {
+            let local_start = if i == 0 { 0x18 } else { 0 };
+            let count = std::cmp::min(DBUF_BUF_COUNT - local_start, remaining);
+            mark_spanned_buffers(d, local_start, count);
+            remaining -= count;
+        }
+
+        write_kv_payload_spanned(&mut dbufs, start_global, key, &val).unwrap();
+
+        // Corrupt second DBuf's payload
+        dbufs[1].payload_bytes_mut()[0] ^= 0xFF;
+
+        let res = read_kv_payload_spanned(&dbufs, start_global, key.len(), val.len());
+        assert!(matches!(res, Err(DBufError::CrcMismatch { .. })));
+    }
+
+    #[test]
+    fn ok_dbuf_find_contiguous_free_fragmented() {
+        let mut dbuf = DBuf::new();
+
+        // Allocate alternate slots to fragment the bitmap
+        for i in 0..15 {
+            let idx = dbuf.alloc_contiguous(1).unwrap();
+            assert_eq!(idx, i * 2);
+            let _dummy = dbuf.alloc_contiguous(1).unwrap();
+        }
+
+        for i in 0..15 {
+            dbuf.free_contiguous(i * 2, 1);
+        }
+
+        // Even though 15+ buffers are free, no contiguous block of 2 exists
+        assert_eq!(dbuf.find_contiguous_free(2), None);
+        assert_eq!(dbuf.find_contiguous_free(1), Some(0));
+    }
 }

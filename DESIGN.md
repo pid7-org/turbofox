@@ -80,7 +80,7 @@ pub const MAX_TRIE_DEPTH: usize = 0x08;  // Depth ceiling guarding hash collisio
 Offset   Type      Field             Description
 -------+---------+-----------------+--------------------------------------------------
 0..3     [u8; 4]   magic             0x54424658 ("TBFX")
-4..7     u32       version           Layout version (3)
+4..7     u32       version           Layout version (4)
 8..11    u32       page_size         Host OS page size (4096, 16384, or 65536)
 12..15   u32       total_pages       Total allocated physical OS pages
 16..19   u32       total_slots       Total addressable slots in mapped file
@@ -586,7 +586,7 @@ OS mapping, file creation, descriptor locking, and page validation are handled b
    - Acquire an exclusive filesystem advisory lock on the file descriptor.
    - Reserve virtual address space up to `MAX_DB_LEN`.
 5. Format the initial 8192 B layout (Slots 0..0x7F) directly in mapped memory:
-   - Slot 0: Metadata (`magic = 0x54424658`, `version = 3`, `page_size`, `total_pages`,
+   - Slot 0: Metadata (`magic = 0x54424658`, `version = 4`, `page_size`, `total_pages`,
     `total_slots`, `free_slot_marker = 0x80`, `total_entries = 0`,
     `extra_nodes = [124, 125, 126, 127]`, `extra_node_count = 4`).
    - Slot 1: Root Node (`flag = 0x0`, `bucket_indices = [4, 8, 12, ..., 60]`).
@@ -647,7 +647,7 @@ pub const MAX_DB_LEN: usize = 0x40_0000_0000; // 274,877,906,944 B (256 GiB)
 TurboCfg Field  Type                  MemMapCfg Target        Resolution Logic
 --------------+---------------------+-----------------------+--------------------------------------
 path          PathBuf               path                    Forwarded directly; MemMap checks dir
-version       u32                   version                 Compiled constant (LAYOUT_VERSION = 3)
+version       u32                   version                 Compiled constant (LAYOUT_VERSION = 4)
 sync_mode     SyncMode              sync_interval           Mapped to Periodic(Duration) or Manual
 capacity_hint Option<CapacityHint>  initial_pages           Evaluates quantum-aligned initial pages
 lookup_cache  bool                  (Engine internal)       In-memory DBufSlotCache (false default)

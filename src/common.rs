@@ -15,7 +15,7 @@ pub(crate) const MODULE_ID: u8 = 0x46;
 pub(crate) const DB_NAME_TAG: [u8; 4] = *b"tbfx";
 
 /// Ref: `DESIGN.md` §3.1
-pub(crate) const LAYOUT_VERSION: u32 = 3;
+pub(crate) const LAYOUT_VERSION: u32 = 4;
 
 /// Ref: `DESIGN.md` §1
 pub(crate) const SLOT_SIZE: usize = 0x40;

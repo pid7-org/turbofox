@@ -932,3 +932,64 @@ impl TurboFox {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn ok_turbofox_lifecycle_and_crud() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().to_path_buf();
+        let cfg = TurboCfg::manual(&path);
+
+        let db = TurboFox::open_or_create(cfg).unwrap();
+        assert!(db.is_empty());
+        assert_eq!(db.total_entries(), 0);
+        assert!(!db.contains_key(b"key1").unwrap());
+        assert!(!db.del(b"key1").unwrap());
+
+        let ticket = db.set(b"key1", b"val1").unwrap();
+        assert!(ticket.epoch() > 0);
+        assert_eq!(db.get(b"key1").unwrap().as_deref(), Some(&b"val1"[..]));
+        assert!(db.contains_key(b"key1").unwrap());
+        assert_eq!(db.total_entries(), 1);
+        assert!(!db.is_empty());
+
+        assert!(db.resident_bytes_in_memory().unwrap() > 0);
+        assert!(db.resident_bytes_on_disk() > 0);
+
+        db.sync().unwrap();
+        db.evict(EvictionMode::PreserveHeaders).unwrap();
+        assert_eq!(db.get(b"key1").unwrap().as_deref(), Some(&b"val1"[..]));
+
+        assert!(db.del(b"key1").unwrap());
+        assert_eq!(db.total_entries(), 0);
+        assert!(db.is_empty());
+        assert!(!db.contains_key(b"key1").unwrap());
+
+        db.sync().unwrap();
+        drop(db);
+
+        let reopen_cfg = TurboCfg::manual(&path);
+        let reopened = TurboFox::open(reopen_cfg).unwrap();
+        assert!(reopened.is_empty());
+        assert_eq!(reopened.total_entries(), 0);
+
+        reopened.delete().unwrap();
+    }
+
+    #[test]
+    fn err_turbofox_delete_busy_concurrent_handle() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let db = TurboFox::create(cfg).unwrap();
+
+        let list = db.list(b"concurrent_list");
+        let delete_res = db.delete();
+        assert!(matches!(delete_res, Err(TurboError::ResourceBusy(_))));
+
+        drop(list);
+    }
+}

@@ -9,8 +9,11 @@
 #   chmod +x bencher/run.sh
 #   ./bencher/run.sh
 #
-# With custom operation count:
-#   ./bencher/run.sh --ops 0x7A120
+# Custom benchmark selection:
+#   ./bencher/run.sh --benches multi
+#
+# Custom target region:
+#   ./bencher/run.sh --region us-west-2
 
 set -euo pipefail
 
@@ -23,13 +26,42 @@ AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 export AWS_REGION
 export AWS_DEFAULT_REGION="${AWS_REGION}"
 
-OPS_ARG="0x186A0"
 BRANCH_ARG="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")"
-REPO_ARG="${REPO_URL:-https://github.com/pid7-org/turbofox.git}"
 BENCHES_ARG="all"
+
+show_help() {
+  cat << 'EOF'
+Usage: ./bencher/run.sh [OPTIONS]
+
+TurboFox Automated AWS EC2 Benchmark Lifecycle Runner
+
+Provisions a dedicated c6id.xlarge EC2 instance with local NVMe, executes
+the selected benchmark suite(s) sequentially, downloads consolidated telemetry,
+and guarantees full cloud infrastructure teardown.
+
+Options:
+  --benches, --bench <TARGETS>  Comma-separated list of benchmarks to run:
+                                  all   : scale_perf, kv_perf, kv_perf_multi_tx (default)
+                                  scale : scale_perf (single-core interval open/evict)
+                                  kv    : kv_perf (single-core 1M ops, 80/20 set, 60/40 get/del)
+                                  multi : kv_perf_multi_tx (2-thread concurrent transactions)
+  --branch <NAME>               Git branch to clone on remote host (default: active branch)
+  --region <AWS_REGION>         AWS deployment region (default: us-east-1)
+  -h, --help, help              Show this help message and exit
+
+Examples:
+  ./bencher/run.sh                          # Run all 3 benchmarks sequentially (default)
+  ./bencher/run.sh --benches multi          # Run only multi-threaded KV benchmark
+  ./bencher/run.sh --region us-west-2       # Run in specific AWS region
+EOF
+  exit 0
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    -h|--help|help)
+      show_help
+      ;;
     --benches|--bench)
       if [[ "${BENCHES_ARG}" == "all" ]]; then
         BENCHES_ARG="$2"
@@ -38,16 +70,8 @@ while [[ $# -gt 0 ]]; do
       fi
       shift 2
       ;;
-    --ops)
-      OPS_ARG="$2"
-      shift 2
-      ;;
     --branch)
       BRANCH_ARG="$2"
-      shift 2
-      ;;
-    --repo)
-      REPO_ARG="$2"
       shift 2
       ;;
     --region)
@@ -58,6 +82,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1" >&2
+      echo "Run './bencher/run.sh --help' for usage details" >&2
       exit 1
       ;;
   esac
@@ -117,7 +142,7 @@ terraform validate
 echo "Validation passed: Terraform configuration is valid" >&2
 
 echo "=== [Phase 4/12] Provisioning EC2 infrastructure via Terraform ===" >&2
-terraform apply -auto-approve -var="ops=${OPS_ARG}" -var="aws_region=${AWS_REGION}"
+terraform apply -auto-approve -var="aws_region=${AWS_REGION}"
 
 echo "=== [Phase 5/12] Extracting outputs and configuring SSH credentials ===" >&2
 INSTANCE_ID=$(terraform output -raw instance_id)
@@ -175,8 +200,8 @@ ssh "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" "chmod +x /tmp/init_ec2_bench.sh"
 echo "Validation passed: bootstrapper synchronized and marked executable" >&2
 
 echo "=== [Phase 9/12] Executing remote benchmark suite ===" >&2
-ssh "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" \
-  "/tmp/init_ec2_bench.sh --run --repo '${REPO_ARG}' --branch '${BRANCH_ARG}' --ops '${OPS_ARG}' --benches '${BENCHES_ARG}' --out /tmp/results.json"
+ssh -t "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" \
+  "/tmp/init_ec2_bench.sh --run --branch '${BRANCH_ARG}' --benches '${BENCHES_ARG}' --out /tmp/results.json"
 echo "Validation passed: remote benchmark suite finished successfully" >&2
 
 echo "=== [Phase 10/12] Downloading and validating benchmark telemetry ===" >&2

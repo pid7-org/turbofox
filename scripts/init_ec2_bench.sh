@@ -14,10 +14,6 @@ while [[ $# -gt 0 ]]; do
       AUTO_RUN=1
       shift 1
       ;;
-    --repo)
-      REPO_URL="$2"
-      shift 2
-      ;;
     --branch)
       BRANCH="$2"
       shift 2
@@ -43,7 +39,7 @@ if [[ $(id -u) -ne 0 ]]; then
   fi
 fi
 
-echo "=== [1/5] Provisioning OS dependencies ===" >&2
+echo "[$(date +%T)] === [1/5] Provisioning OS dependencies ===" >&2
 if command -v apt-get >/dev/null 2>&1; then
   $SUDO apt-get update -y
   $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -53,7 +49,7 @@ elif command -v dnf >/dev/null 2>&1; then
   $SUDO dnf install -y gcc make git curl xfsprogs util-linux python3 kernel-tools
 fi
 
-echo "=== [2/5] Tuning CPU scaling governor and memory subsystem ===" >&2
+echo "[$(date +%T)] === [2/5] Tuning CPU scaling governor and memory subsystem ===" >&2
 if command -v cpupower >/dev/null 2>&1; then
   $SUDO cpupower frequency-set -g performance >/dev/null 2>&1 || true
 fi
@@ -70,7 +66,7 @@ for thp in /sys/kernel/mm/transparent_hugepage/enabled /sys/kernel/mm/transparen
   fi
 done
 
-echo "=== [3/5] Initializing local NVMe instance storage ===" >&2
+echo "[$(date +%T)] === [3/5] Initializing local NVMe instance storage ===" >&2
 if ! mountpoint -q "${BENCH_DIR}"; then
   NVME_DEV=""
   # Prioritize dedicated AWS EC2 NVMe instance store if identified by udev
@@ -102,15 +98,16 @@ if ! mountpoint -q "${BENCH_DIR}"; then
     $SUDO mkfs.xfs -f -s size=4096 "${NVME_DEV}"
     $SUDO mkdir -p "${BENCH_DIR}"
     $SUDO mount -o noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64M "${NVME_DEV}" "${BENCH_DIR}"
-    $SUDO chmod 0777 "${BENCH_DIR}"
+    $SUDO chmod 1777 "${BENCH_DIR}"
   else
     echo "No unmounted NVMe block device detected; falling back to /tmp/turbofox_bench" >&2
     BENCH_DIR="/tmp/turbofox_bench"
     mkdir -p "${BENCH_DIR}"
+    chmod 1777 "${BENCH_DIR}"
   fi
 fi
 
-echo "=== [4/5] Configuring Rust toolchain ===" >&2
+echo "[$(date +%T)] === [4/5] Configuring Rust toolchain ===" >&2
 if ! command -v rustup >/dev/null 2>&1; then
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
     -y --default-toolchain stable --profile minimal
@@ -122,7 +119,7 @@ export PATH="${HOME}/.cargo/bin:${PATH}"
 rustup default stable
 rustup update stable
 
-echo "=== [5/5] Synchronizing repository and runner ===" >&2
+echo "[$(date +%T)] === [5/5] Synchronizing repository and runner ===" >&2
 WORK_DIR="${PWD}"
 HAS_CARGO=0
 if [[ -f "${WORK_DIR}/Cargo.toml" ]] && grep -q 'name = "turbofox"' "${WORK_DIR}/Cargo.toml"; then

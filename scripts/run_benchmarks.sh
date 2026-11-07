@@ -2,19 +2,11 @@
 
 set -euo pipefail
 
-DEFAULT_OPS="0x186A0" # 100,000 ops
-DEFAULT_THREADS="1"
-DEFAULT_SCALES="1000,10000,100000"
 DEFAULT_OUT="tmp/results/turbofox_benchmark_results.json"
 TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/turbofox-target}"
 BENCH_DIR="/tmp/turbofox_bench"
 
-OPS="${DEFAULT_OPS}"
-THREADS_LIST="${DEFAULT_THREADS}"
-SCALES_LIST="${DEFAULT_SCALES}"
 OUT_FILE="${DEFAULT_OUT}"
-
-WARMUP="0x00"
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-unknown}}"
 SELECTED_BENCHES="all"
 
@@ -28,28 +20,12 @@ while [[ $# -gt 0 ]]; do
       fi
       shift 2
       ;;
-    --ops)
-      OPS="$2"
-      shift 2
-      ;;
-    --threads)
-      THREADS_LIST="$2"
-      shift 2
-      ;;
-    --scales)
-      SCALES_LIST="$2"
-      shift 2
-      ;;
     --dir)
       BENCH_DIR="$2"
       shift 2
       ;;
     --out)
       OUT_FILE="$2"
-      shift 2
-      ;;
-    --warmup)
-      WARMUP="$2"
       shift 2
       ;;
     --region)
@@ -65,6 +41,7 @@ done
 
 mkdir -p "${BENCH_DIR}"
 mkdir -p "$(dirname "${OUT_FILE}")"
+export TMPDIR="${BENCH_DIR}"
 
 # Collect system metadata
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -77,15 +54,17 @@ if [[ -f "/sys/devices/virtual/dmi/id/product_name" ]]; then
   INSTANCE_TYPE=$(cat /sys/devices/virtual/dmi/id/product_name | tr -d '\n')
 fi
 
-echo "Compiling benchmarks in release mode with target-cpu=native..." >&2
-RUSTFLAGS="${RUSTFLAGS:--C target-cpu=native}" CARGO_TARGET_DIR="${TARGET_DIR}" cargo bench --no-run
+echo "[$(date +%T)] Compiling benchmarks in release mode with target-cpu=native..." >&2
+RUSTFLAGS="${RUSTFLAGS:--C target-cpu=native}" CARGO_TARGET_DIR="${TARGET_DIR}" cargo bench --no-run --message-format=short
+echo "[$(date +%T)] Benchmark compilation completed" >&2
 
 DEPS_DIR="${TARGET_DIR}/release/deps"
 SCALE_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "scale_perf-*" -executable -type f | head -n 1)
-KV_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "kv_perf-*" -executable -type f | head -n 1)
+KV_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "kv_perf-*" -executable -type f ! -name "kv_perf_multi_tx-*" | head -n 1)
+MULTI_BIN=$(find "${DEPS_DIR}" -maxdepth 1 -name "kv_perf_multi_tx-*" -executable -type f | head -n 1)
 
-if [[ -z "${SCALE_BIN}" || -z "${KV_BIN}" ]]; then
-  echo "Error: Failed to locate benchmark binaries in ${DEPS_DIR}" >&2
+if [[ -z "${SCALE_BIN}" || -z "${KV_BIN}" || -z "${MULTI_BIN}" ]]; then
+  echo "Error: Failed to locate all benchmark binaries in ${DEPS_DIR}" >&2
   exit 1
 fi
 
@@ -113,6 +92,7 @@ append_result() {
 
 RUN_SCALE=0
 RUN_KV=0
+RUN_MULTI=0
 
 IFS=',' read -ra BENCH_ID_ARRAY <<< "${SELECTED_BENCHES}"
 for b_id in "${BENCH_ID_ARRAY[@]}"; do
@@ -120,6 +100,7 @@ for b_id in "${BENCH_ID_ARRAY[@]}"; do
     all)
       RUN_SCALE=1
       RUN_KV=1
+      RUN_MULTI=1
       ;;
     1|scale|scale_perf)
       RUN_SCALE=1
@@ -127,16 +108,16 @@ for b_id in "${BENCH_ID_ARRAY[@]}"; do
     2|kv|kv_perf)
       RUN_KV=1
       ;;
+    3|multi|kv_multi|kv_perf_multi_tx)
+      RUN_MULTI=1
+      ;;
     *)
       echo "Unknown benchmark identifier: '${b_id}'" >&2
-      echo "Available IDs: 1 (scale), 2 (kv), all" >&2
+      echo "Available IDs: 1 (scale), 2 (kv), 3 (multi), all" >&2
       exit 1
       ;;
   esac
 done
-
-# Export ops for benchmark binaries
-export TURBOFOX_BENCH_OPS="${OPS}"
 
 # 1. Run Scale Benchmark across scaling intervals
 if [[ ${RUN_SCALE} -eq 1 ]]; then
@@ -145,23 +126,39 @@ if [[ ${RUN_SCALE} -eq 1 ]]; then
     taskset_single="taskset -c 0"
   fi
 
-  echo "Running scale_perf across scaling intervals..." >&2
+  echo "[$(date +%T)] === [1/3] Running scale_perf across scaling intervals (core 0) ===" >&2
   drop_page_cache
   json_out=$(${taskset_single} "${SCALE_BIN}")
   append_result "${json_out}"
+  echo "[$(date +%T)] Completed scale_perf" >&2
+  drop_page_cache
+  sleep 2
 fi
 
-# 2. Run Unified Core KV Benchmark (threads=1, N=${OPS}, set 80/20, get/del 60/40)
+# 2. Run Unified Core KV Benchmark (threads=1, set 80/20, get/del 60/40)
 if [[ ${RUN_KV} -eq 1 ]]; then
   taskset_single=""
   if command -v taskset >/dev/null 2>&1; then
     taskset_single="taskset -c 0"
   fi
 
-  echo "Running kv_perf [set 80/20, get/del 60/40] (threads=1, N=${OPS})..." >&2
+  echo "[$(date +%T)] === [2/3] Running kv_perf [set 80/20, get/del 60/40] (threads=1, core 0) ===" >&2
   drop_page_cache
   json_out=$(${taskset_single} "${KV_BIN}")
   append_result "${json_out}"
+  echo "[$(date +%T)] Completed kv_perf" >&2
+  drop_page_cache
+  sleep 2
+fi
+
+# 3. Run Multi-threaded KV Benchmark (threads=2, concurrent transactions)
+if [[ ${RUN_MULTI} -eq 1 ]]; then
+  echo "[$(date +%T)] === [3/3] Running kv_perf_multi_tx (threads=2, physical cores 0-1) ===" >&2
+  drop_page_cache
+  json_out=$("${MULTI_BIN}")
+  append_result "${json_out}"
+  echo "[$(date +%T)] Completed kv_perf_multi_tx" >&2
+  drop_page_cache
 fi
 
 echo "]" >> "${TMP_RESULTS}"
@@ -177,8 +174,7 @@ cat <<EOF > "${OUT_FILE}"
     "kernel": "${KERNEL}",
     "arch": "${ARCH}",
     "total_cpus": ${TOTAL_CPUS},
-    "storage_path": "${BENCH_DIR}",
-    "ops_requested": "${OPS}"
+    "storage_path": "${BENCH_DIR}"
   },
   "results": $(cat "${TMP_RESULTS}")
 }

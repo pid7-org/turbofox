@@ -5,15 +5,9 @@ variable "aws_region" {
 }
 
 variable "instance_type" {
-  description = "Compute-optimized x86_64 instance with dedicated NVMe"
+  description = "Compute-optimized x86_64 instance with dedicated NVMe and >= 2 physical cores"
   type        = string
-  default     = "c5d.large"
-}
-
-variable "ops" {
-  description = "Number of benchmark operations per suite"
-  type        = string
-  default     = "0x186A0"
+  default     = "c6id.xlarge"
 }
 
 variable "project_tag" {

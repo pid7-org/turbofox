@@ -1,26 +1,18 @@
-use crate::common::{
-    ADJ_ARR_IDX_MASK, BUCKET_ENTRIES, BUCKET_FLAG, BUCKET_SIZE, BUCKET_SLOTS, HASH_EMPTY,
-    HASH_TOMBSTONE, LIST_FLAG_BE, LIST_FLAG_MASK, MIN_VALID_HASH, Slot,
-};
+use crate::common::{BUCKET_ENTRIES, BUCKET_SIZE, BUCKET_SLOTS, HASH_EMPTY, HASH_TOMBSTONE, Slot};
+use crate::hash::LIST_HASH_BIT;
 
 /// Ref: `DESIGN.md` §3.3
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct BucketEntry {
     hash: u32,
-    offset: u64,
+    buf_idx: u32,
 }
 
-#[allow(dead_code)]
 impl BucketEntry {
     #[inline(always)]
-    pub(crate) const fn empty() -> Self {
-        Self { hash: HASH_EMPTY, offset: 0 }
-    }
-
-    #[inline(always)]
-    pub(crate) const fn tombstone() -> Self {
-        Self { hash: HASH_TOMBSTONE, offset: 0 }
+    pub(crate) const fn new(hash: u32, buf_idx: u32) -> Self {
+        Self { hash, buf_idx }
     }
 
     #[inline(always)]
@@ -29,110 +21,14 @@ impl BucketEntry {
     }
 
     #[inline(always)]
-    pub(crate) const fn offset(&self) -> u64 {
-        self.offset
-    }
-
-    #[inline(always)]
-    pub(crate) const fn is_empty(&self) -> bool {
-        self.hash == HASH_EMPTY
-    }
-
-    #[inline(always)]
-    pub(crate) const fn is_tombstone(&self) -> bool {
-        self.hash == HASH_TOMBSTONE
-    }
-
-    #[inline(always)]
-    pub(crate) const fn is_occupied(&self) -> bool {
-        self.hash >= MIN_VALID_HASH
+    pub(crate) const fn buf_idx(&self) -> u32 {
+        self.buf_idx
     }
 
     #[inline(always)]
     pub(crate) const fn is_list(&self) -> bool {
-        (self.offset.to_ne_bytes()[0] & LIST_FLAG_MASK) != 0
+        (self.hash & LIST_HASH_BIT) != 0
     }
-
-    #[inline(always)]
-    pub(crate) const fn is_kv(&self) -> bool {
-        self.is_occupied() && !self.is_list()
-    }
-
-    #[inline(always)]
-    pub(crate) const fn klen(&self) -> u8 {
-        self.offset.to_ne_bytes()[1]
-    }
-
-    #[inline(always)]
-    pub(crate) const fn vlen(&self) -> u16 {
-        let b = self.offset.to_ne_bytes();
-        u16::from_le_bytes([b[2], b[3]])
-    }
-
-    #[inline(always)]
-    pub(crate) const fn buf_idx(&self) -> u32 {
-        let b = self.offset.to_ne_bytes();
-        u32::from_le_bytes([b[4], b[5], b[6], b[7]])
-    }
-
-    #[inline(always)]
-    pub(crate) const fn adjarr_idx(&self) -> u32 {
-        let b = self.offset.to_ne_bytes();
-        let be = u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
-
-        be & ADJ_ARR_IDX_MASK
-    }
-
-    #[inline(always)]
-    pub(crate) const fn pack_kv(hash: u32, klen: u8, vlen: u16, buf_idx: u32) -> Self {
-        Self { hash, offset: encode_kv_offset(klen, vlen, buf_idx) }
-    }
-
-    #[inline(always)]
-    pub(crate) const fn pack_list(hash: u32, adjarr_idx: u32, buf_idx: u32) -> Self {
-        Self { hash, offset: encode_list_offset(adjarr_idx, buf_idx) }
-    }
-}
-
-/// Ref: `DESIGN.md` §3.3
-#[inline(always)]
-pub(crate) const fn encode_kv_offset(klen: u8, vlen: u16, buf_idx: u32) -> u64 {
-    let mut b = [0u8; 8];
-    b[0] = 0;
-    b[1] = klen;
-
-    let v_bytes = vlen.to_le_bytes();
-    b[2] = v_bytes[0];
-    b[3] = v_bytes[1];
-
-    let buf_bytes = buf_idx.to_le_bytes();
-    b[4] = buf_bytes[0];
-    b[5] = buf_bytes[1];
-    b[6] = buf_bytes[2];
-    b[7] = buf_bytes[3];
-
-    u64::from_ne_bytes(b)
-}
-
-/// Ref: `DESIGN.md` §3.3
-#[inline(always)]
-pub(crate) const fn encode_list_offset(adjarr_idx: u32, buf_idx: u32) -> u64 {
-    let mut b = [0u8; 8];
-    let be = LIST_FLAG_BE | (adjarr_idx & ADJ_ARR_IDX_MASK);
-
-    let be_bytes = be.to_be_bytes();
-    b[0] = be_bytes[0];
-    b[1] = be_bytes[1];
-    b[2] = be_bytes[2];
-    b[3] = be_bytes[3];
-
-    let buf_bytes = buf_idx.to_le_bytes();
-    b[4] = buf_bytes[0];
-    b[5] = buf_bytes[1];
-    b[6] = buf_bytes[2];
-    b[7] = buf_bytes[3];
-
-    u64::from_ne_bytes(b)
 }
 
 /// Ref: `DESIGN.md` §4.3
@@ -147,49 +43,32 @@ pub(crate) enum ProbeResult {
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Bucket {
-    flag: u32,
     hashes: [u32; BUCKET_ENTRIES],
-    offsets: [u64; BUCKET_ENTRIES],
+    offsets: [u32; BUCKET_ENTRIES],
 }
 
 const _: () = assert!(core::mem::align_of::<Bucket>() == 8);
 const _: () = assert!(core::mem::size_of::<Bucket>() == BUCKET_SIZE);
-const _: () = assert!(core::mem::offset_of!(Bucket, flag) == 0);
-const _: () = assert!(core::mem::offset_of!(Bucket, hashes) == 4);
-const _: () = assert!(core::mem::offset_of!(Bucket, offsets) == 88);
-const _: () = assert!(core::mem::size_of::<[u32; BUCKET_ENTRIES]>() == 84);
-const _: () = assert!(core::mem::size_of::<[u64; BUCKET_ENTRIES]>() == 168);
+const _: () = assert!(core::mem::offset_of!(Bucket, hashes) == 0);
+const _: () = assert!(core::mem::offset_of!(Bucket, offsets) == 0x80);
+const _: () = assert!(core::mem::size_of::<[u32; BUCKET_ENTRIES]>() == 0x80);
+const _: () = assert!(core::mem::size_of::<[u32; BUCKET_ENTRIES]>() == 0x80);
 const _: () = assert!(core::mem::size_of::<Bucket>() == BUCKET_SLOTS * Slot::SIZE);
 
 const _: () = assert!(HASH_EMPTY == 0);
 const _: () = assert!(HASH_TOMBSTONE == 1);
-const _: () = assert!(MIN_VALID_HASH == 2);
-const _: () = assert!(BUCKET_ENTRIES == 21);
-const _: () = assert!(LIST_FLAG_MASK == 0x80);
-const _: () = assert!(LIST_FLAG_BE == 0x8000_0000);
+const _: () = assert!(BUCKET_ENTRIES == 0x20);
 const _: () = assert!(BUCKET_SIZE % Slot::SIZE == 0);
-const _: () = assert!(ADJ_ARR_IDX_MASK == 0x7FFF_FFFF);
 
-const _: () = assert!(core::mem::align_of::<BucketEntry>() == 8);
-const _: () = assert!(core::mem::size_of::<BucketEntry>() == 0x10);
+const _: () = assert!(core::mem::align_of::<BucketEntry>() == 4);
+const _: () = assert!(core::mem::size_of::<BucketEntry>() == 8);
 const _: () = assert!(core::mem::offset_of!(BucketEntry, hash) == 0);
-const _: () = assert!(core::mem::offset_of!(BucketEntry, offset) == 8);
-
-impl Default for Bucket {
-    #[inline(always)]
-    fn default() -> Self {
-        Self::new()
-    }
-}
+const _: () = assert!(core::mem::offset_of!(BucketEntry, buf_idx) == 4);
 
 impl Bucket {
     #[inline(always)]
     pub(crate) const fn new() -> Self {
-        Self {
-            flag: BUCKET_FLAG,
-            hashes: [HASH_EMPTY; BUCKET_ENTRIES],
-            offsets: [0; BUCKET_ENTRIES],
-        }
+        Self { hashes: [HASH_EMPTY; BUCKET_ENTRIES], offsets: [0; BUCKET_ENTRIES] }
     }
 
     #[inline(always)]
@@ -256,69 +135,42 @@ impl Bucket {
 
     #[inline(always)]
     pub(crate) fn entry(&self, idx: usize) -> BucketEntry {
+        // sanity check
         debug_assert!(idx < BUCKET_ENTRIES);
 
-        BucketEntry { hash: self.hashes[idx], offset: self.offsets[idx] }
+        BucketEntry { hash: self.hashes[idx], buf_idx: self.offsets[idx] }
     }
 
     #[inline(always)]
     pub(crate) fn set_entry(&mut self, idx: usize, entry: BucketEntry) {
+        // sanity check
         debug_assert!(idx < BUCKET_ENTRIES);
 
         self.hashes[idx] = entry.hash;
-        self.offsets[idx] = entry.offset;
+        self.offsets[idx] = entry.buf_idx;
     }
 
     #[inline(always)]
-    pub(crate) fn set_kv(&mut self, idx: usize, hash: u32, klen: u8, vlen: u16, buf_idx: u32) {
-        debug_assert!(idx < BUCKET_ENTRIES);
-
-        self.hashes[idx] = hash;
-        self.offsets[idx] = encode_kv_offset(klen, vlen, buf_idx);
+    pub(crate) fn set_kv(&mut self, idx: usize, hash: u32, buf_idx: u32) {
+        self.set_entry(idx, BucketEntry::new(hash, buf_idx));
     }
 
     #[inline(always)]
-    pub(crate) fn set_list(&mut self, idx: usize, hash: u32, adjarr_idx: u32, buf_idx: u32) {
-        debug_assert!(idx < BUCKET_ENTRIES);
-
-        self.hashes[idx] = hash;
-        self.offsets[idx] = encode_list_offset(adjarr_idx, buf_idx);
+    pub(crate) fn set_list(&mut self, idx: usize, hash: u32, buf_idx: u32) {
+        self.set_entry(idx, BucketEntry::new(hash, buf_idx));
     }
 
     #[inline(always)]
     pub(crate) fn mark_tombstone(&mut self, idx: usize) {
+        // sanity check
         debug_assert!(idx < BUCKET_ENTRIES);
 
         self.hashes[idx] = HASH_TOMBSTONE;
     }
 
-    #[inline]
-    #[allow(dead_code)]
-    pub(crate) fn is_full(&self) -> bool {
-        self.hashes.iter().all(|&h| h >= MIN_VALID_HASH)
-    }
-
-    #[inline(always)]
-    #[allow(dead_code)]
-    pub(crate) fn as_slot(&self) -> &Slot {
-        unsafe { &*core::ptr::from_ref(self).cast() }
-    }
-
-    #[allow(dead_code)]
-    #[inline(always)]
-    pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
-        unsafe { &mut *core::ptr::from_mut(self).cast() }
-    }
-
     #[inline(always)]
     pub(crate) fn as_slots(&self) -> &[Slot; BUCKET_SLOTS] {
         unsafe { &*core::ptr::from_ref(self).cast() }
-    }
-
-    #[allow(dead_code)]
-    #[inline(always)]
-    pub(crate) fn as_slots_mut(&mut self) -> &mut [Slot; BUCKET_SLOTS] {
-        unsafe { &mut *core::ptr::from_mut(self).cast() }
     }
 }
 
@@ -330,32 +182,23 @@ mod tests {
     fn ok_bucket_layout_invariants() {
         assert_eq!(core::mem::align_of::<Bucket>(), 8);
         assert_eq!(core::mem::size_of::<Bucket>(), 0x0100);
-        assert_eq!(core::mem::offset_of!(Bucket, flag), 0);
-        assert_eq!(core::mem::offset_of!(Bucket, hashes), 4);
-        assert_eq!(core::mem::offset_of!(Bucket, offsets), 88);
+        assert_eq!(core::mem::offset_of!(Bucket, hashes), 0);
+        assert_eq!(core::mem::offset_of!(Bucket, offsets), 0x80);
+        assert_eq!(core::mem::size_of::<BucketEntry>(), 8);
+        assert_eq!(core::mem::align_of::<BucketEntry>(), 4);
     }
 
     #[test]
-    fn ok_bucket_entry_kv_encoding() {
-        let entry = BucketEntry::pack_kv(0x1234_5678, 0x0C, 0x0150, 0x0002_0000);
-        assert!(entry.is_occupied());
-        assert!(!entry.is_empty());
-        assert!(!entry.is_tombstone());
-        assert!(entry.is_kv());
+    fn ok_bucket_entry_encoding() {
+        let entry = BucketEntry::new(0x1234_5678, 0x0002_0000);
         assert!(!entry.is_list());
-        assert_eq!(entry.klen(), 0x0C);
-        assert_eq!(entry.vlen(), 0x0150);
+        assert_eq!(entry.hash(), 0x1234_5678);
         assert_eq!(entry.buf_idx(), 0x0002_0000);
-    }
 
-    #[test]
-    fn ok_bucket_entry_list_encoding() {
-        let entry = BucketEntry::pack_list(0x9ABC_DEF0, 0x002A, 0x0005);
-        assert!(entry.is_occupied());
-        assert!(entry.is_list());
-        assert!(!entry.is_kv());
-        assert_eq!(entry.adjarr_idx(), 0x002A);
-        assert_eq!(entry.buf_idx(), 0x0005);
+        let list_entry = BucketEntry::new(0x9ABC_DEF0, 0x0005);
+        assert!(list_entry.is_list());
+        assert_eq!(list_entry.hash(), 0x9ABC_DEF0);
+        assert_eq!(list_entry.buf_idx(), 0x0005);
     }
 
     #[test]
@@ -366,7 +209,7 @@ mod tests {
         let res = b.probe(hash, |_| false);
         assert_eq!(res, ProbeResult::Vacant(0));
 
-        b.set_kv(0, hash, 4, 8, 1);
+        b.set_kv(0, hash, 1);
         let res_found = b.probe(hash, |slot| slot == 0);
         assert_eq!(res_found, ProbeResult::Found(0));
 
@@ -377,7 +220,7 @@ mod tests {
         let match_found = b.probe_match(hash, |_| true);
         assert_eq!(match_found, None);
 
-        b.set_kv(1, hash, 4, 8, 2);
+        b.set_kv(1, hash, 2);
         let match_hit = b.probe_match(hash, |slot| slot == 1);
         assert_eq!(match_hit, Some(1));
     }
@@ -386,15 +229,13 @@ mod tests {
     fn ok_bucket_full_resolution() {
         let mut b = Bucket::new();
         for i in 0..BUCKET_ENTRIES {
-            b.set_kv(i, (0x3000 + i) as u32, 4, 4, i as u32);
+            b.set_kv(i, (0x3000 + i) as u32, i as u32);
         }
 
-        assert!(b.is_full());
         let res = b.probe(0x9999, |_| false);
         assert_eq!(res, ProbeResult::Full);
 
         b.mark_tombstone(3);
-        assert!(!b.is_full());
         let res_vacant = b.probe(0x9999, |_| false);
         assert_eq!(res_vacant, ProbeResult::Vacant(3));
     }
@@ -402,10 +243,9 @@ mod tests {
     #[test]
     fn ok_bucket_as_slots() {
         let mut b = Bucket::new();
-        b.set_kv(0, 0x5000, 4, 4, 1);
+        b.set_kv(0, 0x5000, 1);
 
-        assert_eq!(b.as_slot().len(), 0x40);
+        assert_eq!(b.as_slots()[0].len(), 0x40);
         assert_eq!(b.as_slots().len(), 4);
-        assert_eq!(b.as_slots_mut().len(), 4);
     }
 }

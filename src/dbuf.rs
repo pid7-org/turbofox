@@ -27,9 +27,9 @@ const _: () = assert!(core::mem::offset_of!(DBuf, next_dbuf) == 0xF8);
 const _: () = assert!(core::mem::size_of::<DBuf>() == DBUF_SLOTS * Slot::SIZE);
 
 const _: () = assert!(CRC_SIZE == 4);
-const _: () = assert!(KV_HEADER_SIZE == 4);
+const _: () = assert!(KV_HEADER_SIZE == 8);
 const _: () = assert!(DBUF_BUF_SIZE == 8);
-const _: () = assert!(LIST_KEY_HEADER_SIZE == 5);
+const _: () = assert!(LIST_KEY_HEADER_SIZE == 8);
 const _: () = assert!(LIST_VAL_HEADER_SIZE == 6);
 const _: () = assert!(DBUF_BUF_COUNT == 0x1F);
 const _: () = assert!(DBUF_PAYLOAD_SIZE == 0xF8);
@@ -42,12 +42,13 @@ const _: () =
     assert!(core::mem::size_of::<[[u8; DBUF_BUF_SIZE]; DBUF_BUF_COUNT]>() == DBUF_PAYLOAD_SIZE);
 
 const _: () = assert!(DBuf::global_buf_idx(2, 2) == 0x40);
-const _: () = assert!(DBuf::required_kv_buffers(4, 8) == 2);
-const _: () = assert!(DBuf::required_kv_buffers(2, 2) == 1);
+const _: () = assert!(DBuf::required_kv_buffers(4, 8) == 3);
+const _: () = assert!(DBuf::required_kv_buffers(2, 2) == 2);
 const _: () = assert!(DBuf::decompose_buf_idx(0x40).1 == 2);
 const _: () = assert!(DBuf::decompose_buf_idx(0x40).0 == 2);
-const _: () = assert!(DBuf::required_list_key_buffers(3) == 1);
-const _: () = assert!(DBuf::required_list_key_buffers(4) == 2);
+const _: () = assert!(DBuf::required_list_key_buffers(3) == 2);
+const _: () = assert!(DBuf::required_list_key_buffers(8) == 2);
+const _: () = assert!(DBuf::required_list_key_buffers(9) == 3);
 const _: () = assert!(DBuf::required_list_val_buffers(2) == 1);
 const _: () = assert!(DBuf::required_list_val_buffers(3) == 2);
 
@@ -123,13 +124,13 @@ impl DBuf {
     /// Ref: `DESIGN.md` §3.3
     #[inline(always)]
     pub(crate) const fn required_kv_buffers(klen: usize, vlen: usize) -> usize {
-        Self::required_buffers(KV_HEADER_SIZE, klen + vlen)
+        1 + (klen + vlen + 7) / DBUF_BUF_SIZE
     }
 
     /// Ref: `DESIGN.md` §3.3
     #[inline(always)]
     pub(crate) const fn required_list_key_buffers(klen: usize) -> usize {
-        Self::required_buffers(LIST_KEY_HEADER_SIZE, klen)
+        1 + (klen + 7) / DBUF_BUF_SIZE
     }
 
     /// Ref: `DESIGN.md` §3.3
@@ -163,6 +164,31 @@ impl DBuf {
         unsafe { &mut *(self.buffers.as_mut_ptr() as *mut [u8; DBUF_PAYLOAD_SIZE]) }
     }
 
+    #[inline(always)]
+    pub(crate) fn read_header_klen(&self, start_idx: usize) -> Result<usize, DBufError> {
+        if start_idx >= DBUF_BUF_COUNT {
+            return Err(DBufError::InvalidIndex);
+        }
+
+        let raw = self.payload_bytes();
+        Ok(raw[start_idx * DBUF_BUF_SIZE + 4] as usize)
+    }
+
+    #[inline(always)]
+    pub(crate) fn read_header_vlen_or_adjarr_index(
+        &self,
+        start_idx: usize,
+    ) -> Result<u32, DBufError> {
+        if start_idx >= DBUF_BUF_COUNT {
+            return Err(DBufError::InvalidIndex);
+        }
+
+        let raw = self.payload_bytes();
+        let b = start_idx * DBUF_BUF_SIZE;
+        let val = (raw[b + 5] as u32) | ((raw[b + 6] as u32) << 8) | ((raw[b + 7] as u32) << 0x10);
+        Ok(val)
+    }
+
     /// Ref: `DESIGN.md` §3.3
     pub(crate) fn write_kv_payload(
         &mut self,
@@ -175,18 +201,27 @@ impl DBuf {
             return Err(DBufError::PayloadTooLarge);
         }
 
-        let data_len = key.len() + val.len();
         let total_bytes = req * DBUF_BUF_SIZE;
         let start_byte = start_idx * DBUF_BUF_SIZE;
 
         let raw = self.payload_bytes_mut();
         let frame = &mut raw[start_byte..start_byte + total_bytes];
 
-        frame[CRC_SIZE..CRC_SIZE + key.len()].copy_from_slice(key);
-        frame[CRC_SIZE + key.len()..CRC_SIZE + data_len].copy_from_slice(val);
-        frame[CRC_SIZE + data_len..].fill(0);
+        frame[4] = key.len() as u8;
+        let vlen = val.len() as u32;
+        frame[5] = (vlen & 0xFF) as u8;
+        frame[6] = ((vlen >> 8) & 0xFF) as u8;
+        frame[7] = ((vlen >> 0x10) & 0xFF) as u8;
 
-        let crc = turbo_crc::crc32c(&frame[CRC_SIZE..CRC_SIZE + data_len]);
+        let data_start = DBUF_BUF_SIZE;
+        let key_end = data_start + key.len();
+        let val_end = key_end + val.len();
+
+        frame[data_start..key_end].copy_from_slice(key);
+        frame[key_end..val_end].copy_from_slice(val);
+        frame[val_end..].fill(0);
+
+        let crc = turbo_crc::crc32c(&frame[4..val_end]);
         frame[..CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
 
         Ok(())
@@ -204,7 +239,6 @@ impl DBuf {
             return Err(DBufError::InvalidIndex);
         }
 
-        let data_len = klen + vlen;
         let total_bytes = req * DBUF_BUF_SIZE;
         let start_byte = start_idx * DBUF_BUF_SIZE;
 
@@ -215,149 +249,38 @@ impl DBuf {
         crc_b.copy_from_slice(&frame[..CRC_SIZE]);
 
         let expected_crc = u32::from_le_bytes(crc_b);
-        let data = &frame[CRC_SIZE..CRC_SIZE + data_len];
-        let actual_crc = turbo_crc::crc32c(data);
+        let data_start = DBUF_BUF_SIZE;
+        let key_end = data_start + klen;
+        let val_end = key_end + vlen;
 
+        let actual_crc = turbo_crc::crc32c(&frame[4..val_end]);
         if actual_crc != expected_crc {
             return Err(DBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
         }
 
-        let k = &frame[CRC_SIZE..CRC_SIZE + klen];
-        let v = &frame[CRC_SIZE + klen..CRC_SIZE + data_len];
+        let k = &frame[data_start..key_end];
+        let v = &frame[key_end..val_end];
 
         Ok((k, v))
     }
 
     #[inline]
     pub(crate) fn verify_key(&self, start_idx: usize, key: &[u8]) -> bool {
-        let req_key = (CRC_SIZE + key.len() + 7) / DBUF_BUF_SIZE;
+        let req_key = Self::required_kv_buffers(key.len(), 0);
         if start_idx + req_key > DBUF_BUF_COUNT {
             return false;
         }
 
-        let start_byte = start_idx * DBUF_BUF_SIZE + CRC_SIZE;
-        let raw = self.payload_bytes();
-
-        &raw[start_byte..start_byte + key.len()] == key
-    }
-
-    /// Ref: `DESIGN.md` §3.3
-    #[allow(dead_code)]
-    pub(crate) fn write_list_key_payload(
-        &mut self,
-        start_idx: usize,
-        key: &[u8],
-    ) -> Result<(), DBufError> {
-        let req = Self::required_list_key_buffers(key.len());
-        if req > DBUF_BUF_COUNT || start_idx + req > DBUF_BUF_COUNT {
-            return Err(DBufError::PayloadTooLarge);
-        }
-
         let start_byte = start_idx * DBUF_BUF_SIZE;
-        let total_bytes = req * DBUF_BUF_SIZE;
-
-        let raw = self.payload_bytes_mut();
-        let frame = &mut raw[start_byte..start_byte + total_bytes];
-
-        frame[CRC_SIZE] = key.len() as u8;
-        frame[LIST_KEY_HEADER_SIZE..LIST_KEY_HEADER_SIZE + key.len()].copy_from_slice(key);
-        frame[LIST_KEY_HEADER_SIZE + key.len()..].fill(0);
-
-        let crc = turbo_crc::crc32c(&frame[CRC_SIZE..LIST_KEY_HEADER_SIZE + key.len()]);
-        frame[..CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
-
-        Ok(())
-    }
-
-    /// Ref: `DESIGN.md` §3.3
-    #[allow(dead_code)]
-    pub(crate) fn read_list_klen(&self, start_idx: usize) -> Result<usize, DBufError> {
-        if start_idx >= DBUF_BUF_COUNT {
-            return Err(DBufError::InvalidIndex);
-        }
-
         let raw = self.payload_bytes();
-        Ok(raw[start_idx * DBUF_BUF_SIZE + CRC_SIZE] as usize)
-    }
 
-    /// Ref: `DESIGN.md` §3.3
-    #[allow(dead_code)]
-    pub(crate) fn read_list_key_payload(
-        &self,
-        start_idx: usize,
-        klen: usize,
-    ) -> Result<&[u8], DBufError> {
-        let req = Self::required_list_key_buffers(klen);
-        if req > DBUF_BUF_COUNT || start_idx + req > DBUF_BUF_COUNT {
-            return Err(DBufError::InvalidIndex);
-        }
-
-        let start_byte = start_idx * DBUF_BUF_SIZE;
-        let total_bytes = req * DBUF_BUF_SIZE;
-
-        let raw = self.payload_bytes();
-        let frame = &raw[start_byte..start_byte + total_bytes];
-
-        let mut crc_b = [0u8; CRC_SIZE];
-        crc_b.copy_from_slice(&frame[..CRC_SIZE]);
-
-        let expected_crc = u32::from_le_bytes(crc_b);
-        let actual_crc = turbo_crc::crc32c(&frame[CRC_SIZE..LIST_KEY_HEADER_SIZE + klen]);
-
-        if actual_crc != expected_crc {
-            return Err(DBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
-        }
-
-        Ok(&frame[LIST_KEY_HEADER_SIZE..LIST_KEY_HEADER_SIZE + klen])
-    }
-
-    #[inline]
-    pub(crate) fn verify_list_key(&self, start_idx: usize, key: &[u8]) -> bool {
-        let req = Self::required_list_key_buffers(key.len());
-        if start_idx + req > DBUF_BUF_COUNT {
-            return false;
-        }
-
-        let raw = self.payload_bytes();
-        let start_byte = start_idx * DBUF_BUF_SIZE;
-        let stored_klen = raw[start_byte + CRC_SIZE] as usize;
-
+        let stored_klen = raw[start_byte + 4] as usize;
         if stored_klen != key.len() {
             return false;
         }
 
-        let k_start = start_byte + LIST_KEY_HEADER_SIZE;
-        &raw[k_start..k_start + key.len()] == key
-    }
-
-    /// Ref: `DESIGN.md` §3.3
-    #[allow(dead_code)]
-    pub(crate) fn write_list_val_payload(
-        &mut self,
-        start_idx: usize,
-        val: &[u8],
-    ) -> Result<(), DBufError> {
-        let req = Self::required_list_val_buffers(val.len());
-        if req > DBUF_BUF_COUNT || start_idx + req > DBUF_BUF_COUNT {
-            return Err(DBufError::PayloadTooLarge);
-        }
-
-        let start_byte = start_idx * DBUF_BUF_SIZE;
-        let total_bytes = req * DBUF_BUF_SIZE;
-
-        let raw = self.payload_bytes_mut();
-        let frame = &mut raw[start_byte..start_byte + total_bytes];
-
-        let vlen_bytes = (val.len() as u16).to_le_bytes();
-        frame[CRC_SIZE] = vlen_bytes[0];
-        frame[CRC_SIZE + 1] = vlen_bytes[1];
-        frame[LIST_VAL_HEADER_SIZE..LIST_VAL_HEADER_SIZE + val.len()].copy_from_slice(val);
-        frame[LIST_VAL_HEADER_SIZE + val.len()..].fill(0);
-
-        let crc = turbo_crc::crc32c(&frame[CRC_SIZE..LIST_VAL_HEADER_SIZE + val.len()]);
-        frame[..CRC_SIZE].copy_from_slice(&crc.to_le_bytes());
-
-        Ok(())
+        let key_start = start_byte + DBUF_BUF_SIZE;
+        &raw[key_start..key_start + key.len()] == key
     }
 
     /// Inspect vlen at Bytes 4..5 of start buffer (Phase 1 of two-phase read)
@@ -455,14 +378,24 @@ pub(crate) fn write_kv_payload_spanned(
     let req = DBuf::required_kv_buffers(key.len(), val.len());
     let start_local_idx = (start_global_idx % (DBUF_BUF_COUNT as u32)) as usize;
 
-    let crc = if key.len() + val.len() <= 244 {
-        let mut stack_buf = [0u8; 256];
-        stack_buf[..key.len()].copy_from_slice(key);
-        stack_buf[key.len()..key.len() + val.len()].copy_from_slice(val);
+    let vlen = val.len() as u32;
+    let header = [
+        key.len() as u8,
+        (vlen & 0xFF) as u8,
+        ((vlen >> 8) & 0xFF) as u8,
+        ((vlen >> 0x10) & 0xFF) as u8,
+    ];
 
-        turbo_crc::crc32c(&stack_buf[..key.len() + val.len()])
+    let crc = if 4 + key.len() + val.len() <= 0x0100 {
+        let mut stack_buf = [0u8; 0x0100];
+        stack_buf[..4].copy_from_slice(&header);
+        stack_buf[4..4 + key.len()].copy_from_slice(key);
+        stack_buf[4 + key.len()..4 + key.len() + val.len()].copy_from_slice(val);
+
+        turbo_crc::crc32c(&stack_buf[..4 + key.len() + val.len()])
     } else {
-        let mut buf = Vec::with_capacity(key.len() + val.len());
+        let mut buf = Vec::with_capacity(4 + key.len() + val.len());
+        buf.extend_from_slice(&header);
         buf.extend_from_slice(key);
         buf.extend_from_slice(val);
 
@@ -470,7 +403,7 @@ pub(crate) fn write_kv_payload_spanned(
     };
 
     let crc_bytes = crc.to_le_bytes();
-    let streams: [&[u8]; 3] = [&crc_bytes, key, val];
+    let streams: [&[u8]; 4] = [&crc_bytes, &header, key, val];
 
     let mut stream_idx = 0;
     let mut stream_offset = 0;
@@ -529,6 +462,7 @@ pub(crate) fn read_kv_payload_spanned(
     let start_local_idx = (start_global_idx % (DBUF_BUF_COUNT as u32)) as usize;
 
     let mut crc_b = [0u8; CRC_SIZE];
+    let mut header_b = [0u8; 4];
     let mut key_buf = vec![0u8; klen];
     let mut val_buf = vec![0u8; vlen];
 
@@ -537,7 +471,7 @@ pub(crate) fn read_kv_payload_spanned(
         let mut target_offset = 0;
 
         let mut remaining_buffers = req;
-        let mut targets: [&mut [u8]; 3] = [&mut crc_b, &mut key_buf, &mut val_buf];
+        let mut targets: [&mut [u8]; 4] = [&mut crc_b, &mut header_b, &mut key_buf, &mut val_buf];
 
         for (pool_idx, dbuf) in dbufs.iter().enumerate() {
             if remaining_buffers == 0 {
@@ -578,11 +512,20 @@ pub(crate) fn read_kv_payload_spanned(
 
     let expected_crc = u32::from_le_bytes(crc_b);
 
-    let mut crc_check = Vec::with_capacity(klen + vlen);
-    crc_check.extend_from_slice(&key_buf);
-    crc_check.extend_from_slice(&val_buf);
+    let actual_crc = if 4 + klen + vlen <= 0x0100 {
+        let mut stack_buf = [0u8; 0x0100];
+        stack_buf[..4].copy_from_slice(&header_b);
+        stack_buf[4..4 + klen].copy_from_slice(&key_buf);
+        stack_buf[4 + klen..4 + klen + vlen].copy_from_slice(&val_buf);
+        turbo_crc::crc32c(&stack_buf[..4 + klen + vlen])
+    } else {
+        let mut crc_check = Vec::with_capacity(4 + klen + vlen);
+        crc_check.extend_from_slice(&header_b);
+        crc_check.extend_from_slice(&key_buf);
+        crc_check.extend_from_slice(&val_buf);
+        turbo_crc::crc32c(&crc_check)
+    };
 
-    let actual_crc = turbo_crc::crc32c(&crc_check);
     if actual_crc != expected_crc {
         return Err(DBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
     }
@@ -594,7 +537,14 @@ pub(crate) fn verify_key_spanned(dbufs: &[DBuf], start_global_idx: u32, key: &[u
     let mut key_offset = 0;
     let start_local_idx = (start_global_idx % (DBUF_BUF_COUNT as u32)) as usize;
 
-    let mut skip_crc = CRC_SIZE;
+    let raw0 = dbufs[0].payload_bytes();
+    let start_byte0 = start_local_idx * DBUF_BUF_SIZE;
+    let stored_klen = raw0[start_byte0 + 4] as usize;
+    if stored_klen != key.len() {
+        return false;
+    }
+
+    let mut skip_header = DBUF_BUF_SIZE;
     for (pool_idx, dbuf) in dbufs.iter().enumerate() {
         if key_offset == key.len() {
             break;
@@ -606,11 +556,11 @@ pub(crate) fn verify_key_spanned(dbufs: &[DBuf], start_global_idx: u32, key: &[u
         let raw = &dbuf.payload_bytes()[byte_start..byte_start + available_bytes];
 
         let mut raw_offset = 0;
-        if skip_crc > 0 {
-            let skip = std::cmp::min(skip_crc, raw.len());
+        if skip_header > 0 {
+            let skip = std::cmp::min(skip_header, raw.len());
 
             raw_offset += skip;
-            skip_crc -= skip;
+            skip_header -= skip;
         }
 
         let to_compare = std::cmp::min(key.len() - key_offset, raw.len() - raw_offset);
@@ -631,25 +581,32 @@ pub(crate) fn write_list_key_payload_spanned(
     dbufs: &mut [DBuf],
     start_global_idx: u32,
     key: &[u8],
+    adjarr_idx: u32,
 ) -> Result<(), DBufError> {
     let req = DBuf::required_list_key_buffers(key.len());
     let start_local_idx = (start_global_idx % (DBUF_BUF_COUNT as u32)) as usize;
 
-    let klen_byte = [key.len() as u8];
-    let crc = if key.len() <= 244 {
-        let mut stack_buf = [0u8; 256];
-        stack_buf[0] = klen_byte[0];
-        stack_buf[1..1 + key.len()].copy_from_slice(key);
-        turbo_crc::crc32c(&stack_buf[..1 + key.len()])
+    let header = [
+        key.len() as u8,
+        (adjarr_idx & 0xFF) as u8,
+        ((adjarr_idx >> 8) & 0xFF) as u8,
+        ((adjarr_idx >> 0x10) & 0xFF) as u8,
+    ];
+
+    let crc = if 4 + key.len() <= 0x0100 {
+        let mut stack_buf = [0u8; 0x0100];
+        stack_buf[..4].copy_from_slice(&header);
+        stack_buf[4..4 + key.len()].copy_from_slice(key);
+        turbo_crc::crc32c(&stack_buf[..4 + key.len()])
     } else {
-        let mut buf = Vec::with_capacity(1 + key.len());
-        buf.push(klen_byte[0]);
+        let mut buf = Vec::with_capacity(4 + key.len());
+        buf.extend_from_slice(&header);
         buf.extend_from_slice(key);
         turbo_crc::crc32c(&buf)
     };
 
     let crc_bytes = crc.to_le_bytes();
-    let streams: [&[u8]; 3] = [&crc_bytes, &klen_byte, key];
+    let streams: [&[u8]; 3] = [&crc_bytes, &header, key];
     let mut stream_idx = 0;
     let mut stream_offset = 0;
 
@@ -694,112 +651,8 @@ pub(crate) fn write_list_key_payload_spanned(
     Ok(())
 }
 
-#[allow(dead_code)]
-pub(crate) fn read_list_key_payload_spanned(
-    dbufs: &[DBuf],
-    start_global_idx: u32,
-    klen: usize,
-) -> Result<Vec<u8>, DBufError> {
-    let req = DBuf::required_list_key_buffers(klen);
-    let start_local_idx = (start_global_idx % (DBUF_BUF_COUNT as u32)) as usize;
-
-    let mut crc_b = [0u8; CRC_SIZE];
-    let mut klen_b = [0u8; 1];
-    let mut key_buf = vec![0u8; klen];
-
-    {
-        let mut targets: [&mut [u8]; 3] = [&mut crc_b, &mut klen_b, &mut key_buf];
-        let mut target_idx = 0;
-        let mut target_offset = 0;
-
-        let mut remaining_buffers = req;
-
-        for (pool_idx, dbuf) in dbufs.iter().enumerate() {
-            if remaining_buffers == 0 {
-                break;
-            }
-            let local_start = if pool_idx == 0 { start_local_idx } else { 0 };
-            let bufs_in_pool = std::cmp::min(DBUF_BUF_COUNT - local_start, remaining_buffers);
-            let bytes_in_pool = bufs_in_pool * DBUF_BUF_SIZE;
-            let byte_start = local_start * DBUF_BUF_SIZE;
-
-            let source = &dbuf.payload_bytes()[byte_start..byte_start + bytes_in_pool];
-            let mut source_offset = 0;
-
-            while target_idx < targets.len() && source_offset < source.len() {
-                let current_target = &mut targets[target_idx];
-                let available_in_source = source.len() - source_offset;
-                let needed_in_target = current_target.len() - target_offset;
-                let to_copy = std::cmp::min(available_in_source, needed_in_target);
-
-                current_target[target_offset..target_offset + to_copy]
-                    .copy_from_slice(&source[source_offset..source_offset + to_copy]);
-
-                target_offset += to_copy;
-                source_offset += to_copy;
-
-                if target_offset == current_target.len() {
-                    target_idx += 1;
-                    target_offset = 0;
-                }
-            }
-
-            remaining_buffers -= bufs_in_pool;
-        }
-    }
-
-    let expected_crc = u32::from_le_bytes(crc_b);
-    let mut crc_check = Vec::with_capacity(1 + klen);
-    crc_check.push(klen_b[0]);
-    crc_check.extend_from_slice(&key_buf);
-    let actual_crc = turbo_crc::crc32c(&crc_check);
-
-    if actual_crc != expected_crc {
-        return Err(DBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
-    }
-
-    Ok(key_buf)
-}
-
 pub(crate) fn verify_list_key_spanned(dbufs: &[DBuf], start_global_idx: u32, key: &[u8]) -> bool {
-    let mut key_offset = 0;
-    let start_local_idx = (start_global_idx % (DBUF_BUF_COUNT as u32)) as usize;
-    let mut skip_header = LIST_KEY_HEADER_SIZE;
-
-    let raw0 = dbufs[0].payload_bytes();
-    let start_byte0 = start_local_idx * DBUF_BUF_SIZE;
-    let stored_klen = raw0[start_byte0 + CRC_SIZE] as usize;
-    if stored_klen != key.len() {
-        return false;
-    }
-
-    for (pool_idx, dbuf) in dbufs.iter().enumerate() {
-        if key_offset == key.len() {
-            break;
-        }
-        let local_start = if pool_idx == 0 { start_local_idx } else { 0 };
-        let byte_start = local_start * DBUF_BUF_SIZE;
-        let available_bytes = (DBUF_BUF_COUNT - local_start) * DBUF_BUF_SIZE;
-        let raw = &dbuf.payload_bytes()[byte_start..byte_start + available_bytes];
-
-        let mut raw_offset = 0;
-        if skip_header > 0 {
-            let skip = std::cmp::min(skip_header, raw.len());
-            raw_offset += skip;
-            skip_header -= skip;
-        }
-
-        let to_compare = std::cmp::min(key.len() - key_offset, raw.len() - raw_offset);
-        if to_compare > 0 {
-            if raw[raw_offset..raw_offset + to_compare] != key[key_offset..key_offset + to_compare]
-            {
-                return false;
-            }
-            key_offset += to_compare;
-        }
-    }
-
-    key_offset == key.len()
+    verify_key_spanned(dbufs, start_global_idx, key)
 }
 
 pub(crate) fn write_list_val_payload_spanned(
@@ -811,8 +664,8 @@ pub(crate) fn write_list_val_payload_spanned(
     let start_local_idx = (start_global_idx % (DBUF_BUF_COUNT as u32)) as usize;
 
     let vlen_bytes = (val.len() as u16).to_le_bytes();
-    let crc = if val.len() <= 244 {
-        let mut stack_buf = [0u8; 256];
+    let crc = if val.len() <= 0xF4 {
+        let mut stack_buf = [0u8; 0x0100];
         stack_buf[0..2].copy_from_slice(&vlen_bytes);
         stack_buf[2..2 + val.len()].copy_from_slice(val);
         turbo_crc::crc32c(&stack_buf[..2 + val.len()])
@@ -986,10 +839,11 @@ mod tests {
 
     #[test]
     fn ok_dbuf_sizing_and_indexing() {
-        assert_eq!(DBuf::required_kv_buffers(2, 2), 1);
-        assert_eq!(DBuf::required_kv_buffers(4, 8), 2);
-        assert_eq!(DBuf::required_list_key_buffers(3), 1);
-        assert_eq!(DBuf::required_list_key_buffers(4), 2);
+        assert_eq!(DBuf::required_kv_buffers(2, 2), 2);
+        assert_eq!(DBuf::required_kv_buffers(4, 8), 3);
+        assert_eq!(DBuf::required_list_key_buffers(3), 2);
+        assert_eq!(DBuf::required_list_key_buffers(8), 2);
+        assert_eq!(DBuf::required_list_key_buffers(9), 3);
         assert_eq!(DBuf::required_list_val_buffers(2), 1);
         assert_eq!(DBuf::required_list_val_buffers(3), 2);
 
@@ -1018,33 +872,6 @@ mod tests {
     }
 
     #[test]
-    fn ok_dbuf_list_key_and_val_roundtrip() {
-        let mut dbuf = DBuf::new();
-        let key = b"events";
-        let val = b"list_item_payload";
-
-        let req_k = DBuf::required_list_key_buffers(key.len());
-        let start_k = dbuf.alloc_contiguous(req_k).unwrap();
-        dbuf.write_list_key_payload(start_k, key).unwrap();
-        assert!(dbuf.verify_list_key(start_k, key));
-        assert!(!dbuf.verify_list_key(start_k, b"wrong"));
-
-        let klen = dbuf.read_list_klen(start_k).unwrap();
-        assert_eq!(klen, key.len());
-        let read_k = dbuf.read_list_key_payload(start_k, klen).unwrap();
-        assert_eq!(read_k, key);
-
-        let req_v = DBuf::required_list_val_buffers(val.len());
-        let start_v = dbuf.alloc_contiguous(req_v).unwrap();
-        dbuf.write_list_val_payload(start_v, val).unwrap();
-
-        let vlen = dbuf.read_list_vlen(start_v).unwrap();
-        assert_eq!(vlen, val.len());
-        let read_v = dbuf.read_list_val_payload(start_v, vlen).unwrap();
-        assert_eq!(read_v, val);
-    }
-
-    #[test]
     fn err_dbuf_crc_mismatch() {
         let mut dbuf = DBuf::new();
         let key = b"k";
@@ -1055,7 +882,7 @@ mod tests {
         dbuf.write_kv_payload(start, key, val).unwrap();
 
         let raw = dbuf.payload_bytes_mut();
-        raw[start * DBUF_BUF_SIZE + CRC_SIZE] ^= 0xFF;
+        raw[start * DBUF_BUF_SIZE + 4] ^= 0xFF;
 
         let res = dbuf.read_kv_payload(start, key.len(), val.len());
         assert!(matches!(res, Err(DBufError::CrcMismatch { .. })));
@@ -1083,15 +910,15 @@ mod tests {
     fn ok_dbuf_spanned_payload_roundtrip() {
         let mut dbufs = vec![DBuf::new(); 3];
         let key = b"my_multi_dbuf_key";
-        let val = vec![0xABu8; 500];
+        let val = vec![0xABu8; 0x01F4];
 
-        let start_global = 25u32;
+        let start_global = 0x19u32;
         let req = DBuf::required_kv_buffers(key.len(), val.len());
-        assert_eq!(req, (4 + key.len() + val.len()).div_ceil(8));
+        assert_eq!(req, 1 + (key.len() + val.len()).div_ceil(8));
 
         let mut remaining = req;
         for (i, d) in dbufs.iter_mut().enumerate() {
-            let local_start = if i == 0 { 25 } else { 0 };
+            let local_start = if i == 0 { 0x19 } else { 0 };
             let count = std::cmp::min(DBUF_BUF_COUNT - local_start, remaining);
 
             mark_spanned_buffers(d, local_start, count);
@@ -1110,7 +937,7 @@ mod tests {
 
         let mut remaining = req;
         for (i, d) in dbufs.iter_mut().enumerate() {
-            let local_start = if i == 0 { 25 } else { 0 };
+            let local_start = if i == 0 { 0x19 } else { 0 };
             let count = std::cmp::min(DBUF_BUF_COUNT - local_start, remaining);
 
             unmark_spanned_buffers(d, local_start, count);
@@ -1122,34 +949,36 @@ mod tests {
     #[test]
     fn ok_dbuf_spanned_list_key_and_val_roundtrip() {
         let mut dbufs_k = vec![DBuf::new(); 2];
-        let key = vec![0x4B; 255]; // Max key (255 B) requires 33 buffers, spanning 2 DBufs
+        let key = vec![0x4B; 0xFF]; // Max key (255 B) requires 33 buffers, spanning 2 DBufs
         let req_k = DBuf::required_list_key_buffers(key.len());
-        assert_eq!(req_k, 33);
+        assert_eq!(req_k, 0x21);
 
-        let start_global_k = 10u32;
+        let start_global_k = 0x0Au32;
         let mut remaining = req_k;
         for (i, d) in dbufs_k.iter_mut().enumerate() {
-            let local_start = if i == 0 { 10 } else { 0 };
+            let local_start = if i == 0 { 0x0A } else { 0 };
             let count = std::cmp::min(DBUF_BUF_COUNT - local_start, remaining);
             mark_spanned_buffers(d, local_start, count);
             remaining -= count;
         }
 
-        write_list_key_payload_spanned(&mut dbufs_k, start_global_k, &key).unwrap();
+        write_list_key_payload_spanned(&mut dbufs_k, start_global_k, &key, 0x54321).unwrap();
         assert!(verify_list_key_spanned(&dbufs_k, start_global_k, &key));
         assert!(!verify_list_key_spanned(&dbufs_k, start_global_k, b"wrong"));
 
-        let read_k = read_list_key_payload_spanned(&dbufs_k, start_global_k, key.len()).unwrap();
-        assert_eq!(read_k, key);
+        let (pool_hop, local_idx) = DBuf::decompose_buf_idx(start_global_k);
+        let read_adjarr =
+            dbufs_k[pool_hop as usize].read_header_vlen_or_adjarr_index(local_idx).unwrap();
+        assert_eq!(read_adjarr, 0x54321);
 
         let mut dbufs_v = vec![DBuf::new(); 3];
-        let val = vec![0x99; 500]; // 500 B item
+        let val = vec![0x99; 0x01F4]; // 500 B item
         let req_v = DBuf::required_list_val_buffers(val.len());
-        let start_global_v = 20u32;
+        let start_global_v = 0x14u32;
 
         let mut remaining = req_v;
         for (i, d) in dbufs_v.iter_mut().enumerate() {
-            let local_start = if i == 0 { 20 } else { 0 };
+            let local_start = if i == 0 { 0x14 } else { 0 };
             let count = std::cmp::min(DBUF_BUF_COUNT - local_start, remaining);
             mark_spanned_buffers(d, local_start, count);
             remaining -= count;

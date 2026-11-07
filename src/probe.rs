@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::common::{BUCKET_ENTRIES, HASH_EMPTY, HASH_TOMBSTONE};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,7 +13,6 @@ pub(crate) type ProbeMatchFn = unsafe fn(&[u32; BUCKET_ENTRIES], u32) -> u32;
 pub(crate) type ProbeFullFn = unsafe fn(&[u32; BUCKET_ENTRIES], u32) -> SimdProbeMask;
 pub(crate) type ProbeKernelFn = ProbeFullFn;
 
-#[allow(dead_code)]
 #[inline(always)]
 pub(crate) unsafe fn probe_match_scalar(hashes: &[u32; BUCKET_ENTRIES], target: u32) -> u32 {
     let mut match_mask = 0u32;
@@ -58,7 +59,6 @@ pub(crate) unsafe fn probe_full_scalar(
 }
 
 #[inline(always)]
-#[allow(dead_code)]
 pub(crate) unsafe fn open_address_scalar(
     hashes: &[u32; BUCKET_ENTRIES],
     target: u32,
@@ -75,24 +75,30 @@ pub(crate) unsafe fn probe_match_sse2(hashes: &[u32; BUCKET_ENTRIES], target: u3
     let v_target = _mm_set1_epi32(target as i32);
 
     let h0 = _mm_loadu_si128(ptr);
-    let h1 = _mm_loadu_si128(ptr.add(0x01));
-    let h2 = _mm_loadu_si128(ptr.add(0x02));
-    let h3 = _mm_loadu_si128(ptr.add(0x03));
-    let h4 = _mm_loadu_si128(ptr.add(0x04));
+    let h1 = _mm_loadu_si128(ptr.add(1));
+    let h2 = _mm_loadu_si128(ptr.add(2));
+    let h3 = _mm_loadu_si128(ptr.add(3));
+    let h4 = _mm_loadu_si128(ptr.add(4));
+    let h5 = _mm_loadu_si128(ptr.add(5));
+    let h6 = _mm_loadu_si128(ptr.add(6));
+    let h7 = _mm_loadu_si128(ptr.add(7));
 
     let m0 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h0, v_target)));
     let m1 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h1, v_target)));
     let m2 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h2, v_target)));
     let m3 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h3, v_target)));
     let m4 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h4, v_target)));
+    let m5 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h5, v_target)));
+    let m6 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h6, v_target)));
+    let m7 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h7, v_target)));
 
-    let mut match_mask = (m0 | (m1 << 4) | (m2 << 8) | (m3 << 12) | (m4 << 16)) as u32;
-
-    if hashes[20] == target {
-        match_mask |= 1 << 20;
-    }
-
-    match_mask
+    (m0 | (m1 << 4)
+        | (m2 << 8)
+        | (m3 << 0x0C)
+        | (m4 << 0x10)
+        | (m5 << 0x14)
+        | (m6 << 0x18)
+        | (m7 << 0x1C)) as u32
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -107,49 +113,70 @@ pub(crate) unsafe fn probe_full_sse2(hashes: &[u32; BUCKET_ENTRIES], target: u32
     let v_tomb = _mm_set1_epi32(HASH_TOMBSTONE as i32);
 
     let h0 = _mm_loadu_si128(ptr);
-    let h1 = _mm_loadu_si128(ptr.add(0x01));
-    let h2 = _mm_loadu_si128(ptr.add(0x02));
-    let h3 = _mm_loadu_si128(ptr.add(0x03));
-    let h4 = _mm_loadu_si128(ptr.add(0x04));
+    let h1 = _mm_loadu_si128(ptr.add(1));
+    let h2 = _mm_loadu_si128(ptr.add(2));
+    let h3 = _mm_loadu_si128(ptr.add(3));
+    let h4 = _mm_loadu_si128(ptr.add(4));
+    let h5 = _mm_loadu_si128(ptr.add(5));
+    let h6 = _mm_loadu_si128(ptr.add(6));
+    let h7 = _mm_loadu_si128(ptr.add(7));
 
     let m0 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h0, v_target)));
     let m1 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h1, v_target)));
     let m2 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h2, v_target)));
     let m3 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h3, v_target)));
     let m4 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h4, v_target)));
-    let mut match_mask = (m0 | (m1 << 4) | (m2 << 8) | (m3 << 12) | (m4 << 16)) as u32;
+    let m5 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h5, v_target)));
+    let m6 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h6, v_target)));
+    let m7 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h7, v_target)));
+    let match_mask = (m0
+        | (m1 << 4)
+        | (m2 << 8)
+        | (m3 << 0x0C)
+        | (m4 << 0x10)
+        | (m5 << 0x14)
+        | (m6 << 0x18)
+        | (m7 << 0x1C)) as u32;
 
     let e0 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h0, v_empty)));
     let e1 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h1, v_empty)));
     let e2 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h2, v_empty)));
     let e3 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h3, v_empty)));
     let e4 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h4, v_empty)));
-    let mut empty_mask = (e0 | (e1 << 4) | (e2 << 8) | (e3 << 12) | (e4 << 16)) as u32;
+    let e5 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h5, v_empty)));
+    let e6 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h6, v_empty)));
+    let e7 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h7, v_empty)));
+    let empty_mask = (e0
+        | (e1 << 4)
+        | (e2 << 8)
+        | (e3 << 0x0C)
+        | (e4 << 0x10)
+        | (e5 << 0x14)
+        | (e6 << 0x18)
+        | (e7 << 0x1C)) as u32;
 
     let t0 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h0, v_tomb)));
     let t1 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h1, v_tomb)));
     let t2 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h2, v_tomb)));
     let t3 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h3, v_tomb)));
     let t4 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h4, v_tomb)));
-    let mut tomb_mask = (t0 | (t1 << 4) | (t2 << 8) | (t3 << 12) | (t4 << 16)) as u32;
-
-    let h20 = hashes[20];
-    if h20 == target {
-        match_mask |= 1 << 20;
-    }
-
-    if h20 == HASH_EMPTY {
-        empty_mask |= 1 << 20;
-    } else if h20 == HASH_TOMBSTONE {
-        tomb_mask |= 1 << 20;
-    }
+    let t5 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h5, v_tomb)));
+    let t6 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h6, v_tomb)));
+    let t7 = _mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(h7, v_tomb)));
+    let tomb_mask = (t0
+        | (t1 << 4)
+        | (t2 << 8)
+        | (t3 << 0x0C)
+        | (t4 << 0x10)
+        | (t5 << 0x14)
+        | (t6 << 0x18)
+        | (t7 << 0x1C)) as u32;
 
     SimdProbeMask { match_mask, empty_mask, tomb_mask }
 }
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "sse2")]
-#[allow(dead_code)]
 pub(crate) unsafe fn open_address_sse2(
     hashes: &[u32; BUCKET_ENTRIES],
     target: u32,
@@ -166,21 +193,16 @@ pub(crate) unsafe fn probe_match_avx2(hashes: &[u32; BUCKET_ENTRIES], target: u3
     let v_target = _mm256_set1_epi32(target as i32);
 
     let h0 = _mm256_loadu_si256(ptr);
-    let h1 = _mm256_loadu_si256(ptr.add(0x01));
+    let h1 = _mm256_loadu_si256(ptr.add(1));
+    let h2 = _mm256_loadu_si256(ptr.add(2));
+    let h3 = _mm256_loadu_si256(ptr.add(3));
 
     let m0 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h0, v_target)));
     let m1 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h1, v_target)));
-    let mut match_mask = ((m0 & 0xFF) | ((m1 & 0xFF) << 8)) as u32;
+    let m2 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h2, v_target)));
+    let m3 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h3, v_target)));
 
-    let mut i = 16;
-    while i < BUCKET_ENTRIES {
-        if hashes[i] == target {
-            match_mask |= 1 << i;
-        }
-        i += 1;
-    }
-
-    match_mask
+    ((m0 & 0xFF) | ((m1 & 0xFF) << 8) | ((m2 & 0xFF) << 0x10) | ((m3 & 0xFF) << 0x18)) as u32
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -195,42 +217,36 @@ pub(crate) unsafe fn probe_full_avx2(hashes: &[u32; BUCKET_ENTRIES], target: u32
     let v_tomb = _mm256_set1_epi32(HASH_TOMBSTONE as i32);
 
     let h0 = _mm256_loadu_si256(ptr);
-    let h1 = _mm256_loadu_si256(ptr.add(0x01));
+    let h1 = _mm256_loadu_si256(ptr.add(1));
+    let h2 = _mm256_loadu_si256(ptr.add(2));
+    let h3 = _mm256_loadu_si256(ptr.add(3));
 
     let m0 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h0, v_target)));
     let m1 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h1, v_target)));
-    let mut match_mask = ((m0 & 0xFF) | ((m1 & 0xFF) << 8)) as u32;
+    let m2 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h2, v_target)));
+    let m3 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h3, v_target)));
+    let match_mask =
+        ((m0 & 0xFF) | ((m1 & 0xFF) << 8) | ((m2 & 0xFF) << 0x10) | ((m3 & 0xFF) << 0x18)) as u32;
 
     let e0 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h0, v_empty)));
     let e1 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h1, v_empty)));
-    let mut empty_mask = ((e0 & 0xFF) | ((e1 & 0xFF) << 8)) as u32;
+    let e2 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h2, v_empty)));
+    let e3 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h3, v_empty)));
+    let empty_mask =
+        ((e0 & 0xFF) | ((e1 & 0xFF) << 8) | ((e2 & 0xFF) << 0x10) | ((e3 & 0xFF) << 0x18)) as u32;
 
     let t0 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h0, v_tomb)));
     let t1 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h1, v_tomb)));
-    let mut tomb_mask = ((t0 & 0xFF) | ((t1 & 0xFF) << 8)) as u32;
-
-    let mut i = 16;
-    while i < BUCKET_ENTRIES {
-        let h = hashes[i];
-        if h == target {
-            match_mask |= 1 << i;
-        }
-
-        if h == HASH_EMPTY {
-            empty_mask |= 1 << i;
-        } else if h == HASH_TOMBSTONE {
-            tomb_mask |= 1 << i;
-        }
-
-        i += 1;
-    }
+    let t2 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h2, v_tomb)));
+    let t3 = _mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(h3, v_tomb)));
+    let tomb_mask =
+        ((t0 & 0xFF) | ((t1 & 0xFF) << 8) | ((t2 & 0xFF) << 0x10) | ((t3 & 0xFF) << 0x18)) as u32;
 
     SimdProbeMask { match_mask, empty_mask, tomb_mask }
 }
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
-#[allow(dead_code)]
 pub(crate) unsafe fn open_address_avx2(
     hashes: &[u32; BUCKET_ENTRIES],
     target: u32,
@@ -253,23 +269,30 @@ pub(crate) unsafe fn probe_match_neon(hashes: &[u32; BUCKET_ENTRIES], target: u3
     }
 
     let h0 = vld1q_u32(ptr);
-    let h1 = vld1q_u32(ptr.add(0x04));
-    let h2 = vld1q_u32(ptr.add(0x08));
+    let h1 = vld1q_u32(ptr.add(4));
+    let h2 = vld1q_u32(ptr.add(8));
     let h3 = vld1q_u32(ptr.add(0x0C));
     let h4 = vld1q_u32(ptr.add(0x10));
+    let h5 = vld1q_u32(ptr.add(0x14));
+    let h6 = vld1q_u32(ptr.add(0x18));
+    let h7 = vld1q_u32(ptr.add(0x1C));
 
     let m0 = mask4_fast(vceqq_u32(h0, v_target), weights);
     let m1 = mask4_fast(vceqq_u32(h1, v_target), weights);
     let m2 = mask4_fast(vceqq_u32(h2, v_target), weights);
     let m3 = mask4_fast(vceqq_u32(h3, v_target), weights);
     let m4 = mask4_fast(vceqq_u32(h4, v_target), weights);
-    let mut match_mask = m0 | (m1 << 4) | (m2 << 8) | (m3 << 12) | (m4 << 16);
+    let m5 = mask4_fast(vceqq_u32(h5, v_target), weights);
+    let m6 = mask4_fast(vceqq_u32(h6, v_target), weights);
+    let m7 = mask4_fast(vceqq_u32(h7, v_target), weights);
 
-    if hashes[20] == target {
-        match_mask |= 1 << 20;
-    }
-
-    match_mask
+    m0 | (m1 << 4)
+        | (m2 << 8)
+        | (m3 << 0x0C)
+        | (m4 << 0x10)
+        | (m5 << 0x14)
+        | (m6 << 0x18)
+        | (m7 << 0x1C)
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -290,49 +313,70 @@ pub(crate) unsafe fn probe_full_neon(hashes: &[u32; BUCKET_ENTRIES], target: u32
     }
 
     let h0 = vld1q_u32(ptr);
-    let h1 = vld1q_u32(ptr.add(0x04));
-    let h2 = vld1q_u32(ptr.add(0x08));
+    let h1 = vld1q_u32(ptr.add(4));
+    let h2 = vld1q_u32(ptr.add(8));
     let h3 = vld1q_u32(ptr.add(0x0C));
     let h4 = vld1q_u32(ptr.add(0x10));
+    let h5 = vld1q_u32(ptr.add(0x14));
+    let h6 = vld1q_u32(ptr.add(0x18));
+    let h7 = vld1q_u32(ptr.add(0x1C));
 
     let m0 = mask4_fast(vceqq_u32(h0, v_target), weights);
     let m1 = mask4_fast(vceqq_u32(h1, v_target), weights);
     let m2 = mask4_fast(vceqq_u32(h2, v_target), weights);
     let m3 = mask4_fast(vceqq_u32(h3, v_target), weights);
     let m4 = mask4_fast(vceqq_u32(h4, v_target), weights);
-    let mut match_mask = m0 | (m1 << 4) | (m2 << 8) | (m3 << 12) | (m4 << 16);
+    let m5 = mask4_fast(vceqq_u32(h5, v_target), weights);
+    let m6 = mask4_fast(vceqq_u32(h6, v_target), weights);
+    let m7 = mask4_fast(vceqq_u32(h7, v_target), weights);
+    let match_mask = m0
+        | (m1 << 4)
+        | (m2 << 8)
+        | (m3 << 0x0C)
+        | (m4 << 0x10)
+        | (m5 << 0x14)
+        | (m6 << 0x18)
+        | (m7 << 0x1C);
 
     let e0 = mask4_fast(vceqq_u32(h0, v_empty), weights);
     let e1 = mask4_fast(vceqq_u32(h1, v_empty), weights);
     let e2 = mask4_fast(vceqq_u32(h2, v_empty), weights);
     let e3 = mask4_fast(vceqq_u32(h3, v_empty), weights);
     let e4 = mask4_fast(vceqq_u32(h4, v_empty), weights);
-    let mut empty_mask = e0 | (e1 << 4) | (e2 << 8) | (e3 << 12) | (e4 << 16);
+    let e5 = mask4_fast(vceqq_u32(h5, v_empty), weights);
+    let e6 = mask4_fast(vceqq_u32(h6, v_empty), weights);
+    let e7 = mask4_fast(vceqq_u32(h7, v_empty), weights);
+    let empty_mask = e0
+        | (e1 << 4)
+        | (e2 << 8)
+        | (e3 << 0x0C)
+        | (e4 << 0x10)
+        | (e5 << 0x14)
+        | (e6 << 0x18)
+        | (e7 << 0x1C);
 
     let t0 = mask4_fast(vceqq_u32(h0, v_tomb), weights);
     let t1 = mask4_fast(vceqq_u32(h1, v_tomb), weights);
     let t2 = mask4_fast(vceqq_u32(h2, v_tomb), weights);
     let t3 = mask4_fast(vceqq_u32(h3, v_tomb), weights);
     let t4 = mask4_fast(vceqq_u32(h4, v_tomb), weights);
-    let mut tomb_mask = t0 | (t1 << 4) | (t2 << 8) | (t3 << 12) | (t4 << 16);
-
-    let h20 = hashes[20];
-    if h20 == target {
-        match_mask |= 1 << 20;
-    }
-
-    if h20 == HASH_EMPTY {
-        empty_mask |= 1 << 20;
-    } else if h20 == HASH_TOMBSTONE {
-        tomb_mask |= 1 << 20;
-    }
+    let t5 = mask4_fast(vceqq_u32(h5, v_tomb), weights);
+    let t6 = mask4_fast(vceqq_u32(h6, v_tomb), weights);
+    let t7 = mask4_fast(vceqq_u32(h7, v_tomb), weights);
+    let tomb_mask = t0
+        | (t1 << 4)
+        | (t2 << 8)
+        | (t3 << 0x0C)
+        | (t4 << 0x10)
+        | (t5 << 0x14)
+        | (t6 << 0x18)
+        | (t7 << 0x1C);
 
     SimdProbeMask { match_mask, empty_mask, tomb_mask }
 }
 
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
-#[allow(dead_code)]
 pub(crate) unsafe fn open_address_neon(
     hashes: &[u32; BUCKET_ENTRIES],
     target: u32,
@@ -340,7 +384,6 @@ pub(crate) unsafe fn open_address_neon(
     probe_full_neon(hashes, target)
 }
 
-#[allow(dead_code)]
 pub(crate) fn select_probe_match_kernel() -> ProbeMatchFn {
     #[cfg(target_arch = "x86_64")]
     {
@@ -385,16 +428,13 @@ pub(crate) fn select_probe_full_kernel() -> ProbeFullFn {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn select_probe_kernel() -> ProbeKernelFn {
     select_probe_full_kernel()
 }
 
-#[allow(dead_code)]
 static PROBE_MATCH_KERNEL: std::sync::OnceLock<ProbeMatchFn> = std::sync::OnceLock::new();
 static PROBE_FULL_KERNEL: std::sync::OnceLock<ProbeFullFn> = std::sync::OnceLock::new();
 
-#[allow(dead_code)]
 #[inline(always)]
 pub(crate) fn probe_match_kernel() -> ProbeMatchFn {
     *PROBE_MATCH_KERNEL.get_or_init(select_probe_match_kernel)
@@ -405,7 +445,6 @@ pub(crate) fn probe_full_kernel() -> ProbeFullFn {
     *PROBE_FULL_KERNEL.get_or_init(select_probe_full_kernel)
 }
 
-#[allow(dead_code)]
 #[inline(always)]
 pub(crate) fn probe_kernel() -> ProbeKernelFn {
     probe_full_kernel()
@@ -465,7 +504,7 @@ mod tests {
         let mask = unsafe { probe_full_scalar(&hashes, 0x5442_4658) };
 
         assert_eq!(mask.match_mask, 0x00);
-        assert_eq!(mask.empty_mask, 0x001F_FFFF);
+        assert_eq!(mask.empty_mask, 0xFFFF_FFFF);
         assert_eq!(mask.tomb_mask, 0x00);
     }
 
@@ -476,7 +515,7 @@ mod tests {
 
         assert_eq!(mask.match_mask, 0x00);
         assert_eq!(mask.empty_mask, 0x00);
-        assert_eq!(mask.tomb_mask, 0x001F_FFFF);
+        assert_eq!(mask.tomb_mask, 0xFFFF_FFFF);
     }
 
     #[test]
@@ -486,14 +525,15 @@ mod tests {
         hashes[1] = HASH_TOMBSTONE;
         hashes[5] = 0x1234;
         hashes[8] = 0x1234;
-        hashes[20] = 0x1234;
+        hashes[0x14] = 0x1234;
+        hashes[0x1F] = 0x1234;
 
         let mask = unsafe { probe_full_scalar(&hashes, 0x1234) };
-        assert_eq!(mask.match_mask, (1 << 0) | (1 << 5) | (1 << 8) | (1 << 20));
+        assert_eq!(mask.match_mask, (1 << 0) | (1 << 5) | (1 << 8) | (1 << 0x14) | (1 << 0x1F));
         assert_eq!(mask.tomb_mask, 1 << 1);
 
         let m_only = unsafe { probe_match_scalar(&hashes, 0x1234) };
-        assert_eq!(m_only, (1 << 0) | (1 << 5) | (1 << 8) | (1 << 20));
+        assert_eq!(m_only, (1 << 0) | (1 << 5) | (1 << 8) | (1 << 0x14) | (1 << 0x1F));
     }
 
     #[test]
@@ -505,8 +545,9 @@ mod tests {
         mixed[1] = HASH_EMPTY;
         mixed[2] = HASH_TOMBSTONE;
         mixed[7] = target;
-        mixed[15] = target;
-        mixed[20] = target;
+        mixed[0x0F] = target;
+        mixed[0x14] = target;
+        mixed[0x1F] = target;
 
         let test_cases = [
             [0x02; BUCKET_ENTRIES],
@@ -541,8 +582,9 @@ mod tests {
         mixed[1] = HASH_EMPTY;
         mixed[2] = HASH_TOMBSTONE;
         mixed[7] = target;
-        mixed[15] = target;
-        mixed[20] = target;
+        mixed[0x0F] = target;
+        mixed[0x14] = target;
+        mixed[0x1F] = target;
 
         let test_cases = [
             [0x02; BUCKET_ENTRIES],
@@ -567,14 +609,15 @@ mod tests {
         let mut hashes = [HASH_EMPTY; BUCKET_ENTRIES];
         hashes[2] = 0xAA;
         hashes[8] = 0xAA;
-        hashes[20] = 0xAA;
+        hashes[0x14] = 0xAA;
+        hashes[0x1F] = 0xAA;
         hashes[9] = HASH_TOMBSTONE;
 
         let mask = probe_full(&hashes, 0xAA);
-        assert_eq!(mask.match_mask, (1 << 2) | (1 << 8) | (1 << 20));
+        assert_eq!(mask.match_mask, (1 << 2) | (1 << 8) | (1 << 0x14) | (1 << 0x1F));
         assert_eq!(mask.tomb_mask, 1 << 9);
 
         let match_mask = probe_match(&hashes, 0xAA);
-        assert_eq!(match_mask, (1 << 2) | (1 << 8) | (1 << 20));
+        assert_eq!(match_mask, (1 << 2) | (1 << 8) | (1 << 0x14) | (1 << 0x1F));
     }
 }

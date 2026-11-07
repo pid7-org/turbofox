@@ -14,10 +14,6 @@ pub(crate) const MODULE_ID: u8 = 0x46;
 /// Ref: `DESIGN.md` §8.2
 pub(crate) const DB_NAME_TAG: [u8; 4] = *b"tbfx";
 
-/// Ref: `DESIGN.md` §8.2
-#[allow(dead_code)]
-pub(crate) const DEFAULT_VERSION: u32 = 3;
-
 /// Ref: `DESIGN.md` §3.1
 pub(crate) const LAYOUT_VERSION: u32 = 3;
 
@@ -44,9 +40,9 @@ pub(crate) const METADATA_SLOT: u32 = 0;
 /// Ref: `DESIGN.md` §1, §3.3
 pub(crate) const DBUF_SIZE: usize = 0x0100;
 pub(crate) const DBUF_SLOTS: usize = 4;
-pub(crate) const DBUF_BUF_COUNT: usize = 31;
+pub(crate) const DBUF_BUF_COUNT: usize = 0x1F;
 pub(crate) const DBUF_BUF_SIZE: usize = 8;
-pub(crate) const DBUF_PAYLOAD_SIZE: usize = 248;
+pub(crate) const DBUF_PAYLOAD_SIZE: usize = 0xF8;
 pub(crate) const DBUF_FULL_BIT: u32 = 0x8000_0000;
 pub(crate) const DBUF_OCCUPANCY_MASK: u32 = 0x7FFF_FFFF;
 
@@ -59,28 +55,24 @@ pub(crate) const DATABUF_FULL_BIT: u32 = DBUF_FULL_BIT;
 pub(crate) const DATABUF_OCCUPANCY_MASK: u32 = DBUF_OCCUPANCY_MASK;
 
 pub(crate) const CRC_SIZE: usize = 4;
-pub(crate) const KV_HEADER_SIZE: usize = 4;
-pub(crate) const LIST_KEY_HEADER_SIZE: usize = 5;
+pub(crate) const KV_HEADER_SIZE: usize = 8;
+pub(crate) const LIST_KEY_HEADER_SIZE: usize = 8;
 pub(crate) const LIST_VAL_HEADER_SIZE: usize = 6;
-pub(crate) const LIST_KEY_INLINE_MAX: usize = 3;
+pub(crate) const LIST_KEY_INLINE_MAX: usize = 0;
 pub(crate) const LIST_VAL_INLINE_MAX: usize = 2;
 
 /// Ref: `DESIGN.md` §1, §3.1, §3.2
 pub(crate) const NODE_SIZE: usize = 0x40;
 pub(crate) const NODE_SLOTS: usize = 1;
-pub(crate) const NODE_CHILDREN: usize = 15;
+pub(crate) const NODE_CHILDREN: usize = 0x0F;
 pub(crate) const NODE_FLAG: u32 = 0x0000_0000;
-pub(crate) const BUCKET_FLAG: u32 = 0x0000_0001;
 
 pub(crate) const BUCKET_SIZE: usize = 0x0100;
 pub(crate) const BUCKET_SLOTS: usize = 4;
-pub(crate) const BUCKET_ENTRIES: usize = 21;
+pub(crate) const BUCKET_ENTRIES: usize = 0x20;
 pub(crate) const HASH_EMPTY: u32 = 0;
 pub(crate) const HASH_TOMBSTONE: u32 = 1;
 pub(crate) const MIN_VALID_HASH: u32 = 2;
-pub(crate) const LIST_FLAG_MASK: u8 = 0x80;
-pub(crate) const LIST_FLAG_BE: u32 = 0x8000_0000;
-pub(crate) const ADJ_ARR_IDX_MASK: u32 = 0x7FFF_FFFF;
 
 /// Maximum key length in bytes
 pub const MAX_KEY_LEN: usize = 0xFF;
@@ -94,7 +86,7 @@ pub(crate) const HASH_SLICES_PER_U32: u32 = 8;
 pub(crate) const MAX_TRIE_DEPTH: usize = 0x08;
 
 /// Ref: `DESIGN.md` §4.3
-pub(crate) const BUCKET_PROBE_LIMIT: usize = 21;
+pub(crate) const BUCKET_PROBE_LIMIT: usize = 0x20;
 
 /// Ref: `DESIGN.md` §1
 pub(crate) const PAGE_SIZE_4K: usize = 0x1000;
@@ -112,16 +104,16 @@ pub(crate) const ADJ_ARR_HEAD_SLOT: u32 = 0x02;
 pub(crate) const ADJ_ARR_TAIL_SLOT: u32 = 0x02;
 pub(crate) const DATABUF_HEAD_SLOT: u32 = 0x40;
 pub(crate) const INITIAL_BUCKET_START_SLOT: u32 = 0x04;
-pub(crate) const INITIAL_BUCKET_COUNT: usize = 15;
+pub(crate) const INITIAL_BUCKET_COUNT: usize = 0x0F;
 
 /// Ref: `DESIGN.md` §2
 pub(crate) const INITIAL_FREE_SLOT_MARKER: u32 = 0x80;
 pub(crate) const INITIAL_FOOTPRINT_SLOTS: u32 = 0x80;
 pub(crate) const INITIAL_FOOTPRINT_BYTES: usize = 0x2000;
 pub(crate) const INITIAL_ADJ_ARR_BLOCKS: usize = 1;
-pub(crate) const INITIAL_DATABUF_POOLS: usize = 15;
+pub(crate) const INITIAL_DATABUF_POOLS: usize = 0x0F;
 pub(crate) const INITIAL_EXTRA_NODES: usize = 4;
-pub(crate) const EXTRA_NODE_START_SLOT: u32 = 124;
+pub(crate) const EXTRA_NODE_START_SLOT: u32 = 0x7C;
 
 /// Ref: `DESIGN.md` §8.1
 pub(crate) const INITIAL_PAGES_4K: usize = 4;
@@ -275,10 +267,10 @@ mod tests {
 
     #[test]
     fn ok_capacity_proof_invariants() {
-        assert_eq!(MAX_DBUF_SLOT, 69273666);
-        assert_eq!(MAX_DATABUFS, 17318416);
+        assert_eq!(MAX_DBUF_SLOT, 0x0421_0842);
+        assert_eq!(MAX_DATABUFS, 0x0108_4210);
         assert_eq!(MAX_DB_LEN, 0x40_0000_0000);
-        assert_eq!(MAX_DB_LEN, 256 * 1024 * 1024 * 1024);
+        assert_eq!(MAX_DB_LEN, 0x0100 * 0x0400 * 0x0400 * 0x0400);
         assert_eq!(MAX_SLOTS, 1u64 << 0x20);
         assert_eq!((MAX_SLOTS as usize) * SLOT_SIZE, MAX_DB_LEN);
     }

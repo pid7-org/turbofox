@@ -95,30 +95,41 @@ fn ok_turbofox_list_clear_and_type_check() {
     assert!(!list.clear().unwrap());
 
     db.set(b"kv_entry", b"payload").unwrap();
-    let invalid_list = db.list(b"kv_entry");
-    assert!(matches!(invalid_list.append(b"fail"), Err(TurboError::InvalidType(_))));
+    let kv_and_list = db.list(b"kv_entry");
+    kv_and_list.append(b"item").unwrap();
+    assert_eq!(db.get(b"kv_entry").unwrap(), Some(b"payload".to_vec()));
+    assert_eq!(kv_and_list.len().unwrap(), 1);
 
     drop(list);
-    drop(invalid_list);
+    drop(kv_and_list);
     db.delete().unwrap();
 }
 
 /// Ref: `DESIGN.md` §7.3, §7.4
 #[test]
-fn ok_turbofox_list_del_via_engine() {
+fn ok_turbofox_list_del() {
     let dir = tempdir().unwrap();
     let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
     let list = db.list(b"engine_del_list");
     list.append(b"elem").unwrap();
-    drop(list);
 
     assert_eq!(db.total_entries(), 1);
-    assert!(db.del(b"engine_del_list").unwrap());
+    assert!(list.del().unwrap());
     assert_eq!(db.total_entries(), 0);
-    assert!(!db.del(b"engine_del_list").unwrap());
+    assert!(!list.del().unwrap());
 
+    // Also verify del_list alias
+    let list2 = db.list(b"alias_del_list");
+    list2.append(b"elem").unwrap();
+    assert_eq!(db.total_entries(), 1);
+    assert!(list2.del().unwrap());
+    assert_eq!(db.total_entries(), 0);
+    assert!(!list2.del().unwrap());
+
+    drop(list);
+    drop(list2);
     db.delete().unwrap();
 }
 
@@ -313,19 +324,23 @@ fn err_turbofox_list_limit_violations() {
     let oversized_item = vec![0x42; 0x0001_0000];
     assert!(matches!(normal_list.append(&oversized_item), Err(TurboError::PayloadTooLarge)));
 
-    // Cross-type safety
+    // Disjoint keyspaces coexistence
     db.set(b"type_kv_key", b"scalar_val").unwrap();
-    let mismatched_list = db.list(b"type_kv_key");
-    assert!(matches!(mismatched_list.append(b"v"), Err(TurboError::InvalidType(_))));
+    let dual_list = db.list(b"type_kv_key");
+    dual_list.append(b"v").unwrap();
+    assert_eq!(db.get(b"type_kv_key").unwrap(), Some(b"scalar_val".to_vec()));
+    assert_eq!(dual_list.len().unwrap(), 1);
 
     let list_key = db.list(b"type_list_key");
     list_key.append(b"elem").unwrap();
-    assert!(matches!(db.set(b"type_list_key", b"v"), Err(TurboError::InvalidType(_))));
+    db.set(b"type_list_key", b"v").unwrap();
+    assert_eq!(db.get(b"type_list_key").unwrap(), Some(b"v".to_vec()));
+    assert_eq!(list_key.len().unwrap(), 1);
 
     drop(empty_list);
     drop(long_key_list);
     drop(normal_list);
-    drop(mismatched_list);
+    drop(dual_list);
     drop(list_key);
     db.delete().unwrap();
 }

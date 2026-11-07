@@ -106,17 +106,21 @@ fn ok_turbofox_kv_tombstone_slot_reclaim() {
 
 /// Ref: `DESIGN.md` §3.2, §7.1
 #[test]
-fn err_turbofox_kv_cross_type_safety() {
+fn ok_turbofox_disjoint_keyspaces_coexistence() {
     let dir = tempdir().unwrap();
     let cfg = TurboCfg::manual(dir.path());
     let db = TurboFox::create(cfg).unwrap();
 
-    let list = db.list(b"list_key");
+    let list = db.list(b"shared_key");
     list.append(b"item").unwrap();
 
-    assert!(matches!(db.get(b"list_key"), Err(TurboError::InvalidType(_))));
-    assert!(matches!(db.set(b"list_key", b"v"), Err(TurboError::InvalidType(_))));
-    assert!(matches!(db.contains_key(b"list_key"), Err(TurboError::InvalidType(_))));
+    // With bit 31 partitioned hashing, KV and List keyspaces are completely disjoint
+    assert_eq!(db.get(b"shared_key").unwrap(), None);
+    assert!(!db.contains_key(b"shared_key").unwrap());
+    db.set(b"shared_key", b"v").unwrap();
+    assert_eq!(db.get(b"shared_key").unwrap(), Some(b"v".to_vec()));
+    assert_eq!(list.len().unwrap(), 1);
+    assert_eq!(list.first().unwrap(), Some(b"item".to_vec()));
 
     drop(list);
     db.delete().unwrap();

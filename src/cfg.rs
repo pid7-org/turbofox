@@ -550,4 +550,23 @@ mod tests {
             Err(TurboError::DatabaseFull)
         ));
     }
+
+    #[test]
+    fn ok_capacity_hint_with_list_and_combined() {
+        let hint_list = CapacityHint::new().with_list(0x64, 0x05, 0x20);
+        let p_list = hint_list.compute_initial_pages(PageSize::K4).unwrap();
+        assert!(p_list >= 0x04);
+
+        let combined = CapacityHint::new().with_kv(0x03E8, 0x10, 0x20).with_list(0x64, 0x05, 0x20);
+        let p_comb = combined.compute_initial_pages(PageSize::K4).unwrap();
+        assert!(p_comb >= p_list);
+    }
+
+    #[test]
+    fn ok_turbocfg_new_constructor() {
+        let cfg = TurboCfg::new("custom_dir", SyncMode::Manual);
+        assert_eq!(cfg.path, PathBuf::from("custom_dir"));
+        assert_eq!(cfg.sync_mode, SyncMode::Manual);
+        assert_eq!(cfg.sync_interval(), None);
+    }
 }

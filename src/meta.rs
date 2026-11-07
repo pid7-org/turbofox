@@ -1,6 +1,6 @@
 use crate::common::{
     EXTRA_NODE_START_SLOT, INITIAL_EXTRA_NODES, INITIAL_FREE_SLOT_MARKER, LAYOUT_VERSION, MAGIC,
-    METADATA_SIZE, PAGE_SIZE_4K, PAGE_SIZE_16K, PAGE_SIZE_64K, SLOT_ALIGN, SLOT_SIZE, Slot,
+    METADATA_SIZE, PAGE_SIZE_4K, PAGE_SIZE_16K, PAGE_SIZE_64K, SLOT_ALIGN, SLOT_SIZE,
 };
 
 /// Ref: `DESIGN.md` §3.1
@@ -120,18 +120,6 @@ impl Metadata {
         self.total_slots =
             if computed > (0xFFFF_FFFFu64) { 0xFFFF_FFFFu32 } else { computed as u32 };
     }
-
-    #[allow(dead_code)]
-    #[inline(always)]
-    pub(crate) fn as_slot(&self) -> &Slot {
-        unsafe { &*core::ptr::from_ref(self).cast() }
-    }
-
-    #[allow(dead_code)]
-    #[inline(always)]
-    pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
-        unsafe { &mut *core::ptr::from_mut(self).cast() }
-    }
 }
 
 #[cfg(test)]
@@ -201,13 +189,6 @@ mod tests {
         let max_meta = Metadata::new(PAGE_SIZE_4K as u32, LAYOUT_VERSION, 0x0400_0000);
         assert_eq!(max_meta.total_slots, 0xFFFF_FFFF);
         assert!(max_meta.validate(PAGE_SIZE_4K as u32, LAYOUT_VERSION));
-    }
-
-    #[test]
-    fn ok_metadata_slot_conversion() {
-        let meta = Metadata::new(PAGE_SIZE_4K as u32, LAYOUT_VERSION, 4);
-        let slot = meta.as_slot();
-        assert_eq!(&slot.0[..4], b"TBFX");
     }
 
     #[test]

@@ -22,20 +22,8 @@ impl AdjArrayEntry {
     }
 
     #[inline(always)]
-    #[allow(dead_code)]
-    pub(crate) const fn new(dbuf_idx: u32) -> Self {
-        Self { dbuf_idx }
-    }
-
-    #[inline(always)]
     pub(crate) fn is_empty(&self) -> bool {
         self.dbuf_idx == 0
-    }
-
-    #[inline(always)]
-    #[allow(dead_code)]
-    pub(crate) fn is_occupied(&self) -> bool {
-        self.dbuf_idx != 0
     }
 
     #[inline(always)]
@@ -133,12 +121,6 @@ impl AdjArrayList {
     }
 
     #[inline(always)]
-    #[allow(dead_code)]
-    pub(crate) fn entry_mut(&mut self, idx: usize) -> Option<&mut AdjArrayEntry> {
-        if idx < Self::ENTRY_COUNT { Some(&mut self.entries[idx]) } else { None }
-    }
-
-    #[inline(always)]
     pub(crate) const fn next_array(&self) -> u32 {
         self.next_arr_idx
     }
@@ -232,12 +214,6 @@ impl AdjArrayBlock {
     }
 
     #[inline(always)]
-    #[allow(dead_code)]
-    pub(crate) fn is_full(&self) -> bool {
-        (self.bmap & ADJ_ARR_OCCUPIED_MASK) == ADJ_ARR_OCCUPIED_MASK
-    }
-
-    #[inline(always)]
     pub(crate) fn is_array_occupied(&self, idx: usize) -> bool {
         // sanity check
         debug_assert!(idx < Self::ARRAY_COUNT);
@@ -293,26 +269,8 @@ impl AdjArrayBlock {
     }
 
     #[inline(always)]
-    #[allow(dead_code)]
-    pub(crate) fn as_slot(&self) -> &Slot {
-        unsafe { &*core::ptr::from_ref(self).cast() }
-    }
-
-    #[inline(always)]
-    #[allow(dead_code)]
-    pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
-        unsafe { &mut *core::ptr::from_mut(self).cast() }
-    }
-
-    #[inline(always)]
     pub(crate) fn as_slots(&self) -> &[Slot; ADJ_ARR_SLOTS] {
         unsafe { &*core::ptr::from_ref(self).cast() }
-    }
-
-    #[inline(always)]
-    #[allow(dead_code)]
-    pub(crate) fn as_slots_mut(&mut self) -> &mut [Slot; ADJ_ARR_SLOTS] {
-        unsafe { &mut *core::ptr::from_mut(self).cast() }
     }
 }
 
@@ -338,12 +296,10 @@ mod tests {
     fn ok_adjarr_entry_operations() {
         let mut entry = AdjArrayEntry::empty();
         assert!(entry.is_empty());
-        assert!(!entry.is_occupied());
         assert_eq!(entry.buf_idx(), 0);
 
         entry.set_buf_idx(0x0123_4567);
         assert!(!entry.is_empty());
-        assert!(entry.is_occupied());
         assert_eq!(entry.buf_idx(), 0x0123_4567);
 
         entry.clear();
@@ -411,7 +367,7 @@ mod tests {
     fn ok_adjarr_block_alloc_and_free() {
         let mut block = AdjArrayBlock::new();
         assert_eq!(block.next_block(), 0);
-        assert!(!block.is_full());
+        assert_eq!(block.bmap, 0);
 
         block.set_next_block(0x0012_3456);
         assert_eq!(block.next_block(), 0x0012_3456);
@@ -419,18 +375,16 @@ mod tests {
         for i in 0..AdjArrayBlock::ARRAY_COUNT {
             assert_eq!(block.alloc_array(), Some(i));
         }
-        assert!(block.is_full());
         assert_eq!(block.alloc_array(), None);
 
         let _ = block.array_mut(2).push(0x000A);
         assert_eq!(block.array(2).len(), 1);
         block.free_array(2);
-        assert!(!block.is_full());
         assert!(!block.is_array_occupied(2));
         assert_eq!(block.array(2).len(), 0);
 
         assert_eq!(block.alloc_array(), Some(2));
-        assert!(block.is_full());
+        assert_eq!(block.alloc_array(), None);
     }
 
     #[test]
@@ -440,10 +394,7 @@ mod tests {
         block.set_array_occupied(0, true);
         let _ = block.array_mut(0).push(0x0ABC_DEF0);
 
-        let slot = block.as_slot();
-        assert_eq!(slot.0.len(), 0x40);
-        assert_eq!(block.as_slot_mut().0.len(), 0x40);
+        assert_eq!(block.as_slots()[0].len(), 0x40);
         assert_eq!(block.as_slots().len(), 2);
-        assert_eq!(block.as_slots_mut().len(), 2);
     }
 }

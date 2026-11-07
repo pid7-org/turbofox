@@ -23,11 +23,6 @@ impl Default for Node {
 }
 
 impl Node {
-    #[allow(dead_code)]
-    pub(crate) const SIZE: usize = NODE_SIZE;
-    #[allow(dead_code)]
-    pub(crate) const CHILDREN: usize = NODE_CHILDREN;
-
     #[inline(always)]
     pub(crate) const fn new() -> Self {
         Self { flag: NODE_FLAG, bucket_indices: [0u32; NODE_CHILDREN] }
@@ -38,29 +33,21 @@ impl Node {
         Self { flag: NODE_FLAG, bucket_indices: children }
     }
 
-    #[allow(dead_code)]
     #[inline(always)]
-    pub(crate) fn child_slot(&self, idx: usize) -> u32 {
+    pub(crate) const fn is_child_node(&self, idx: usize) -> bool {
         debug_assert!(idx < NODE_CHILDREN);
-        self.bucket_indices[idx]
+        (self.flag & (1 << idx)) != 0
     }
 
-    #[allow(dead_code)]
     #[inline(always)]
-    pub(crate) fn set_child_slot(&mut self, idx: usize, slot: u32) {
+    pub(crate) fn set_child_node(&mut self, idx: usize) {
         debug_assert!(idx < NODE_CHILDREN);
-        self.bucket_indices[idx] = slot;
+        self.flag |= 1 << idx;
     }
 
     #[inline(always)]
     pub(crate) fn as_slot(&self) -> &Slot {
         unsafe { &*core::ptr::from_ref(self).cast() }
-    }
-
-    #[allow(dead_code)]
-    #[inline(always)]
-    pub(crate) fn as_slot_mut(&mut self) -> &mut Slot {
-        unsafe { &mut *core::ptr::from_mut(self).cast() }
     }
 }
 
@@ -82,12 +69,30 @@ mod tests {
         assert_eq!(node.flag, NODE_FLAG);
         assert_eq!(node.bucket_indices, [0u32; 15]);
 
-        node.set_child_slot(0, 0x04);
-        node.set_child_slot(0x0E, 0x3C);
-        assert_eq!(node.child_slot(0), 0x04);
-        assert_eq!(node.child_slot(0x0E), 0x3C);
+        node.bucket_indices[0] = 0x04;
+        node.bucket_indices[0x0E] = 0x3C;
+        assert_eq!(node.bucket_indices[0], 0x04);
+        assert_eq!(node.bucket_indices[0x0E], 0x3C);
 
         let slot_ref = node.as_slot();
         assert_eq!(slot_ref[0..4], NODE_FLAG.to_ne_bytes());
+    }
+
+    #[test]
+    fn ok_node_child_type_bitmap() {
+        let mut node = Node::new();
+        for i in 0..NODE_CHILDREN {
+            assert!(!node.is_child_node(i));
+        }
+
+        node.set_child_node(0);
+        node.set_child_node(7);
+        node.set_child_node(0x0E);
+
+        assert!(node.is_child_node(0));
+        assert!(node.is_child_node(7));
+        assert!(node.is_child_node(0x0E));
+        assert!(!node.is_child_node(1));
+        assert!(!node.is_child_node(0x0D));
     }
 }

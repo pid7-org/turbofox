@@ -397,4 +397,44 @@ mod tests {
         assert_eq!(block.as_slots()[0].len(), 0x40);
         assert_eq!(block.as_slots().len(), 2);
     }
+
+    #[test]
+    fn ok_adjarr_list_clear_and_default() {
+        let mut list = AdjArrayList::new();
+        assert_eq!(list, AdjArrayList::default());
+
+        let _ = list.push(0x0100);
+        let _ = list.push(0x0200);
+        list.set_next_array(0x0040);
+        assert!(!list.is_empty());
+        assert_eq!(list.len(), 2);
+        assert_eq!(list.next_array(), 0x0040);
+
+        list.clear();
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
+        assert_eq!(list.next_array(), 0);
+
+        let block_def = AdjArrayBlock::default();
+        let block_new = AdjArrayBlock::new();
+        assert_eq!(block_def, block_new);
+    }
+
+    #[test]
+    fn ok_adjarr_fragmented_allocation_order() {
+        let mut block = AdjArrayBlock::new();
+        for i in 0..AdjArrayBlock::ARRAY_COUNT {
+            assert_eq!(block.alloc_array(), Some(i));
+        }
+        assert_eq!(block.alloc_array(), None);
+
+        block.free_array(1);
+        block.free_array(3);
+        block.free_array(5);
+
+        assert_eq!(block.alloc_array(), Some(1));
+        assert_eq!(block.alloc_array(), Some(3));
+        assert_eq!(block.alloc_array(), Some(5));
+        assert_eq!(block.alloc_array(), None);
+    }
 }

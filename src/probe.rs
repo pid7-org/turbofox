@@ -620,4 +620,20 @@ mod tests {
         let match_mask = probe_match(&hashes, 0xAA);
         assert_eq!(match_mask, (1 << 2) | (1 << 8) | (1 << 0x14) | (1 << 0x1F));
     }
+
+    #[test]
+    fn ok_probe_boundary_indices_and_bit31() {
+        let mut hashes = [HASH_EMPTY; BUCKET_ENTRIES];
+        let target = 0x8000_5678;
+        hashes[0] = target;
+        hashes[0x1F] = target;
+
+        let mask = probe_full(&hashes, target);
+        assert_eq!(mask.match_mask, (1 << 0) | (1 << 0x1F));
+        assert_eq!(mask.tomb_mask, 0x00);
+        assert_eq!(mask.empty_mask, 0xFFFF_FFFF ^ ((1 << 0) | (1 << 0x1F)));
+
+        let match_mask = probe_match(&hashes, target);
+        assert_eq!(match_mask, (1 << 0) | (1 << 0x1F));
+    }
 }

@@ -248,4 +248,52 @@ mod tests {
         assert_eq!(b.as_slots()[0].len(), 0x40);
         assert_eq!(b.as_slots().len(), 4);
     }
+
+    #[test]
+    fn ok_bucket_set_list_and_entry() {
+        let mut b = Bucket::new();
+        let list_hash = LIST_HASH_BIT | 0x1122_3344;
+        b.set_list(2, list_hash, 0x05);
+        let entry = b.entry(2);
+        assert!(entry.is_list());
+        assert_eq!(entry.hash(), list_hash);
+        assert_eq!(entry.buf_idx(), 0x05);
+
+        b.set_entry(3, BucketEntry::new(0x5566_7788, 0x06));
+        let entry3 = b.entry(3);
+        assert!(!entry3.is_list());
+        assert_eq!(entry3.hash(), 0x5566_7788);
+        assert_eq!(entry3.buf_idx(), 0x06);
+    }
+
+    #[test]
+    fn ok_bucket_hash_collision_probing() {
+        let mut b = Bucket::new();
+        let collision_hash = 0x4444_5555;
+        b.set_kv(0, collision_hash, 10);
+        b.set_kv(1, collision_hash, 20);
+        b.set_kv(2, collision_hash, 30);
+
+        assert_eq!(b.probe_match(collision_hash, |slot| slot == 1), Some(1));
+        assert_eq!(b.probe_match(collision_hash, |slot| slot == 2), Some(2));
+        assert_eq!(b.probe_match(collision_hash, |_| false), None);
+
+        assert_eq!(b.probe(collision_hash, |slot| slot == 1), ProbeResult::Found(1));
+        assert_eq!(b.probe(collision_hash, |_| false), ProbeResult::Vacant(3));
+    }
+
+    #[test]
+    fn ok_bucket_tombstone_reuse_priority() {
+        let mut b = Bucket::new();
+        b.set_kv(0, 0x1000, 1);
+        b.set_kv(1, 0x2000, 2);
+        b.set_kv(2, 0x3000, 3);
+
+        b.mark_tombstone(0);
+        b.mark_tombstone(1);
+
+        assert_eq!(b.probe(0x9999, |_| false), ProbeResult::Vacant(0));
+        b.set_kv(0, 0x9999, 4);
+        assert_eq!(b.probe(0xAAAA, |_| false), ProbeResult::Vacant(1));
+    }
 }

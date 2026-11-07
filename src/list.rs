@@ -497,10 +497,73 @@ mod tests {
         assert_eq!(cloned.next(), Some(b"two".to_vec()));
         assert_eq!(cloned.next(), Some(b"three".to_vec()));
         assert_eq!(cloned.next(), None);
+        assert_eq!(cloned.next(), None);
 
         assert_eq!(iter.next(), Some(b"two".to_vec()));
         assert_eq!(iter.next(), Some(b"three".to_vec()));
         assert_eq!(iter.next(), None);
+        assert_eq!(iter.next(), None);
         assert_eq!(iter.len(), 0);
+    }
+
+    #[test]
+    fn ok_turbolist_crud_lifecycle() {
+        use crate::{TurboCfg, TurboFox};
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let db = TurboFox::create(cfg).unwrap();
+
+        let list = db.list(b"sensor_log");
+        assert_eq!(list.key(), b"sensor_log");
+        assert!(list.is_empty().unwrap());
+        assert_eq!(list.len().unwrap(), 0);
+        assert_eq!(list.first().unwrap(), None);
+        assert_eq!(list.last().unwrap(), None);
+        assert_eq!(list.get_at(0).unwrap(), None);
+        assert_eq!(list.get_at(0x0A).unwrap(), None);
+        assert!(!list.clear().unwrap());
+
+        let t1 = list.append(b"reading_1").unwrap();
+        assert!(t1.epoch() > 0);
+        assert!(!list.is_empty().unwrap());
+        assert_eq!(list.len().unwrap(), 1);
+        assert_eq!(list.first().unwrap().as_deref(), Some(&b"reading_1"[..]));
+        assert_eq!(list.last().unwrap().as_deref(), Some(&b"reading_1"[..]));
+        assert_eq!(list.get_at(0).unwrap().as_deref(), Some(&b"reading_1"[..]));
+        assert_eq!(list.get_at(1).unwrap(), None);
+
+        let t2 = list.append(b"reading_2").unwrap();
+        assert!(t2.epoch() >= t1.epoch());
+        let t3 = list.append(b"reading_3").unwrap();
+        assert!(t3.epoch() >= t2.epoch());
+        assert_eq!(list.len().unwrap(), 3);
+        assert_eq!(list.first().unwrap().as_deref(), Some(&b"reading_1"[..]));
+        assert_eq!(list.last().unwrap().as_deref(), Some(&b"reading_3"[..]));
+        assert_eq!(list.get_at(1).unwrap().as_deref(), Some(&b"reading_2"[..]));
+        assert_eq!(list.get_at(2).unwrap().as_deref(), Some(&b"reading_3"[..]));
+
+        let items: Vec<Vec<u8>> = list.iter().unwrap().collect();
+        assert_eq!(
+            items,
+            vec![b"reading_1".to_vec(), b"reading_2".to_vec(), b"reading_3".to_vec()]
+        );
+
+        assert_eq!(list.pop().unwrap().as_deref(), Some(&b"reading_3"[..]));
+        assert_eq!(list.len().unwrap(), 2);
+
+        assert!(list.clear().unwrap());
+        assert!(list.is_empty().unwrap());
+        assert_eq!(list.len().unwrap(), 0);
+        assert_eq!(list.pop().unwrap(), None);
+
+        assert!(!list.del().unwrap());
+        let _ = list.append(b"temp").unwrap();
+        assert!(list.del().unwrap());
+        assert!(list.is_empty().unwrap());
+
+        drop(list);
+        db.delete().unwrap();
     }
 }

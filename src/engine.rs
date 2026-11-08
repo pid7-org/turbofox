@@ -15,6 +15,7 @@ use crate::dbuf::{
 };
 use crate::error::{TurboError, TurboResult};
 use crate::hash::{hash_kv_key, hash_list_key, trie_child_idx};
+use crate::list::ListEntryRef;
 use crate::meta::Metadata;
 use crate::node::Node;
 use crate::ticket::TurboTicket;
@@ -2530,8 +2531,25 @@ impl Engine {
         }
     }
 
+    pub(crate) fn read_list_item_descriptor(&self, r: &ListEntryRef) -> Option<Vec<u8>> {
+        let block =
+            self.mmap.read_exact::<AdjArrayBlock, _, _>(r.block_slot as usize, |b| *b).ok()?;
+
+        if (r.local_arr as usize) >= AdjArrayBlock::ARRAY_COUNT {
+            return None;
+        }
+
+        let array = block.array(r.local_arr as usize);
+        let entry = array.entry(r.entry_idx as usize)?;
+        if entry.is_empty() || entry.buf_idx() != r.expected_buf_idx {
+            return None;
+        }
+
+        self.read_list_item_payload(r.expected_buf_idx).ok()
+    }
+
     /// Ref: `DESIGN.md` §7.4
-    pub(crate) fn list_items(&self, key: &[u8]) -> TurboResult<Vec<Vec<u8>>> {
+    pub(crate) fn list_item_descriptors(&self, key: &[u8]) -> TurboResult<Vec<ListEntryRef>> {
         if key.is_empty() || key.len() > MAX_KEY_LEN {
             return Ok(Vec::new());
         }
@@ -2554,7 +2572,7 @@ impl Engine {
 
             let entry = bucket.entry(target_entry_idx);
             let mut curr_arr_idx = self.read_list_adjarr_idx(entry.buf_idx())?;
-            let mut items = Vec::new();
+            let mut descriptors = Vec::new();
             let mut retry_needed = false;
 
             loop {
@@ -2580,13 +2598,12 @@ impl Engine {
                     if let Some(e) = array.entry(i)
                         && !e.is_empty()
                     {
-                        match self.read_list_item_payload(e.buf_idx()) {
-                            Ok(payload) => items.push(payload),
-                            Err(_) => {
-                                retry_needed = true;
-                                break;
-                            }
-                        }
+                        descriptors.push(ListEntryRef {
+                            block_slot: block_slot as u32,
+                            local_arr: local_arr as u8,
+                            entry_idx: i as u8,
+                            expected_buf_idx: e.buf_idx(),
+                        });
                     }
                 }
 
@@ -2603,7 +2620,7 @@ impl Engine {
 
             let current_slot = self.mmap.read_exact::<Slot, _, _>(orig_bucket_slot, |s| *s)?;
             if !retry_needed && current_slot == orig_slot {
-                return Ok(items);
+                return Ok(descriptors);
             }
 
             Self::occ_backoff(attempt);
@@ -2615,8 +2632,21 @@ impl Engine {
         if bucket.probe_match(hash, |idx| self.match_list_key(&bucket.entry(idx), key)).is_none() {
             Ok(Vec::new())
         } else {
-            Err(TurboError::ResourceBusy("list items retry limit exceeded"))
+            Err(TurboError::ResourceBusy("list item descriptors retry limit exceeded"))
         }
+    }
+
+    /// Ref: `DESIGN.md` §7.4
+    #[cfg(test)]
+    pub(crate) fn list_items(&self, key: &[u8]) -> TurboResult<Vec<Vec<u8>>> {
+        let descriptors = self.list_item_descriptors(key)?;
+        let mut items = Vec::with_capacity(descriptors.len());
+        for desc in &descriptors {
+            if let Some(item) = self.read_list_item_descriptor(desc) {
+                items.push(item);
+            }
+        }
+        Ok(items)
     }
 
     /// Ref: `DESIGN.md` §7.4

@@ -355,9 +355,9 @@ impl TurboList {
     /// ```
     #[inline(always)]
     pub fn iter(&self) -> TurboResult<TurboListIter> {
-        let items = self.engine.list_items(&self.key)?;
+        let entries = self.engine.list_item_descriptors(&self.key)?;
 
-        Ok(TurboListIter { items, index: 0 })
+        Ok(TurboListIter { engine: Arc::clone(&self.engine), entries, index: 0 })
     }
 
     /// Remove [`crate::TurboList`] and delete all its items from storage
@@ -452,9 +452,26 @@ impl TurboList {
 /// drop(list);
 /// db.delete().unwrap();
 /// ```
+/// Reference to an entry slot in an [`crate::adjarr::AdjArrayBlock`] for lazy payload loading
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ListEntryRef {
+    pub(crate) block_slot: u32,
+    pub(crate) local_arr: u8,
+    pub(crate) entry_idx: u8,
+    pub(crate) expected_buf_idx: u32,
+}
+
+/// Iterator yielding owned byte payloads from a [`TurboList`]
+///
+/// Lazily streams payloads from memory-mapped blocks on demand with pre-read validation
+///
+/// Implements [`ExactSizeIterator`] reflecting snapshot count at creation time; halts
+/// early if concurrent mutations remove trailing elements
 #[derive(Debug, Clone)]
 pub struct TurboListIter {
-    items: Vec<Vec<u8>>,
+    engine: Arc<Engine>,
+    entries: Vec<ListEntryRef>,
     index: usize,
 }
 
@@ -463,9 +480,15 @@ impl Iterator for TurboListIter {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.items.len() {
-            let item = self.items[self.index].clone();
+        if self.index < self.entries.len() {
+            let r = self.entries[self.index];
             self.index += 1;
+
+            let Some(item) = self.engine.read_list_item_descriptor(&r) else {
+                self.index = self.entries.len();
+                return None;
+            };
+
             Some(item)
         } else {
             None
@@ -474,7 +497,7 @@ impl Iterator for TurboListIter {
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let rem = self.items.len().saturating_sub(self.index);
+        let rem = self.entries.len().saturating_sub(self.index);
         (rem, Some(rem))
     }
 }
@@ -483,21 +506,38 @@ impl ExactSizeIterator for TurboListIter {}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn ok_list_iter_empty() {
-        let mut iter = TurboListIter { items: Vec::new(), index: 0 };
+        use crate::{TurboCfg, TurboFox};
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
+        let list = db.list(b"empty_list");
+        let mut iter = list.iter().unwrap();
         assert_eq!(iter.len(), 0);
         assert_eq!(iter.size_hint(), (0, Some(0)));
         assert_eq!(iter.next(), None);
         assert!(format!("{:?}", iter).contains("TurboListIter"));
+
+        drop(iter);
+        drop(list);
+        db.delete().unwrap();
     }
 
     #[test]
     fn ok_list_iter_traversal_and_clone() {
-        let items = vec![b"one".to_vec(), b"two".to_vec(), b"three".to_vec()];
-        let mut iter = TurboListIter { items, index: 0 };
+        use crate::{TurboCfg, TurboFox};
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
+        let list = db.list(b"items_list");
+        let _ = list.append(b"one").unwrap();
+        let _ = list.append(b"two").unwrap();
+        let _ = list.append(b"three").unwrap();
+
+        let mut iter = list.iter().unwrap();
         assert_eq!(iter.len(), 3);
         assert_eq!(iter.size_hint(), (3, Some(3)));
 
@@ -516,6 +556,102 @@ mod tests {
         assert_eq!(iter.next(), None);
         assert_eq!(iter.next(), None);
         assert_eq!(iter.len(), 0);
+
+        drop(cloned);
+        drop(iter);
+        drop(list);
+        db.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_list_iter_concurrent_pop_terminates_gracefully() {
+        use crate::{TurboCfg, TurboFox};
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
+        let list = db.list(b"concurrent_pop_list");
+        let _ = list.append(b"val_1").unwrap();
+        let _ = list.append(b"val_2").unwrap();
+        let _ = list.append(b"val_3").unwrap();
+
+        let mut iter = list.iter().unwrap();
+        assert_eq!(iter.len(), 3);
+
+        // Read first item
+        assert_eq!(iter.next(), Some(b"val_1".to_vec()));
+        assert_eq!(iter.len(), 2);
+
+        // Concurrent pop removes tail item ("val_3")
+        assert_eq!(list.pop().unwrap(), Some(b"val_3".to_vec()));
+        assert_eq!(list.len().unwrap(), 2);
+
+        // Read second item ("val_2") which is still in the list
+        assert_eq!(iter.next(), Some(b"val_2".to_vec()));
+
+        // Read third item: was popped from tail, so iter terminates early with None
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.len(), 0);
+
+        drop(iter);
+        drop(list);
+        db.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_list_iter_concurrent_clear_terminates_gracefully() {
+        use crate::{TurboCfg, TurboFox};
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
+        let list = db.list(b"concurrent_clear_list");
+        let _ = list.append(b"val_a").unwrap();
+        let _ = list.append(b"val_b").unwrap();
+
+        let mut iter = list.iter().unwrap();
+        assert_eq!(iter.len(), 2);
+
+        // Clear the entire list
+        assert!(list.clear().unwrap());
+        assert_eq!(list.len().unwrap(), 0);
+
+        // Iteration immediately stops
+        assert_eq!(iter.next(), None);
+        assert_eq!(iter.len(), 0);
+
+        drop(iter);
+        drop(list);
+        db.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_list_iter_concurrent_append_boundary() {
+        use crate::{TurboCfg, TurboFox};
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
+        let list = db.list(b"concurrent_append_list");
+        let _ = list.append(b"first").unwrap();
+        let _ = list.append(b"second").unwrap();
+
+        let mut iter = list.iter().unwrap();
+        assert_eq!(iter.len(), 2);
+
+        // Append new items while iterator is open
+        let _ = list.append(b"third").unwrap();
+        let _ = list.append(b"fourth").unwrap();
+        assert_eq!(list.len().unwrap(), 4);
+
+        // Iterator yields only the snapshot items
+        assert_eq!(iter.next(), Some(b"first".to_vec()));
+        assert_eq!(iter.next(), Some(b"second".to_vec()));
+        assert_eq!(iter.next(), None);
+
+        drop(iter);
+        drop(list);
+        db.delete().unwrap();
     }
 
     #[test]

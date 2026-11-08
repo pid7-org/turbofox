@@ -401,3 +401,78 @@ fn ok_turbofox_list_spanned_reopen_and_durability() {
         db.delete().unwrap();
     }
 }
+
+/// Ref: `DESIGN.md` §3.4, §7.4
+#[test]
+fn ok_turbofox_list_iter_multi_block_chained() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::manual(dir.path());
+    let db = TurboFox::create(cfg).unwrap();
+    let list = db.list(b"chained_iter_list");
+
+    let count = 0x40usize;
+    for i in 0..count {
+        let payload = format!("item_{:04x}", i).into_bytes();
+        let _ = list.append(&payload).unwrap();
+    }
+    assert_eq!(list.len().unwrap(), count);
+
+    let mut iter = list.iter().unwrap();
+    assert_eq!(iter.len(), count);
+
+    for i in 0..count {
+        let expected = format!("item_{:04x}", i).into_bytes();
+        assert_eq!(iter.next(), Some(expected));
+    }
+    assert_eq!(iter.next(), None);
+
+    drop(iter);
+    drop(list);
+    db.delete().unwrap();
+}
+
+/// Ref: `DESIGN.md` §7.4
+#[test]
+fn ok_turbofox_list_iter_interleaved_mutations() {
+    let dir = tempdir().unwrap();
+    let cfg = TurboCfg::manual(dir.path());
+    let db = TurboFox::create(cfg).unwrap();
+    let list = db.list(b"interleaved_list");
+
+    for i in 0..10usize {
+        let payload = vec![i as u8; 0x80];
+        let _ = list.append(&payload).unwrap();
+    }
+    assert_eq!(list.len().unwrap(), 10);
+
+    let mut iter = list.iter().unwrap();
+    assert_eq!(iter.len(), 10);
+
+    // Yield items 0..4
+    for i in 0..4usize {
+        assert_eq!(iter.next(), Some(vec![i as u8; 0x80]));
+    }
+
+    // Concurrent pop items 9, 8, 7 from tail
+    assert_eq!(list.pop().unwrap(), Some(vec![9u8; 0x80]));
+    assert_eq!(list.pop().unwrap(), Some(vec![8u8; 0x80]));
+    assert_eq!(list.pop().unwrap(), Some(vec![7u8; 0x80]));
+    assert_eq!(list.len().unwrap(), 7);
+
+    // Concurrent append an 11th item
+    let _ = list.append(&[0xFF; 0x80]).unwrap();
+    assert_eq!(list.len().unwrap(), 8);
+
+    // Yield items 4, 5, 6 which are still valid
+    for i in 4..7usize {
+        assert_eq!(iter.next(), Some(vec![i as u8; 0x80]));
+    }
+
+    // Item 7 was popped from tail, so iter terminates early at popped boundary
+    assert_eq!(iter.next(), None);
+    assert_eq!(iter.len(), 0);
+
+    drop(iter);
+    drop(list);
+    db.delete().unwrap();
+}

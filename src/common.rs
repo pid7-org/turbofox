@@ -74,9 +74,15 @@ pub(crate) const HASH_EMPTY: u32 = 0;
 pub(crate) const HASH_TOMBSTONE: u32 = 1;
 pub(crate) const MIN_VALID_HASH: u32 = 2;
 
-/// Maximum key length in bytes
+/// Maximum key length in bytes (`0xFF` / 255 B)
+///
+/// keys exceeding this limit trigger [`crate::TurboError::PayloadTooLarge`]
 pub const MAX_KEY_LEN: usize = 0xFF;
-/// Maximum value length in bytes
+
+/// Maximum value payload length in bytes (`0xFFFF` / 65,535 B) for key-value entries and list
+/// items
+///
+/// payloads exceeding this limit trigger [`crate::TurboError::PayloadTooLarge`]
 pub const MAX_VAL_LEN: usize = 0xFFFF;
 
 /// Ref: `DESIGN.md` §4.1, §4.2

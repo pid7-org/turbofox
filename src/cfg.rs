@@ -35,7 +35,7 @@ use std::{path::PathBuf, time::Duration};
 ///
 /// ## Example
 ///
-/// ```
+/// ```rust
 /// use turbofox::CapacityHint;
 ///
 /// let hint = CapacityHint::new()
@@ -57,7 +57,7 @@ impl CapacityHint {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```rust
     /// use turbofox::CapacityHint;
     ///
     /// let hint = CapacityHint::new();
@@ -78,7 +78,7 @@ impl CapacityHint {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```rust
     /// use turbofox::CapacityHint;
     ///
     /// let hint = CapacityHint::new().with_kv(0x0001_86A0, 0x10, 0x20);
@@ -101,7 +101,7 @@ impl CapacityHint {
     ///
     /// ## Example
     ///
-    /// ```
+    /// ```rust
     /// use turbofox::CapacityHint;
     ///
     /// let hint = CapacityHint::new().with_list(0x1388, 0x0A, 0x40);

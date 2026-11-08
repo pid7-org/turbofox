@@ -13,7 +13,7 @@
 //! let ticket = db.set(b"key", b"value").unwrap();
 //! db.sync().unwrap();
 //!
-//! assert!(ticket.epoch() > 0);
+//! assert!(ticket.epoch() > 0x00);
 //! assert!(ticket.wait().is_ok());
 //!
 //! db.delete().unwrap();
@@ -27,6 +27,9 @@ use frozen_core::ack::AckTicket;
 /// Wraps an underlying [`AckTicket`]; safe to clone or pass across threads to monitor writeback
 /// completion
 ///
+/// Durability barriers are epoch-cumulative; establishing durability for epoch $E$ mathematically
+/// guarantees all mutations with epochs $\le E$ are committed to physical media
+///
 /// ## Example
 ///
 /// ```
@@ -37,7 +40,7 @@ use frozen_core::ack::AckTicket;
 /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
 ///
 /// let ticket = db.set(b"key", b"value").unwrap();
-/// assert!(ticket.epoch() > 0);
+/// assert!(ticket.epoch() > 0x00);
 ///
 /// db.delete().unwrap();
 /// ```
@@ -67,7 +70,7 @@ impl TurboTicket {
     /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let ticket = db.set(b"key", b"value").unwrap();
     ///
-    /// assert!(ticket.epoch() > 0);
+    /// assert!(ticket.epoch() > 0x00);
     ///
     /// db.delete().unwrap();
     /// ```
@@ -103,7 +106,7 @@ impl TurboTicket {
     /// Block until this write and all prior writes are flushed to disk
     ///
     /// Parks the calling thread on an internal condition variable until the background sync worker
-    /// or an explicit flush reaches this ticket's epoch; returns the confirmed durable epoch
+    /// or an explicit flush reaches this ticket's epoch; returns confirmed durable epoch
     ///
     /// ## Errors
     ///
@@ -134,7 +137,7 @@ impl TurboTicket {
     /// `force` triggers an immediate `msync` sequence to persist dirty pages without delay
     ///
     /// Returns immediately if this write is already durable; otherwise blocks until disk
-    /// synchronization completes and returns the confirmed durable epoch
+    /// synchronization completes and returns confirmed durable epoch
     ///
     /// ## Errors
     ///

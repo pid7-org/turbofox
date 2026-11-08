@@ -20,7 +20,7 @@
 //! assert!(matches!(check_capacity(0x2000), Err(TurboError::PayloadTooLarge)));
 //! ```
 
-/// Specialized [`Result`] type alias for [`crate::TurboFox`] engine operations which returns a
+/// Specialized [`Result`] type alias for [`crate::TurboFox`] engine operations returning a
 /// [`TurboError`] on failure
 ///
 /// ## Example
@@ -30,18 +30,21 @@
 ///
 /// fn sample_op(succeed: bool) -> TurboResult<u32> {
 ///     if succeed {
-///         Ok(1)
+///         Ok(0x01)
 ///     } else {
 ///         Err(TurboError::InvalidMagic)
 ///     }
 /// }
 ///
-/// assert_eq!(sample_op(true).unwrap(), 1);
+/// assert_eq!(sample_op(true).unwrap(), 0x01);
 /// assert!(sample_op(false).is_err());
 /// ```
 pub type TurboResult<T> = Result<T, TurboError>;
 
-/// [`crate::TurboFox`] engine error variants
+/// [`crate::TurboFox`] engine error taxonomy
+///
+/// Categorizes failure modes across memory mapping, physical NVMe writeback, format validation,
+/// slot allocation, and optimistic concurrency control
 ///
 /// ## Example
 ///
@@ -56,7 +59,7 @@ pub type TurboResult<T> = Result<T, TurboError>;
 /// ```
 #[derive(Debug)]
 pub enum TurboError {
-    /// Low-level memory mapping, paging, or synchronization failures
+    /// Low-level memory mapping, paging, or synchronization failure; encodes subsystem code
     Storage {
         /// System error code
         code: u32,
@@ -64,16 +67,16 @@ pub enum TurboError {
         context: Box<str>,
     },
 
-    /// Operating system file descriptor IO failures
+    /// Host operating system file descriptor I/O failure
     Io(std::io::Error),
 
-    /// Corrupted database header metadata
+    /// Backing container header metadata failed checksum or layout invariant verification
     CorruptedHeader(&'static str),
 
-    /// File header magic bytes do not match expected signature
+    /// File header magic signature does not match expected signature `b"TBFX"`
     InvalidMagic,
 
-    /// Database format layout version mismatch
+    /// Database container format layout version mismatch
     VersionMismatch {
         /// Expected layout version
         expected: u32,
@@ -81,10 +84,10 @@ pub enum TurboError {
         found: u32,
     },
 
-    /// Host page size violates power-of-two or minimum size constraints
+    /// Host operating system page size violates power-of-two or minimum 4 KiB constraints
     InvalidPageSize(u32),
 
-    /// File length is not an exact multiple of the physical page size
+    /// Backing container length is not an aligned multiple of the physical OS page size
     InvalidSize {
         /// Expected size in bytes
         expected: usize,
@@ -92,25 +95,25 @@ pub enum TurboError {
         found: usize,
     },
 
-    /// Database root metadata failed integrity validation
+    /// Database root node descriptor failed discriminator or boundary validation
     InvalidRootNode,
 
-    /// Resource is currently busy or referenced by active handles
+    /// Resource is busy or locked by concurrent active handles
     ResourceBusy(&'static str),
 
-    /// Key type mismatch such as key-value operations on list structures
+    /// Key type mismatch; attempted key-value mutation on list key or vice versa
     InvalidType(&'static str),
 
-    /// Key or value payload exceeds engine storage limits (MAX_VAL_LEN = 65,535 B)
+    /// Key or value exceeds engine limits (`MAX_KEY_LEN` = 0xFF B, `MAX_VAL_LEN` = 0xFFFF B)
     PayloadTooLarge,
 
-    /// Payload data failed CRC32 validation or offset integrity
+    /// Stored payload data failed CRC32 integrity validation or key equality check
     CorruptedPayload(&'static str),
 
-    /// Storage capacity exhausted; cannot allocate additional physical pages
+    /// Storage capacity exhausted; cannot allocate additional physical pages within 256 GiB bound
     DatabaseFull,
 
-    /// Trie depth recursion ceiling reached due to hash collision limit
+    /// 15-way radix trie depth recursion ceiling reached due to hash collision limit (`0x08`)
     CollisionLimit,
 }
 

@@ -1,5 +1,7 @@
 //! 1-to-N list structure anchored by primary key
 //!
+//! Backed by indexed adjacent array descriptor blocks and memory-mapped data buffers
+//!
 //! ## Example
 //!
 //! ```
@@ -12,7 +14,7 @@
 //!
 //! list.append(b"msg_0").unwrap();
 //! list.append(b"msg_1").unwrap();
-//! assert_eq!(list.len().unwrap(), 2);
+//! assert_eq!(list.len().unwrap(), 0x02);
 //!
 //! let mut iter = list.iter().unwrap();
 //! assert_eq!(iter.next(), Some(b"msg_0".to_vec()));
@@ -87,7 +89,9 @@ impl TurboList {
 
     /// Append an item payload to the tail of the list
     ///
-    /// Writes the entry immediately and returns a [`TurboTicket`] for tracking persistence
+    /// Amortized O(1) sequential append into memory-mapped contiguous arrays
+    ///
+    /// Writes the entry immediately and returns a [`TurboTicket`] bound to commit epoch
     ///
     /// ## Crash Safe Durability
     ///
@@ -119,8 +123,8 @@ impl TurboList {
     /// let list = db.list(b"log");
     ///
     /// let ticket = list.append(b"entry").unwrap();
-    /// assert!(ticket.epoch() > 0);
-    /// assert_eq!(list.len().unwrap(), 1);
+    /// assert!(ticket.epoch() > 0x00);
+    /// assert_eq!(list.len().unwrap(), 0x01);
     ///
     /// drop(list);
     /// db.delete().unwrap();
@@ -164,6 +168,8 @@ impl TurboList {
 
     /// Retrieve the first item payload in the list without removing it
     ///
+    /// Boundary probe without traversing the underlying array
+    ///
     /// Internally copies bytes into an owned `Vec<u8>` or returns `Ok(None)` if the list contains
     /// zero entries
     ///
@@ -195,6 +201,8 @@ impl TurboList {
     }
 
     /// Retrieve the last item payload in the list without removing it
+    ///
+    /// Boundary probe without traversing the underlying array
     ///
     /// Internally copies bytes into an owned `Vec<u8>` or returns `Ok(None)` if the list contains
     /// zero entries
@@ -229,6 +237,8 @@ impl TurboList {
     /// Retrieve the item payload at the specified 0-based index and returns `Ok(None)` if index is
     /// out of bounds
     ///
+    /// O(1) indexed random access by ordinal position
+    ///
     /// ## Errors
     ///
     /// * [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) if payload
@@ -246,9 +256,9 @@ impl TurboList {
     ///
     /// list.append(b"elem_0").unwrap();
     /// list.append(b"elem_1").unwrap();
-    /// assert_eq!(list.get_at(0).unwrap(), Some(b"elem_0".to_vec()));
-    /// assert_eq!(list.get_at(1).unwrap(), Some(b"elem_1".to_vec()));
-    /// assert_eq!(list.get_at(2).unwrap(), None);
+    /// assert_eq!(list.get_at(0x00).unwrap(), Some(b"elem_0".to_vec()));
+    /// assert_eq!(list.get_at(0x01).unwrap(), Some(b"elem_1".to_vec()));
+    /// assert_eq!(list.get_at(0x02).unwrap(), None);
     ///
     /// drop(list);
     /// db.delete().unwrap();
@@ -274,9 +284,9 @@ impl TurboList {
     /// let db = TurboFox::create(TurboCfg::manual(path)).unwrap();
     /// let list = db.list(b"counted");
     ///
-    /// assert_eq!(list.len().unwrap(), 0);
+    /// assert_eq!(list.len().unwrap(), 0x00);
     /// list.append(b"one").unwrap();
-    /// assert_eq!(list.len().unwrap(), 1);
+    /// assert_eq!(list.len().unwrap(), 0x01);
     ///
     /// drop(list);
     /// db.delete().unwrap();
@@ -316,7 +326,7 @@ impl TurboList {
 
     /// Create an iterator snapshot over all item payloads in the list
     ///
-    /// Internally eagerly reads and validates all item payloads into memory
+    /// Forward snapshot iterator validating per-item CRC32 integrity on traversal
     ///
     /// ## Errors
     ///
@@ -352,6 +362,8 @@ impl TurboList {
 
     /// Remove [`crate::TurboList`] and delete all its items from storage
     ///
+    /// Reclaims descriptor slots in place without file truncation or storage reorganization
+    ///
     /// Returns `Ok(true)` if list existed and was cleared, `Ok(false)` otherwise
     ///
     /// ## Errors
@@ -370,7 +382,7 @@ impl TurboList {
     ///
     /// list.append(b"data").unwrap();
     /// assert!(list.clear().unwrap());
-    /// assert_eq!(list.len().unwrap(), 0);
+    /// assert_eq!(list.len().unwrap(), 0x00);
     ///
     /// drop(list);
     /// db.delete().unwrap();
@@ -400,7 +412,7 @@ impl TurboList {
     ///
     /// list.append(b"data").unwrap();
     /// assert!(list.del().unwrap());
-    /// assert_eq!(list.len().unwrap(), 0);
+    /// assert_eq!(list.len().unwrap(), 0x00);
     ///
     /// drop(list);
     /// db.delete().unwrap();
@@ -430,9 +442,9 @@ impl TurboList {
 /// list.append(b"second").unwrap();
 ///
 /// let mut iter = list.iter().unwrap();
-/// assert_eq!(iter.len(), 2);
+/// assert_eq!(iter.len(), 0x02);
 /// assert_eq!(iter.next(), Some(b"first".to_vec()));
-/// assert_eq!(iter.len(), 1);
+/// assert_eq!(iter.len(), 0x01);
 /// assert_eq!(iter.next(), Some(b"second".to_vec()));
 /// assert_eq!(iter.next(), None);
 ///

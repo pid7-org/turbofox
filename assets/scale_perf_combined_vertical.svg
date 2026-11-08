@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 730" width="980" height="730" style="background:#ffffff; font-family:ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace;">
+<rect width="980" height="730" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="32" y="32" fill="#24292f" font-size="16" font-weight="bold">Database Open Latency &amp; Resource Footprint Scaling (Aligned)</text>
+<text x="32" y="52" fill="#57606a" font-size="11">Vertically aligned X-axis comparing latency vs physical storage growth</text>
+<circle cx="36" cy="74" r="4" fill="#1e66f5"/><text x="46" y="78" fill="#24292f" font-size="10.5">Cache Open</text><circle cx="156" cy="74" r="4" fill="#d20f39"/><text x="166" y="78" fill="#24292f" font-size="10.5">Raw Open</text><circle cx="266" cy="74" r="4" fill="#179299"/><text x="276" y="78" fill="#24292f" font-size="10.5">Disk Size</text><circle cx="376" cy="74" r="4" fill="#8839ef"/><text x="386" y="78" fill="#24292f" font-size="10.5">Cache RAM</text>
+<text x="75" y="105" fill="#24292f" font-size="12.5" font-weight="bold">Database Open Duration (µs)</text>
+<rect x="75" y="115" width="870" height="230" fill="#f8f9fa" rx="6" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="75" y1="325.0" x2="945" y2="325.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="329.0" fill="#57606a" font-size="10" text-anchor="end">0µs</text>
+<line x1="75" y1="277.5" x2="945" y2="277.5" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="281.5" fill="#57606a" font-size="10" text-anchor="end">225µs</text>
+<line x1="75" y1="230.0" x2="945" y2="230.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="234.0" fill="#57606a" font-size="10" text-anchor="end">450µs</text>
+<line x1="75" y1="182.5" x2="945" y2="182.5" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="186.5" fill="#57606a" font-size="10" text-anchor="end">675µs</text>
+<line x1="75" y1="135.0" x2="945" y2="135.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="139.0" fill="#57606a" font-size="10" text-anchor="end">900µs</text>
+<text x="75" y="400" fill="#24292f" font-size="12.5" font-weight="bold">Resource Footprint (Disk &amp; RAM)</text>
+<rect x="75" y="410" width="870" height="230" fill="#f8f9fa" rx="6" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="75" y1="620.0" x2="945" y2="620.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="624.0" fill="#57606a" font-size="10" text-anchor="end">0 B</text>
+<line x1="75" y1="572.5" x2="945" y2="572.5" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="576.5" fill="#57606a" font-size="10" text-anchor="end">501KB</text>
+<line x1="75" y1="525.0" x2="945" y2="525.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="529.0" fill="#57606a" font-size="10" text-anchor="end">1003KB</text>
+<line x1="75" y1="477.5" x2="945" y2="477.5" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="481.5" fill="#57606a" font-size="10" text-anchor="end">1.47MB</text>
+<line x1="75" y1="430.0" x2="945" y2="430.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="65" y="434.0" fill="#57606a" font-size="10" text-anchor="end">1.96MB</text>
+<line x1="107.0" y1="115" x2="107.0" y2="345" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="107.0" y1="410" x2="107.0" y2="640" stroke="#e1e4e8" stroke-width="1"/>
+<text x="107.0" y="658" fill="#24292f" font-size="10" text-anchor="middle">N=0</text>
+<line x1="207.8" y1="115" x2="207.8" y2="345" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="207.8" y1="410" x2="207.8" y2="640" stroke="#e1e4e8" stroke-width="1"/>
+<text x="207.8" y="658" fill="#24292f" font-size="10" text-anchor="middle">N=4.1K</text>
+<line x1="308.5" y1="115" x2="308.5" y2="345" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="308.5" y1="410" x2="308.5" y2="640" stroke="#e1e4e8" stroke-width="1"/>
+<text x="308.5" y="658" fill="#24292f" font-size="10" text-anchor="middle">N=8.2K</text>
+<line x1="409.2" y1="115" x2="409.2" y2="345" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="409.2" y1="410" x2="409.2" y2="640" stroke="#e1e4e8" stroke-width="1"/>
+<text x="409.2" y="658" fill="#24292f" font-size="10" text-anchor="middle">N=12.3K</text>
+<line x1="510.0" y1="115" x2="510.0" y2="345" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="510.0" y1="410" x2="510.0" y2="640" stroke="#e1e4e8" stroke-width="1"/>
+<text x="510.0" y="658" fill="#24292f" font-size="10" text-anchor="middle">N=16.4K</text>
+<line x1="610.8" y1="115" x2="610.8" y2="345" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="610.8" y1="410" x2="610.8" y2="640" stroke="#e1e4e8" stroke-width="1"/>
+<text x="610.8" y="658" fill="#24292f" font-size="10" text-anchor="middle">N=20.5K</text>
+<line x1="711.5" y1="115" x2="711.5" y2="345" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="711.5" y1="410" x2="711.5" y2="640" stroke="#e1e4e8" stroke-width="1"/>
+<text x="711.5" y="658" fill="#24292f" font-size="10" text-anchor="middle">N=24.6K</text>
+<line x1="812.2" y1="115" x2="812.2" y2="345" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="812.2" y1="410" x2="812.2" y2="640" stroke="#e1e4e8" stroke-width="1"/>
+<text x="812.2" y="658" fill="#24292f" font-size="10" text-anchor="middle">N=28.7K</text>
+<line x1="913.0" y1="115" x2="913.0" y2="345" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="913.0" y1="410" x2="913.0" y2="640" stroke="#e1e4e8" stroke-width="1"/>
+<text x="913.0" y="658" fill="#24292f" font-size="10" text-anchor="middle">N=32.8K</text>
+<text x="490.0" y="680" fill="#57606a" font-size="10" text-anchor="middle">Dataset Key Scale (0 to 32,768 keys)</text>
+<polyline points="107.0,310.0 207.8,240.6 308.5,202.1 409.2,192.1 510.0,174.2 610.8,184.6 711.5,187.6 812.2,164.8 913.0,186.3" fill="none" stroke="#1e66f5" stroke-width="2.5"/>
+<polyline points="107.0,312.4 207.8,311.2 308.5,294.5 409.2,308.7 510.0,302.8 610.8,308.2 711.5,298.2 812.2,306.3 913.0,301.4" fill="none" stroke="#d20f39" stroke-width="2.5" stroke-dasharray="4,2"/>
+<circle cx="107.0" cy="310.0" r="4" fill="#1e66f5"/>
+<circle cx="107.0" cy="312.4" r="4" fill="#d20f39"/>
+<circle cx="207.8" cy="240.6" r="4" fill="#1e66f5"/>
+<circle cx="207.8" cy="311.2" r="4" fill="#d20f39"/>
+<circle cx="308.5" cy="202.1" r="4" fill="#1e66f5"/>
+<circle cx="308.5" cy="294.5" r="4" fill="#d20f39"/>
+<circle cx="409.2" cy="192.1" r="4" fill="#1e66f5"/>
+<circle cx="409.2" cy="308.7" r="4" fill="#d20f39"/>
+<circle cx="510.0" cy="174.2" r="4" fill="#1e66f5"/>
+<circle cx="510.0" cy="302.8" r="4" fill="#d20f39"/>
+<circle cx="610.8" cy="184.6" r="4" fill="#1e66f5"/>
+<circle cx="610.8" cy="308.2" r="4" fill="#d20f39"/>
+<circle cx="711.5" cy="187.6" r="4" fill="#1e66f5"/>
+<circle cx="711.5" cy="298.2" r="4" fill="#d20f39"/>
+<circle cx="812.2" cy="164.8" r="4" fill="#1e66f5"/>
+<circle cx="812.2" cy="306.3" r="4" fill="#d20f39"/>
+<circle cx="913.0" cy="186.3" r="4" fill="#1e66f5"/>
+<circle cx="913.0" cy="301.4" r="4" fill="#d20f39"/>
+<rect x="87.4" y="289.5" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="107.0" y="297.0" fill="#1e66f5" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">70.9µs</text>
+<rect x="87.4" y="319.9" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="107.0" y="327.4" fill="#d20f39" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">59.7µs</text>
+<rect x="185.6" y="220.1" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="207.8" y="227.6" fill="#1e66f5" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">399.6µs</text>
+<rect x="188.2" y="290.7" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="207.8" y="298.2" fill="#d20f39" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">65.2µs</text>
+<rect x="286.3" y="181.6" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="308.5" y="189.1" fill="#1e66f5" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">582.2µs</text>
+<rect x="286.3" y="274.0" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="308.5" y="281.5" fill="#d20f39" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">144.2µs</text>
+<rect x="387.1" y="171.6" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="409.2" y="179.1" fill="#1e66f5" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">629.6µs</text>
+<rect x="389.6" y="288.2" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="409.2" y="295.7" fill="#d20f39" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">77.1µs</text>
+<rect x="487.8" y="153.7" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="510.0" y="161.2" fill="#1e66f5" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">714.4µs</text>
+<rect x="487.8" y="282.3" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="510.0" y="289.8" fill="#d20f39" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">105.1µs</text>
+<rect x="588.5" y="164.1" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="610.8" y="171.6" fill="#1e66f5" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">665.1µs</text>
+<rect x="591.1" y="287.7" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="610.8" y="295.2" fill="#d20f39" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">79.6µs</text>
+<rect x="689.3" y="167.1" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="711.5" y="174.6" fill="#1e66f5" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">651.0µs</text>
+<rect x="689.3" y="277.7" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="711.5" y="285.2" fill="#d20f39" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">126.8µs</text>
+<rect x="790.0" y="144.3" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="812.2" y="151.8" fill="#1e66f5" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">758.7µs</text>
+<rect x="792.6" y="285.8" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="812.2" y="293.3" fill="#d20f39" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">88.7µs</text>
+<rect x="890.8" y="165.8" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="913.0" y="173.3" fill="#1e66f5" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">656.9µs</text>
+<rect x="890.8" y="280.9" width="44.4" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="913.0" y="288.4" fill="#d20f39" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">111.9µs</text>
+<polyline points="107.0,618.5 207.8,600.3 308.5,554.8 409.2,509.3 510.0,498.7 610.8,489.6 711.5,479.0 812.2,468.4 913.0,454.8" fill="none" stroke="#179299" stroke-width="2.5"/>
+<polyline points="107.0,617.7 207.8,599.5 308.5,595.0 409.2,595.0 510.0,595.0 610.8,595.0 711.5,595.0 812.2,595.0 913.0,595.0" fill="none" stroke="#8839ef" stroke-width="2.5"/>
+<polyline points="107.0,619.6 207.8,619.6 308.5,619.6 409.2,619.6 510.0,619.6 610.8,619.6 711.5,619.6 812.2,619.6 913.0,619.6" fill="none" stroke="#df8e1d" stroke-width="2.5" stroke-dasharray="4,2"/>
+<circle cx="107.0" cy="618.5" r="4" fill="#179299"/>
+<circle cx="107.0" cy="617.7" r="4" fill="#8839ef"/>
+<circle cx="107.0" cy="619.6" r="4" fill="#df8e1d"/>
+<circle cx="207.8" cy="600.3" r="4" fill="#179299"/>
+<circle cx="207.8" cy="599.5" r="4" fill="#8839ef"/>
+<circle cx="207.8" cy="619.6" r="4" fill="#df8e1d"/>
+<circle cx="308.5" cy="554.8" r="4" fill="#179299"/>
+<circle cx="308.5" cy="595.0" r="4" fill="#8839ef"/>
+<circle cx="308.5" cy="619.6" r="4" fill="#df8e1d"/>
+<circle cx="409.2" cy="509.3" r="4" fill="#179299"/>
+<circle cx="409.2" cy="595.0" r="4" fill="#8839ef"/>
+<circle cx="409.2" cy="619.6" r="4" fill="#df8e1d"/>
+<circle cx="510.0" cy="498.7" r="4" fill="#179299"/>
+<circle cx="510.0" cy="595.0" r="4" fill="#8839ef"/>
+<circle cx="510.0" cy="619.6" r="4" fill="#df8e1d"/>
+<circle cx="610.8" cy="489.6" r="4" fill="#179299"/>
+<circle cx="610.8" cy="595.0" r="4" fill="#8839ef"/>
+<circle cx="610.8" cy="619.6" r="4" fill="#df8e1d"/>
+<circle cx="711.5" cy="479.0" r="4" fill="#179299"/>
+<circle cx="711.5" cy="595.0" r="4" fill="#8839ef"/>
+<circle cx="711.5" cy="619.6" r="4" fill="#df8e1d"/>
+<circle cx="812.2" cy="468.4" r="4" fill="#179299"/>
+<circle cx="812.2" cy="595.0" r="4" fill="#8839ef"/>
+<circle cx="812.2" cy="619.6" r="4" fill="#df8e1d"/>
+<circle cx="913.0" cy="454.8" r="4" fill="#179299"/>
+<circle cx="913.0" cy="595.0" r="4" fill="#8839ef"/>
+<circle cx="913.0" cy="619.6" r="4" fill="#df8e1d"/>
+<rect x="92.6" y="598.0" width="28.8" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="107.0" y="605.5" fill="#179299" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">16KB</text>
+<rect x="190.8" y="579.8" width="34.0" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="207.8" y="587.3" fill="#179299" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">208KB</text>
+<rect x="291.5" y="534.3" width="34.0" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="308.5" y="541.8" fill="#179299" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">688KB</text>
+<rect x="389.6" y="488.8" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="409.2" y="496.3" fill="#179299" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">1.14MB</text>
+<rect x="490.4" y="478.2" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="510.0" y="485.7" fill="#179299" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">1.25MB</text>
+<rect x="591.1" y="469.1" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="610.8" y="476.6" fill="#179299" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">1.34MB</text>
+<rect x="691.9" y="458.5" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="711.5" y="466.0" fill="#179299" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">1.45MB</text>
+<rect x="792.6" y="447.9" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="812.2" y="455.4" fill="#179299" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">1.56MB</text>
+<rect x="893.4" y="434.3" width="39.2" height="15.0" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d0d7de" stroke-width="0.75"/>
+<text x="913.0" y="441.8" fill="#179299" font-size="8.5" font-weight="bold" text-anchor="middle" dominant-baseline="central">1.70MB</text>
+</svg>

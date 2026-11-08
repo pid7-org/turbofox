@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 560" width="980" height="560" style="background:#ffffff; font-family:ui-monospace,'SF Mono',Menlo,Monaco,Consolas,'Liberation Mono',monospace;">
+<rect width="980" height="560" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="32" y="32" fill="#24292f" font-size="16" font-weight="bold">Latency Percentile Progression Curves (Semi-Log Scale)</text>
+<text x="32" y="52" fill="#57606a" font-size="11">Progression from min to max revealing exact inflection points and tail divergence</text>
+<line x1="32" y1="76" x2="52" y2="76" stroke="#1e66f5" stroke-width="2.5" /><circle cx="42" cy="76" r="3.5" fill="#1e66f5"/><text x="58" y="80" fill="#24292f" font-size="10.5">SET 1T</text>
+<line x1="172" y1="76" x2="192" y2="76" stroke="#729bfa" stroke-width="2.5" stroke-dasharray="3,2"/><circle cx="182" cy="76" r="3.5" fill="#729bfa"/><text x="198" y="80" fill="#24292f" font-size="10.5">SET 2T</text>
+<line x1="312" y1="76" x2="332" y2="76" stroke="#179299" stroke-width="2.5" /><circle cx="322" cy="76" r="3.5" fill="#179299"/><text x="338" y="80" fill="#24292f" font-size="10.5">GET 1T</text>
+<line x1="452" y1="76" x2="472" y2="76" stroke="#64b6ba" stroke-width="2.5" stroke-dasharray="3,2"/><circle cx="462" cy="76" r="3.5" fill="#64b6ba"/><text x="478" y="80" fill="#24292f" font-size="10.5">GET 2T</text>
+<line x1="592" y1="76" x2="612" y2="76" stroke="#8839ef" stroke-width="2.5" /><circle cx="602" cy="76" r="3.5" fill="#8839ef"/><text x="618" y="80" fill="#24292f" font-size="10.5">DEL 1T</text>
+<line x1="732" y1="76" x2="752" y2="76" stroke="#b487f5" stroke-width="2.5" stroke-dasharray="3,2"/><circle cx="742" cy="76" r="3.5" fill="#b487f5"/><text x="758" y="80" fill="#24292f" font-size="10.5">DEL 2T</text>
+<rect x="75" y="105" width="840" height="360" fill="#f8f9fa" rx="6" stroke="#e1e4e8" stroke-width="1"/>
+<line x1="75" y1="445.0" x2="915" y2="445.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="67" y="448.0" fill="#57606a" font-size="9" text-anchor="end">0.1µs</text>
+<line x1="75" y1="399.3" x2="915" y2="399.3" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="67" y="402.3" fill="#57606a" font-size="9" text-anchor="end">1µs</text>
+<line x1="75" y1="353.6" x2="915" y2="353.6" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="67" y="356.6" fill="#57606a" font-size="9" text-anchor="end">10µs</text>
+<line x1="75" y1="307.9" x2="915" y2="307.9" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="67" y="310.9" fill="#57606a" font-size="9" text-anchor="end">100µs</text>
+<line x1="75" y1="262.1" x2="915" y2="262.1" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="67" y="265.1" fill="#57606a" font-size="9" text-anchor="end">1ms</text>
+<line x1="75" y1="216.4" x2="915" y2="216.4" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="67" y="219.4" fill="#57606a" font-size="9" text-anchor="end">10ms</text>
+<line x1="75" y1="170.7" x2="915" y2="170.7" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="67" y="173.7" fill="#57606a" font-size="9" text-anchor="end">100ms</text>
+<line x1="75" y1="125.0" x2="915" y2="125.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="67" y="128.0" fill="#57606a" font-size="9" text-anchor="end">1s</text>
+<line x1="105.0" y1="105" x2="105.0" y2="465" stroke="#e1e4e8" stroke-width="1"/>
+<text x="105.0" y="483" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">min</text>
+<line x1="216.4" y1="105" x2="216.4" y2="465" stroke="#e1e4e8" stroke-width="1"/>
+<text x="216.4" y="483" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">p50</text>
+<line x1="327.9" y1="105" x2="327.9" y2="465" stroke="#e1e4e8" stroke-width="1"/>
+<text x="327.9" y="483" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">p75</text>
+<line x1="439.3" y1="105" x2="439.3" y2="465" stroke="#e1e4e8" stroke-width="1"/>
+<text x="439.3" y="483" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">p90</text>
+<line x1="550.7" y1="105" x2="550.7" y2="465" stroke="#e1e4e8" stroke-width="1"/>
+<text x="550.7" y="483" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">p95</text>
+<line x1="662.1" y1="105" x2="662.1" y2="465" stroke="#e1e4e8" stroke-width="1"/>
+<text x="662.1" y="483" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">p99</text>
+<line x1="773.6" y1="105" x2="773.6" y2="465" stroke="#e1e4e8" stroke-width="1"/>
+<text x="773.6" y="483" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">p99.9</text>
+<line x1="885.0" y1="105" x2="885.0" y2="465" stroke="#e1e4e8" stroke-width="1"/>
+<text x="885.0" y="483" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">max</text>
+<polyline points="105.0,410.1 216.4,396.2 327.9,393.9 439.3,390.3 550.7,383.0 662.1,234.6 773.6,220.4 885.0,212.9" fill="none" stroke="#1e66f5" stroke-width="2.5" />
+<circle cx="105.0" cy="410.1" r="3.5" fill="#1e66f5"/>
+<circle cx="216.4" cy="396.2" r="3.5" fill="#1e66f5"/>
+<circle cx="327.9" cy="393.9" r="3.5" fill="#1e66f5"/>
+<circle cx="439.3" cy="390.3" r="3.5" fill="#1e66f5"/>
+<circle cx="550.7" cy="383.0" r="3.5" fill="#1e66f5"/>
+<circle cx="662.1" cy="234.6" r="3.5" fill="#1e66f5"/>
+<circle cx="773.6" cy="220.4" r="3.5" fill="#1e66f5"/>
+<circle cx="885.0" cy="212.9" r="3.5" fill="#1e66f5"/>
+<polyline points="105.0,407.5 216.4,378.8 327.9,375.1 439.3,364.9 550.7,346.2 662.1,195.7 773.6,189.2 885.0,146.0" fill="none" stroke="#729bfa" stroke-width="2.5" stroke-dasharray="5,3"/>
+<circle cx="105.0" cy="407.5" r="3.5" fill="#729bfa"/>
+<circle cx="216.4" cy="378.8" r="3.5" fill="#729bfa"/>
+<circle cx="327.9" cy="375.1" r="3.5" fill="#729bfa"/>
+<circle cx="439.3" cy="364.9" r="3.5" fill="#729bfa"/>
+<circle cx="550.7" cy="346.2" r="3.5" fill="#729bfa"/>
+<circle cx="662.1" cy="195.7" r="3.5" fill="#729bfa"/>
+<circle cx="773.6" cy="189.2" r="3.5" fill="#729bfa"/>
+<circle cx="885.0" cy="146.0" r="3.5" fill="#729bfa"/>
+<polyline points="105.0,419.0 216.4,408.1 327.9,406.7 439.3,404.5 550.7,402.5 662.1,398.1 773.6,392.2 885.0,310.2" fill="none" stroke="#179299" stroke-width="2.2" />
+<circle cx="105.0" cy="419.0" r="3.5" fill="#179299"/>
+<circle cx="216.4" cy="408.1" r="3.5" fill="#179299"/>
+<circle cx="327.9" cy="406.7" r="3.5" fill="#179299"/>
+<circle cx="439.3" cy="404.5" r="3.5" fill="#179299"/>
+<circle cx="550.7" cy="402.5" r="3.5" fill="#179299"/>
+<circle cx="662.1" cy="398.1" r="3.5" fill="#179299"/>
+<circle cx="773.6" cy="392.2" r="3.5" fill="#179299"/>
+<circle cx="885.0" cy="310.2" r="3.5" fill="#179299"/>
+<polyline points="105.0,417.5 216.4,386.0 327.9,383.5 439.3,381.6 550.7,380.6 662.1,378.5 773.6,349.1 885.0,304.9" fill="none" stroke="#64b6ba" stroke-width="2.2" stroke-dasharray="5,3"/>
+<circle cx="105.0" cy="417.5" r="3.5" fill="#64b6ba"/>
+<circle cx="216.4" cy="386.0" r="3.5" fill="#64b6ba"/>
+<circle cx="327.9" cy="383.5" r="3.5" fill="#64b6ba"/>
+<circle cx="439.3" cy="381.6" r="3.5" fill="#64b6ba"/>
+<circle cx="550.7" cy="380.6" r="3.5" fill="#64b6ba"/>
+<circle cx="662.1" cy="378.5" r="3.5" fill="#64b6ba"/>
+<circle cx="773.6" cy="349.1" r="3.5" fill="#64b6ba"/>
+<circle cx="885.0" cy="304.9" r="3.5" fill="#64b6ba"/>
+<polyline points="105.0,419.6 216.4,403.0 327.9,402.1 439.3,400.3 550.7,398.5 662.1,387.5 773.6,371.7 885.0,307.6" fill="none" stroke="#8839ef" stroke-width="2.2" />
+<circle cx="105.0" cy="419.6" r="3.5" fill="#8839ef"/>
+<circle cx="216.4" cy="403.0" r="3.5" fill="#8839ef"/>
+<circle cx="327.9" cy="402.1" r="3.5" fill="#8839ef"/>
+<circle cx="439.3" cy="400.3" r="3.5" fill="#8839ef"/>
+<circle cx="550.7" cy="398.5" r="3.5" fill="#8839ef"/>
+<circle cx="662.1" cy="387.5" r="3.5" fill="#8839ef"/>
+<circle cx="773.6" cy="371.7" r="3.5" fill="#8839ef"/>
+<circle cx="885.0" cy="307.6" r="3.5" fill="#8839ef"/>
+<polyline points="105.0,419.0 216.4,381.3 327.9,378.5 439.3,376.6 550.7,375.3 662.1,368.9 773.6,347.2 885.0,269.0" fill="none" stroke="#b487f5" stroke-width="2.2" stroke-dasharray="5,3"/>
+<circle cx="105.0" cy="419.0" r="3.5" fill="#b487f5"/>
+<circle cx="216.4" cy="381.3" r="3.5" fill="#b487f5"/>
+<circle cx="327.9" cy="378.5" r="3.5" fill="#b487f5"/>
+<circle cx="439.3" cy="376.6" r="3.5" fill="#b487f5"/>
+<circle cx="550.7" cy="375.3" r="3.5" fill="#b487f5"/>
+<circle cx="662.1" cy="368.9" r="3.5" fill="#b487f5"/>
+<circle cx="773.6" cy="347.2" r="3.5" fill="#b487f5"/>
+<circle cx="885.0" cy="269.0" r="3.5" fill="#b487f5"/>
+<text x="495.0" y="503" fill="#57606a" font-size="10" text-anchor="middle">Percentile Latency Spectrum</text>
+</svg>

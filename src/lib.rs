@@ -15,18 +15,20 @@
 //!   or stop-the-world compaction cycles
 //! * Operational bounds: key length $\in [0x01, 0xFF]$ bytes (255 B); value length $\le 0xFFFF$
 //!   bytes (65,535 B)
-//! * OCC conflict retry loop resolves concurrent multi-threaded writes automatically (retrying up to
-//!   0x20 times under contention)
+//! * OCC conflict retry loop resolves concurrent multi-threaded writes automatically (retrying
+//!   up to 0x100 cycles via 3-tier progressive backoff under contention)
 //!
 //! ```
 //! use turbofox::{TurboCfg, TurboFox};
 //!
 //! let dir = tempfile::tempdir().unwrap();
 //! let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
+//! assert!(db.is_empty());
 //!
 //! // Initial write: commits slot in memory and returns commit epoch ticket
 //! let ticket = db.set(b"session:0x42", b"user_active").unwrap();
 //! assert!(ticket.epoch() > 0x00);
+//! assert!(!db.is_empty());
 //!
 //! // In-place overwrite: updates in place without allocating new storage slots
 //! db.set(b"session:0x42", b"user_idle").unwrap();
@@ -119,6 +121,7 @@
 //! if let Some(ticket) = last_ticket {
 //!     ticket.force().unwrap(); // Single sync barrier persists all 0x03E8 mutations
 //!     assert!(ticket.is_durable());
+//!     assert_eq!(ticket.wait().unwrap(), ticket.epoch()); // Awaits confirmed epoch
 //! }
 //!
 //! db.delete().unwrap();
@@ -147,6 +150,7 @@
 //! let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
 //!
 //! let list = db.list(b"jobs:stream");
+//! assert_eq!(list.key(), b"jobs:stream");
 //!
 //! // Amortized O(1) sequential appends into memory-mapped contiguous arrays
 //! list.append(b"job_1").unwrap();
@@ -316,8 +320,10 @@
 //!   order before lock acquisition; ordered acquisition mathematically eliminates circular wait
 //!   conditions, guaranteeing deadlock-free execution
 //! * Atomic Conflict Validation: commits verify that target slots match expected pre-state before
-//!   applying updates; on conflict, locks release immediately, and the writer retries with randomized
-//!   exponential backoff ($50\,\mu\text{s}..10\,\text{ms}, \pm 25\%$ jitter) up to 0x20 cycles
+//!   applying updates; on conflict, locks release immediately, and the writer retries with 3-tier
+//!   progressive backoff (spin loop for cycles 0x00..0x03, yield for 0x04..0x07, and exponential
+//!   sleep with jitter $20\,\mu\text{s}..1000\,\mu\text{s}$ for cycles $\ge 0x08$) up to 0x100
+//!   cycles
 //! * Non-Blocking Telemetry Counter: active entry count (`total_entries`) is tracked in memory via
 //!   `AtomicU64`, preventing writer cache-line contention on Metadata Slot 0; Slot 0 flushes during
 //!   sync barriers
@@ -613,8 +619,8 @@ impl TurboFox {
     /// Key length must satisfy $0x01 \le \text{len} \le 0xFF$ bytes ([`crate::MAX_KEY_LEN`]);
     /// value length must not exceed $0xFFFF$ bytes ([`crate::MAX_VAL_LEN`])
     ///
-    /// Multi-threaded write conflicts retry automatically with randomized exponential backoff up to
-    /// 0x20 cycles
+    /// Multi-threaded write conflicts retry automatically with 3-tier progressive backoff up to
+    /// 0x100 cycles
     ///
     /// ## Crash Safe Durability
     ///

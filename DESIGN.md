@@ -487,7 +487,8 @@ Writer (Atomic Multi-Slot OCC):
      b. Acquire per-slot locks in strictly ascending order
      c. Slot validation: assert mapped slots match expected state
      d. If valid: copy new slots, advance epoch, release locks -> Ok(AckTicket)
-     e. If conflict: release locks, abort -> backoff (50 us..10 ms, +/-25% jitter), retry
+     e. If conflict: release locks, abort -> 3-tier backoff (spin -> yield -> jittered sleep),
+        retry up to 0x100
 ```
 
 The active entry count (`total_entries`) is maintained in memory using `AtomicU64`. This avoids OCC

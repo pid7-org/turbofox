@@ -10,10 +10,11 @@ TurboFox is an embedded, memory-mapped key-value engine providing lock-free conc
 sync barriers
 
 > [!IMPORTANT]
-> _TurboFox_ is under active development
+> On-disk storage formats and public interfaces remain subject to breaking changes; persistence
+> compatibility across releases is not guaranteed without re-creating the database
 >
-> Architecture and disk layout remain subject to breaking changes, hence production use is
-> discouraged but not prohibited, given _you assume all the risks_
+> Prototyping, benchmarking, and integration testing are all encouraged, while production
+> deployments must account for potential format migrations
 
 ## Index
 
@@ -26,13 +27,11 @@ sync barriers
   - [§5 · Configuration & Lifecycle: TurboCfg](#5--configuration--lifecycle-turbocfg)
   - [§6 · Page Cache Eviction & Telemetry: evict](#6--page-cache-eviction--telemetry-evict)
 - [Architecture Guarantees](#architecture-guarantees)
-  - [Zero Global Rehash](#zero-global-rehash)
-  - [Torn-Write Protection](#torn-write-protection)
-  - [Durability Model](#durability-model)
-  - [RAII Safety](#raii-safety)
-  - [Graceful Shutdown](#graceful-shutdown)
-  - [Storage Topography](#storage-topography)
-  - [Operational Invariants](#operational-invariants)
+  - [§1 · Zero Global Rehash & 15-Way Prefix Folding](#1--zero-global-rehash--15-way-prefix-folding)
+  - [§2 · Torn-Write Immunity & Checksum Verification](#2--torn-write-immunity--checksum-verification)
+  - [§3 · Optimistic Concurrency Control & Deadlock Freedom](#3--optimistic-concurrency-control--deadlock-freedom)
+  - [§4 · Storage Topography & Demand-Paged Footprint](#4--storage-topography--demand-paged-footprint)
+  - [§5 · RAII Safety & Graceful Shutdown Protocol](#5--raii-safety--graceful-shutdown-protocol)
 - [Supported Platforms](#supported-platforms)
 - [Benchmarks](#benchmarks)
   - [§1 · Concurrency Dynamics & Throughput Scaling](#1--concurrency-dynamics--throughput-scaling)
@@ -42,7 +41,7 @@ sync barriers
 
 ## Usage
 
-Add `turbofox` to your `Cargo.toml`:
+Add `turbofox` to your `Cargo.toml`,
 
 ```toml
 [dependencies]
@@ -52,43 +51,11 @@ turbofox = "0.0.300"
 > [!NOTE]
 > Minimum Supported Rust Version (MSRV) is `1.89.0`
 
-### Quickstart
-
-```rust
-use turbofox::{TurboCfg, TurboFox};
-
-let dir = tempfile::tempdir().unwrap();
-let path = dir.path();
-
-let cfg = TurboCfg::manual(path);
-let db = TurboFox::open_or_create(cfg).unwrap();
-
-let ticket = db.set(b"device:01", b"state_active").unwrap();
-assert_eq!(db.get(b"device:01").unwrap(), Some(b"state_active".to_vec()));
-
-db.sync().unwrap();
-assert!(ticket.is_durable());
-
-assert!(db.del(b"device:01").unwrap());
-assert_eq!(db.get(b"device:01").unwrap(), None);
-
-let list = db.list(b"events");
-
-list.append(b"boot").unwrap().sync().unwrap();
-list.append(b"init").unwrap().sync().unwrap();
-
-assert_eq!(list.len().unwrap(), 2);
-assert_eq!(list.pop().unwrap(), Some(b"init".to_vec()));
-
-drop(list);
-db.delete().unwrap();
-```
-
 ## Features
 
 ### §1 · Point Mutations: SET & DEL
 
-Mutations execute via optimistic concurrency control (OCC) directly against memory-mapped pages:
+Mutations execute via optimistic concurrency control (OCC) directly against memory-mapped pages,
 
 * Inserts assign slots dynamically; in-place overwrites execute without reallocation when updated
   payloads fit existing slot capacity
@@ -123,12 +90,12 @@ db.delete().unwrap();
 ```
 
 > [!NOTE]
-> In-place overwrites incur zero storage expansion overhead when new payload length remains
-> within previously allocated slot capacity
+> In-place overwrites incur zero storage expansion overhead when new payload length remains within
+> previously allocated slot capacity
 
 ### §2 · Zero-Allocation Retrieval: GET & CONTAINS_KEY
 
-Point reads execute lock-free directly against memory-mapped pages without shared mutex acquisition:
+Point reads execute lock-free directly against memory-mapped pages without shared mutex acquisition,
 
 * Lock-free point lookups route through 32-bit XxHash32 bucket chains
 * Checksum integrity verification: every payload read validates CRC32 integrity alongside
@@ -164,7 +131,7 @@ db.delete().unwrap();
 
 ### §3 · Durability Pipeline: TurboTicket & Sync Barriers
 
-Decouples high-frequency in-memory mutation throughput from physical NVMe writeback latency:
+Decouples high-frequency in-memory mutation throughput from physical NVMe writeback latency,
 
 * Monotonic epoch tracking: mutations (`set`, `del`, `append`, `pop`) return a lightweight
   `TurboTicket` bound to a strictly increasing commit epoch
@@ -173,7 +140,7 @@ Decouples high-frequency in-memory mutation throughput from physical NVMe writeb
 * Cumulative barrier invariant: physical flushes advance the durable epoch monotonically;
   establishing a barrier for epoch $E$ guarantees all mutations with epochs $\le E$ are persisted
   to disk
-* Flexible durability policies:
+* Flexible durability policies,
   * *Per-Write Sync*: call `ticket.force()` immediately for strict hardware durability at each write
   * *Batched Epoch Sync*: execute multi-mutation batches in memory at multi-million ops/sec, then
     issue a single barrier on the final ticket to persist the entire batch simultaneously
@@ -216,7 +183,7 @@ db.delete().unwrap();
 ### §4 · Embedded Sequences: TurboList
 
 Ordered 1-to-N sequences co-located inside the primary container file without auxiliary tables or
-relational join overhead:
+relational join overhead,
 
 * Sequential appends and pops execute with amortized O(1) complexity
 * Boundary inspection via `first` and `last` inspects queue extremes without traversing elements
@@ -264,9 +231,9 @@ db.delete().unwrap();
 
 ### §5 · Configuration & Lifecycle: TurboCfg
 
-Engine initialization, sync policies, and storage pre-allocation parameters:
+Engine initialization, sync policies, and storage pre-allocation parameters,
 
-* Durability policies:
+* Durability policies,
   * `SyncMode::Manual`: caller retains explicit control over flush timing and background threads
   * `SyncMode::Periodic(Duration)`: spawns a background thread coalescing dirty pages at interval
 * Upfront storage sizing via `CapacityHint`: pre-allocates backing database files to avoid
@@ -297,7 +264,7 @@ assert_eq!(periodic_cfg.sync_mode, SyncMode::Periodic(Duration::from_millis(0x32
 db.delete().unwrap();
 ```
 
-TurboFox provides three distinct initialization entry points to match operational requirements:
+TurboFox provides three distinct initialization entry points to match operational requirements,
 
 | Method           | Target Exists | Target Missing | Target Corrupt | Recommended Use Case        |
 |:-----------------|:--------------|:---------------|:---------------|:----------------------------|
@@ -311,7 +278,7 @@ TurboFox provides three distinct initialization entry points to match operationa
 
 ### §6 · Page Cache Eviction & Telemetry: evict
 
-Granular control over OS page cache residency and backing storage footprint:
+Granular control over OS page cache residency and backing storage footprint,
 
 * Advisory cache trimming via `evict`: advises host kernel page tables to release clean file-backed
   pages to relieve physical RAM pressure
@@ -347,101 +314,132 @@ db.delete().unwrap();
 
 ## Architecture Guarantees
 
-TurboFox is an embedded key-value storage engine engineered around memory-mapped persistence,
-optimistic concurrency control, and zero-rehash index chaining
+TurboFox provides deterministic guarantees across storage layouts, index routing, concurrent
+execution, and physical media writeback
 
 Reference documentation and method signatures are available on [docs.rs](https://docs.rs/turbofox)
 
-### Zero Global Rehash
+### §1 · Zero Global Rehash & 15-Way Prefix Folding
 
-Primary key routing uses 32-bit XxHash32 with persistent index chaining:
+Primary routing is governed by an embedded 15-way radix trie backed by 32-bit `XxHash32`,
 
-* Key entries are permanently anchored without global table redistribution, eliminating
-  stop-the-world rehashing pauses and maintaining bounded p99 write latency
-* In-place overwrites execute directly when updated values fit in existing allocated space
-* Storage expands incrementally via monotonic allocation without bulk page copying pauses
-
-### Torn-Write Protection
-
-Point reads execute concurrently without reader-writer locks or shared mutex acquisition:
-
-* Reading automatically validates payload CRC32 integrity alongside byte-level key equality
-* Concurrent writes or partial page flushes that cause torn reads fail safely via
-  `TurboError::CorruptedPayload` rather than returning corrupt data
-* Non-existent keys short-circuit quickly without accessing payload storage pages; zero heap
-  allocations occur during lookup misses
-
-### Durability Model
-
-Mutations commit immediately via optimistic concurrency control and anchor to a monotonic commit
-epoch:
-
-* Writing memory pages and committing the in-memory index occurs atomically before releasing OCC
-  transaction records
-* Physical persistence tracks monotonically advancing flush epochs; readers observe committed
-  data immediately while durability guarantees remain decoupled to NVMe writeback barriers
-* Unwritten dirty pages survive process crashes if flushed by the OS page cache, but require
-  explicit barriers (`db.sync()` or `ticket.wait()`) to guarantee crash safety against host power
-  loss
-
-### RAII Safety
+* Hash Bit-Slicing & Folding: key hashes decompose into 4-bit slices across eight depth levels
+  (`depth % 8`); slice values $S \in [0, 15]$ fold $15 \to 0$ to address 15 child branches
+  without integer division
+* Leaf Bucket Topography: leaf nodes terminate in 256-byte Buckets (4 slots) holding 32 entry
+  hashes and 32 buffer offsets; candidate hashes are scanned in parallel via SIMD vector
+  instructions (AVX-512 / AVX2 / SSE2 / NEON)
+* Localized Bucket Splitting: when a bucket exceeds 32 entries at `depth < 0x08`, the engine
+  allocates 14 new Buckets and 1 routing Node from `free_slot_marker`; entries with
+  `child_idx == 0` are compacted in place, while entries $1..14$ route into new child Buckets
+* Atomic Pointer Publication: the new Node is published to the parent via an atomic optimistic
+  pointer swap, transitioning readers instantly without write-ahead logs or intermediate states
+* Bounded Tail Latency: bucket splits are strictly localized to 14 child buckets; global table
+  redistributions and stop-the-world compaction cycles do not exist
 
 > [!NOTE]
->
-> `TurboFox` is RAII-safe with respect to system resource reclamation
->
-> Dropping a database handle cleanly releases all allocated heap buffers, unmaps virtual memory
-> regions, and closes backing OS file descriptors alongside exclusive advisory file locks without
-> leaks
+> Hash collisions at `MAX_TRIE_DEPTH` (0x08) return `TurboError::Storage` rather than entering
+> unbounded recursive allocations, preserving predictable memory bounds
 
-### Graceful Shutdown
+### §2 · Torn-Write Immunity & Checksum Verification
+
+Point lookups execute lock-free directly against memory-mapped virtual address space,
+
+* Lock-Free Point Reads: point readers bypass read-write locks, spinlocks, and shared reference
+  counters; reads navigate mapped pages without generating CPU cache coherency traffic
+* CRC32 Payload Framing: every stored key-value and list item prepends an 8-byte framing descriptor
+  containing an endian-independent CRC32 checksum, key length (`klen`), and payload length (`vlen`)
+* Fast 2-Buffer Collision Filtering: buffer 0 loads header framing, buffer 1 loads the initial
+  8-byte key prefix; if `klen` or key prefix mismatches, hash collisions abort immediately
+  without touching payload pages
+* Safe Torn-Read Rejection: concurrent writes or partial page writebacks that cause torn reads fail
+  safely via `TurboError::CorruptedPayload` rather than surfacing corrupted state
+* Zero Heap Allocation on Miss: non-existent keys terminate at the bucket index level; misses return
+  `Ok(None)` with zero heap allocations and zero payload page accesses
+
+> [!TIP]
+> Lock-free reads and zero-allocation misses ensure read latency percentiles ($p50$ through $p9999$)
+> remain flat and unaffected by concurrent write volume
+
+### §3 · Optimistic Concurrency Control & Deadlock Freedom
+
+Mutations execute through atomic multi-slot transactions governed by optimistic concurrency control,
+
+* Slot-Level Granularity: transactions operate on discrete 64-byte `Slot` boundaries;
+  writers compute mutations in private memory before staging slot modifications
+* Deadlock Prevention Guarantee: target slot indices are sorted in strictly ascending numerical
+  order before lock acquisition; ordered acquisition mathematically eliminates circular wait
+  conditions, guaranteeing deadlock-free execution
+* Atomic Conflict Validation: commits verify that target slots match expected pre-state before
+  applying updates; on conflict, locks release immediately, and the writer retries with randomized
+  exponential backoff ($50\,\mu\text{s}..10\,\text{ms}, \pm 25\%$ jitter) up to 0x20 cycles
+* Non-Blocking Telemetry Counter: active entry count (`total_entries`) is tracked in memory via
+  `AtomicU64`, preventing writer cache-line contention on Metadata Slot 0; Slot 0 flushes during
+  sync barriers
+
+> [!NOTE]
+> Multi-transaction write conflicts resolve through OCC backoff loops; under uncontended workloads,
+> write transactions commit in sub-microsecond intervals
+
+### §4 · Storage Topography & Demand-Paged Footprint
+
+Unified single-file container layout mapped across virtual address space,
+
+* Quantized Component Geometry: all internal structures align to 8 bytes and occupy uniform 64-byte
+  `Slot` multiples (Metadata = 1 slot, Node = 1 slot, AdjArr = 2 slots, Bucket = 4 slots,
+  DBuf = 4 slots)
+* Demand-Paged Virtual Mapping: reserves up to `MAX_DB_LEN` (0x40_0000_0000 bytes / 256 GiB)
+  upfront in virtual memory; physical disk blocks back pages lazily as data is written
+* Monotonic Slot Allocation: internal allocations advance `free_slot_marker` in 256-byte quanta
+  (4 slots), avoiding external fragmentation
+* Synchronized File Growth: when capacity exhausts, writers coordinate under `growth_mutex` using
+  double-checked locking to grow the backing file in OS page increments (16 KiB on 4 KiB/16 KiB
+  systems, 64 KiB on 64 KiB systems)
+* Initial Storage Footprint: cold database layout occupies exactly 8 KiB (128 slots) across
+  16 KiB initial file allocation
+
+> [!NOTE]
+> Virtual memory reservation (256 GiB) does not consume physical host RAM; physical residency tracks
+> active working set pages demand-faulted by the host kernel
+
+### §5 · RAII Safety & Graceful Shutdown Protocol
+
+Resource management separates host OS cleanup from physical data durability,
+
+* RAII Resource Reclamation: dropping `TurboFox` unmaps virtual address space, releases heap
+  allocations, closes backing file handles, and releases advisory file locks without leaks
+* Drop Durability Boundary: Rust's `Drop` implementation initiates a best-effort flush, but
+  discards errors; physical I/O faults cannot be surfaced during drop
+* Explicit Shutdown Barrier: production systems performing graceful shutdown must establish an
+  explicit sync barrier (`ticket.wait()`, `ticket.force()`, or `db.sync()`) and verify the returned
+  `Result` prior to handle destruction
+* Single-Process Exclusivity: enforced at startup via mandatory advisory file locks (`flock` on
+  Unix, `LockFileEx` on Windows); opening an active database concurrently returns
+  `TurboError::Storage`
 
 > [!WARNING]
->
-> RAII resource cleanup must not be conflated with durability guarantees
->
-> Dropping an instance initiates a best-effort background flush, but Rust's `Drop` interface
-> discards return values, hence delayed writeback failures (such as physical I/O errors or storage
-> exhaustion) cannot be propagated to the caller and will fail silently
->
-> Applications performing graceful shutdown must establish an explicit durability barrier before
-> dropping the instance:
->
-> * Under periodic sync configurations, await outstanding write completion via `ticket.wait()`
->   or poll `ticket.is_durable()`
-> * Under manual sync configurations, trigger a synchronous write barrier via `ticket.force()`
->   or `db.sync()`, verifying the returned `Result`
-
-### Storage Topography
-
-Unified single-file storage container managed across memory-mapped virtual address space:
-
-* Initial file footprint begins at only 16 KiB on standard host systems
-* Virtual memory space reserves up to `MAX_DB_LEN` (256 GiB) upfront while physical disk pages back
-  lazily as data is written
-* Allocations track 16-byte aligned units via bitmasks, avoiding external fragmentation
-* Backing files grow dynamically in uniform OS page increments, minimizing write amplification
-
-### Operational Invariants
-
-Constraints callers must design for:
-
-* Key length bounded between 0x01 and 0xFF bytes (255 B)
-* Maximum single-entry payload capacity is bounded by `MAX_VAL_LEN` (65,535 bytes) for key-value
-  entries and list items; larger payloads return `TurboError::PayloadTooLarge`
-* Multi-entry writes commit via OCC with conflict detection (retries up to 0x20 times before
-  surfacing contention errors)
-* Thread-safe (`Send + Sync`) within a single process via `Arc<TurboFox>`
-  * Single-process exclusivity is enforced at startup via mandatory POSIX / Win32 advisory file
-    locks
-  * Concurrent access by multiple OS processes on the same file is strictly prohibited
+> Dropping a database handle without invoking `sync()` or awaiting outstanding tickets risks data
+> loss if host system power fails before the OS page cache writes dirty pages to disk
 
 ## Supported Platforms
 
-| Architecture    | Target Platform                              |
-|:----------------|:---------------------------------------------|
-| x86_64          | Linux, macOS, Windows                        |
-| AArch64 (ARM64) | Linux, macOS, Windows                        |
+TurboFox supports 64-bit architectures across major operating systems; all target platforms are
+validated under automated multi-platform CI pipelines,
+
+| Architecture | OS        | Page Size             | ISA                 |
+|:-------------|:----------|:----------------------|:--------------------|
+| `x86_64`     | Linux     | 4 KiB                 | AVX-512, AVX2, SSE2 |
+| `x86_64`     | macOS     | 4 KiB                 | AVX2, SSE2          |
+| `x86_64`     | Windows   | 4 KiB                 | AVX2, SSE2          |
+| `aarch64`    | Linux     | 4 KiB, 16 KiB, 64 KiB | NEON                |
+| `aarch64`    | macOS     | 16 KiB                | NEON                |
+| `aarch64`    | Windows   | 4 KiB                 | NEON                |
+
+* Vector acceleration automatically detects CPU ISA features at runtime to drive SIMD hash scanning
+* Host page sizes (4 KiB, 16 KiB, 64 KiB) are detected dynamically to align allocation growth
+  quanta
+* Process exclusivity is enforced across all platforms via kernel-level mandatory advisory
+  file locks
 
 ## Benchmarks
 
@@ -509,7 +507,7 @@ Latency distributions capture response times from median (`p50`) through extreme
 <img src="assets/kv_tail_latency_split_threads.svg" width="100%"
   alt="Tail Latency Distribution" />
 
-Read and delete operations exhibit near-flat percentile curves across the entire distribution:
+Read and delete operations exhibit near-flat percentile curves across the entire distribution,
 
 * Point lookups (`GET`): Median latency remains sub-microsecond; at higher percentiles up to `p99`,
   latencies stay tightly bounded under lock-free memory mapping
@@ -528,7 +526,7 @@ under multi-threaded contention due to OCC validation conflicts and NVMe writeba
 <img src="assets/kv_latency_cdf_curves.svg" width="100%"
   alt="Latency Percentile Progression Curves" />
 
-The semi-log percentile progression curves highlight the sharp inflection point for write mutations:
+The semi-log percentile progression curves highlight the sharp inflection point for write mutations,
 
 * Sub-microsecond median write: Sequential writes commit into active memory pages with low median
   latency
@@ -547,7 +545,7 @@ tables and internal transaction state after completing 0x10_0000 operations
 <img src="assets/kv_memory_footprint_concurrency.svg" width="100%"
   alt="Resident Memory Footprint Under Concurrency" />
 
-Physical storage growth on NVMe tracks sequential allocation while memory footprint remains bounded:
+Physical storage growth on NVMe tracks sequential allocation while memory footprint remains bounded,
 
 * Demand-paged single thread: Single-worker transactions maintain a resident memory footprint well
   below on-disk database size because unreferenced pages remain un-faulted by the kernel
@@ -568,7 +566,7 @@ eager in-memory lookup cache construction
 <img src="assets/scale_perf_combined_horizontal.svg" width="100%"
   alt="Database Open Latency and Resource Footprint Scaling" />
 
-Cold startup behavior exhibits two distinct operational modes:
+Cold startup behavior exhibits two distinct operational modes,
 
 * Raw database open (`lookup_cache_disabled`): Bypasses key traversal entirely; startup latency
   remains sub-millisecond and flat; resident memory footprint remains pinned at a constant 4 KiB
@@ -590,7 +588,7 @@ without experiencing non-linear compaction spikes
 <img src="assets/scale_perf_cache_overhead.svg" width="100%"
   alt="In-Memory Lookup Cache Overhead and RAM Density" />
 
-The cache overhead profile illustrates the operational trade-offs of eager indexing:
+The cache overhead profile illustrates the operational trade-offs of eager indexing,
 
 * Latency multiplier: The startup time ratio between cached and raw open remains bounded while cold
   open stays sub-millisecond across tested intervals

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-TurboFox Machine Metadata Collector
-Extracts low-level hardware, memory, storage, and microarchitectural telemetry
-for reproducible systems benchmarking across x86_64 and aarch64 architectures.
-"""
+
 
 import argparse
 import datetime

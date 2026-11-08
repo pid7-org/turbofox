@@ -2,6 +2,7 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_OUT="tmp/results/turbofox_benchmark_results.json"
 TARGET_DIR="${CARGO_TARGET_DIR:-/tmp/turbofox-target}"
 BENCH_DIR="/tmp/turbofox_bench"
@@ -44,15 +45,9 @@ mkdir -p "$(dirname "${OUT_FILE}")"
 export TMPDIR="${BENCH_DIR}"
 
 # Collect system metadata
-TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-KERNEL=$(uname -r)
-ARCH=$(uname -m)
-CPU_MODEL=$(lscpu | grep "Model name" | sed 's/.*: *//' | tr -d '\n' || echo "Unknown")
-TOTAL_CPUS=$(nproc || echo "1")
-INSTANCE_TYPE="unknown"
-if [[ -f "/sys/devices/virtual/dmi/id/product_name" ]]; then
-  INSTANCE_TYPE=$(cat /sys/devices/virtual/dmi/id/product_name | tr -d '\n')
-fi
+echo "[$(date +%T)] Collecting machine hardware, memory, and storage telemetry..." >&2
+METADATA_JSON=$(python3 "${SCRIPT_DIR}/collect_machine_metadata.py" \
+  --bench-dir "${BENCH_DIR}" --region "${REGION}" 2>/dev/null || echo "{}")
 
 echo "[$(date +%T)] Compiling benchmarks in release mode with target-cpu=native..." >&2
 RUSTFLAGS="${RUSTFLAGS:--C target-cpu=native}" CARGO_TARGET_DIR="${TARGET_DIR}" cargo bench --no-run --message-format=short
@@ -166,16 +161,7 @@ echo "]" >> "${TMP_RESULTS}"
 # Write final consolidated JSON artifact
 cat <<EOF > "${OUT_FILE}"
 {
-  "metadata": {
-    "timestamp_utc": "${TIMESTAMP}",
-    "region": "${REGION}",
-    "instance_type": "${INSTANCE_TYPE}",
-    "cpu_model": "${CPU_MODEL}",
-    "kernel": "${KERNEL}",
-    "arch": "${ARCH}",
-    "total_cpus": ${TOTAL_CPUS},
-    "storage_path": "${BENCH_DIR}"
-  },
+  "metadata": ${METADATA_JSON},
   "results": $(cat "${TMP_RESULTS}")
 }
 EOF

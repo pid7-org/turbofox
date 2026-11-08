@@ -19,13 +19,14 @@ sync barriers
 
 - [Usage](#usage)
 - [Features](#features)
-  - [Key-Value Operations](#key-value-operations)
-  - [TurboList](#turbolist)
-  - [Explicit Durability & Sync Barriers](#explicit-durability--sync-barriers)
-  - [Page Eviction & Resource Telemetry](#page-eviction--resource-telemetry)
-- [Lifecycle & Initialization](#lifecycle--initialization)
+  - [§1 · Point Mutations: SET & DEL](#1--point-mutations-set--del)
+  - [§2 · Zero-Allocation Retrieval: GET & CONTAINS_KEY](#2--zero-allocation-retrieval-get--contains_key)
+  - [§3 · Durability Pipeline: TurboTicket & Sync Barriers](#3--durability-pipeline-turboticket--sync-barriers)
+  - [§4 · Embedded Sequences: TurboList](#4--embedded-sequences-turbolist)
+  - [§5 · Configuration & Lifecycle: TurboCfg](#5--configuration--lifecycle-turbocfg)
+  - [§6 · Page Cache Eviction & Telemetry: evict](#6--page-cache-eviction--telemetry-evict)
 - [Architecture Guarantees](#architecture-guarantees)
-  - [Zero Global Rehash](#zero-rehash)
+  - [Zero Global Rehash](#zero-global-rehash)
   - [Torn-Write Protection](#torn-write-protection)
   - [Durability Model](#durability-model)
   - [RAII Safety](#raii-safety)
@@ -33,7 +34,6 @@ sync barriers
   - [Storage Topography](#storage-topography)
   - [Operational Invariants](#operational-invariants)
 - [Supported Platforms](#supported-platforms)
-- [Thread Safety](#thread-safety)
 - [Benchmarks](#benchmarks)
   - [§1 · Concurrency Dynamics & Throughput Scaling](#1--concurrency-dynamics--throughput-scaling)
   - [§2 · Tail Latency Spectrum & Percentile CDF](#2--tail-latency-spectrum--percentile-cdf)
@@ -86,19 +86,20 @@ db.delete().unwrap();
 
 ## Features
 
-### Key-Value Operations
+### §1 · Point Mutations: SET & DEL
 
-Lock-free point reads, writes, and deletions backed by memory-mapped storage and optimistic
-concurrency control:
+Mutations execute via optimistic concurrency control (OCC) directly against memory-mapped pages:
 
-* Writes commit immediately into memory-mapped pages and return a `TurboTicket` bound to a
-  monotonic commit epoch
-* Reads validate CRC32 checksum integrity and byte-level key equality; torn reads during concurrent
-  writes fail safely via `TurboError::CorruptedPayload`
-* Probing via `contains_key` checks index presence without allocating or copying value payloads to
-  the heap
-* In-place overwrites execute directly when updated values fit in existing allocated space
-* Deletions via `del` reclaim key-value slots in place and return existence status
+* Inserts assign slots dynamically; in-place overwrites execute without reallocation when updated
+  payloads fit existing slot capacity
+* Monotonic expansion bounds heap fragmentation; slots expand dynamically when updated values
+  exceed prior allocations
+* In-place slot reclamation via `del` marks tombstones directly without global table redistribution
+  or stop-the-world compaction cycles
+* Operational bounds: key length $\in [0x01, 0xFF]$ bytes (255 B); value length $\le 0xFFFF$
+  bytes (65,535 B)
+* OCC conflict retry loop resolves concurrent multi-threaded writes automatically (retrying up to
+  0x20 times under contention)
 
 ```rust
 use turbofox::{TurboCfg, TurboFox};
@@ -106,33 +107,37 @@ use turbofox::{TurboCfg, TurboFox};
 let dir = tempfile::tempdir().unwrap();
 let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
 
+// Initial write: commits slot in memory and returns commit epoch ticket
 let ticket = db.set(b"session:0x42", b"user_active").unwrap();
-assert!(ticket.epoch() > 0);
+assert!(ticket.epoch() > 0x00);
 
-assert!(db.contains_key(b"session:0x42").unwrap());
-
-let val = db.get(b"session:0x42").unwrap();
-assert_eq!(val, Some(b"user_active".to_vec()));
-
+// In-place overwrite: updates in place without allocating new storage slots
 db.set(b"session:0x42", b"user_idle").unwrap();
 assert_eq!(db.get(b"session:0x42").unwrap(), Some(b"user_idle".to_vec()));
 
+// In-place slot reclamation: frees key-value slot without table redistribution
 assert!(db.del(b"session:0x42").unwrap());
-assert!(!db.contains_key(b"session:0x42").unwrap());
+assert!(!db.del(b"session:0x42").unwrap());
 
 db.delete().unwrap();
 ```
 
-### TurboList
+> [!NOTE]
+> In-place overwrites incur zero storage expansion overhead when new payload length remains
+> within previously allocated slot capacity
 
-Ordered 1-to-N sequences co-exist inside the primary storage file without secondary index tables,
-auxiliary catalog files, or relational join overhead:
+### §2 · Zero-Allocation Retrieval: GET & CONTAINS_KEY
 
-* Sequential appends and pops execute with amortized O(1) complexity
-* Boundary inspection via `first` and `last` inspects queue extremes without traversing the list
-* Fast indexed random access via `get_at` fetches items by zero-based ordinal position
-* Forward snapshot iteration via `iter` traverses active entries sequentially
-* Per-item CRC32 checksums validate item integrity on every read
+Point reads execute lock-free directly against memory-mapped pages without shared mutex acquisition:
+
+* Lock-free point lookups route through 32-bit XxHash32 bucket chains
+* Checksum integrity verification: every payload read validates CRC32 integrity alongside
+  byte-level key equality; torn reads from concurrent writes fail safely via
+  `TurboError::CorruptedPayload`
+* Zero-allocation key presence probe: `contains_key` probes bucket presence without copying or
+  allocating value payload buffers on the heap
+* Lookup misses short-circuit at bucket index level without touching data payload pages; zero
+  heap allocations occur on non-existent keys
 
 ```rust
 use turbofox::{TurboCfg, TurboFox};
@@ -140,77 +145,205 @@ use turbofox::{TurboCfg, TurboFox};
 let dir = tempfile::tempdir().unwrap();
 let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
 
-let list = db.list(b"jobs:pending");
+db.set(b"device:sensor_01", b"temp=21.4C;humidity=45%").unwrap();
 
-list.append(b"task_1").unwrap();
-list.append(b"task_2").unwrap();
-list.append(b"task_3").unwrap();
-assert_eq!(list.len().unwrap(), 3);
+// Zero-allocation existence probe: resolves without heap Vec allocations
+assert!(db.contains_key(b"device:sensor_01").unwrap());
+assert!(!db.contains_key(b"device:sensor_99").unwrap());
 
-assert_eq!(list.first().unwrap(), Some(b"task_1".to_vec()));
-assert_eq!(list.last().unwrap(), Some(b"task_3".to_vec()));
-assert_eq!(list.get_at(1).unwrap(), Some(b"task_2".to_vec()));
+// Value retrieval: verifies CRC32 checksum before copying payload bytes
+let payload = db.get(b"device:sensor_01").unwrap();
+assert_eq!(payload, Some(b"temp=21.4C;humidity=45%".to_vec()));
 
-let mut iter = list.iter().unwrap();
-assert_eq!(iter.next(), Some(b"task_1".to_vec()));
-assert_eq!(iter.next(), Some(b"task_2".to_vec()));
-assert_eq!(iter.next(), Some(b"task_3".to_vec()));
-assert_eq!(iter.next(), None);
-drop(iter);
+db.delete().unwrap();
+```
 
-assert_eq!(list.pop().unwrap(), Some(b"task_3".to_vec()));
-assert_eq!(list.len().unwrap(), 2);
+> [!TIP]
+> Prefer `contains_key` over `get` whenever existence verification does not consume payload bytes;
+> probing inspects index headers directly, avoiding heap allocations entirely
 
-list.clear().unwrap();
+### §3 · Durability Pipeline: TurboTicket & Sync Barriers
+
+Decouples high-frequency in-memory mutation throughput from physical NVMe writeback latency:
+
+* Monotonic epoch tracking: mutations (`set`, `del`, `append`, `pop`) return a lightweight
+  `TurboTicket` bound to a strictly increasing commit epoch
+* Non-blocking verification: `ticket.is_durable()` checks hardware writeback status atomically
+  without parking the calling thread
+* Cumulative barrier invariant: physical flushes advance the durable epoch monotonically;
+  establishing a barrier for epoch $E$ guarantees all mutations with epochs $\le E$ are persisted
+  to disk
+* Flexible durability policies:
+  * *Per-Write Sync*: call `ticket.force()` immediately for strict hardware durability at each write
+  * *Batched Epoch Sync*: execute multi-mutation batches in memory at multi-million ops/sec, then
+    issue a single barrier on the final ticket to persist the entire batch simultaneously
+
+```rust
+use turbofox::{TurboCfg, TurboFox};
+
+let dir = tempfile::tempdir().unwrap();
+let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
+
+// Pattern A · Strict Per-Write Sync (~26 kops/s on NVMe)
+// Forces physical msync on every mutation; throughput bounded by SSD writeback latency
+for i in 0..0x0A {
+    let key = format!("strict:0x{:x}", i);
+    let ticket = db.set(key.as_bytes(), b"state").unwrap();
+    ticket.force().unwrap(); // Blocks calling thread until persisted on NVMe
+}
+
+// Pattern B · Batched Epoch Sync (~1+ Mops/s throughput)
+// Mutations commit to memory pages at memory bus speeds;
+// Calling force() on the final ticket commits all preceding mutations in a single hardware barrier
+let mut last_ticket = None;
+for i in 0..0x03E8 {
+    let key = format!("batch:0x{:x}", i);
+    last_ticket = Some(db.set(key.as_bytes(), b"metric").unwrap());
+}
+
+if let Some(ticket) = last_ticket {
+    ticket.force().unwrap(); // Single sync barrier persists all 0x03E8 mutations
+    assert!(ticket.is_durable());
+}
+
+db.delete().unwrap();
+```
+
+> [!IMPORTANT]
+> Durability barriers are epoch-cumulative; calling `ticket.force()`, `ticket.wait()`, or
+> `db.sync()` on ticket $N$ atomically persists all pending mutations $0..N$ in one physical flush
+
+### §4 · Embedded Sequences: TurboList
+
+Ordered 1-to-N sequences co-located inside the primary container file without auxiliary tables or
+relational join overhead:
+
+* Sequential appends and pops execute with amortized O(1) complexity
+* Boundary inspection via `first` and `last` inspects queue extremes without traversing elements
+* Zero-based random access via `get_at` fetches items by ordinal position
+* Forward snapshot iteration via `iter` traverses active items sequentially
+* Per-item CRC32 checksums validate payload integrity on every retrieval
+
+```rust
+use turbofox::{TurboCfg, TurboFox};
+
+let dir = tempfile::tempdir().unwrap();
+let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
+
+let list = db.list(b"jobs:stream");
+
+// Amortized O(1) sequential appends into memory-mapped contiguous arrays
+list.append(b"job_1").unwrap();
+list.append(b"job_2").unwrap();
+list.append(b"job_3").unwrap();
+assert_eq!(list.len().unwrap(), 0x03);
+
+// Boundary probes without traversing the underlying array
+assert_eq!(list.first().unwrap(), Some(b"job_1".to_vec()));
+assert_eq!(list.last().unwrap(), Some(b"job_3".to_vec()));
+
+// O(1) indexed random access by 0-based position
+assert_eq!(list.get_at(0x01).unwrap(), Some(b"job_2".to_vec()));
+
+// Forward snapshot iterator verifying per-item CRC32 integrity
+let items: Vec<_> = list.iter().unwrap().collect();
+assert_eq!(items.len(), 0x03);
+
+// Stack/queue pop and slot reclamation
+assert_eq!(list.pop().unwrap(), Some(b"job_3".to_vec()));
+assert!(list.clear().unwrap());
 assert!(list.is_empty().unwrap());
 
 drop(list);
 db.delete().unwrap();
 ```
 
-### Explicit Durability & Sync Barriers
+> [!NOTE]
+> `TurboList` operations share memory-mapped adjacent array descriptor blocks; calling `clear()`
+> reclaims descriptor slots in place without file truncation or storage reorganization
 
-Decouples memory-speed mutation throughput from physical NVMe writeback latency:
+### §5 · Configuration & Lifecycle: TurboCfg
 
-* Mutations (`set`, `del`, `append`, `pop`) return a lightweight `TurboTicket` bound to a
-  monotonic commit epoch
-* Non-blocking verification via `ticket.is_durable()` checks physical writeback status
-  asynchronously
-* Explicit sync barriers via `ticket.wait()`, `ticket.force()`, or `db.sync()` guarantee
-  persistence to physical media
-* Configurable sync strategies support unmanaged manual flushing (`SyncMode::Manual`) and
-  adaptive background flushing (`SyncMode::Periodic`)
+Engine initialization, sync policies, and storage pre-allocation parameters:
 
-### Page Eviction & Resource Telemetry
+* Durability policies:
+  * `SyncMode::Manual`: caller retains explicit control over flush timing and background threads
+  * `SyncMode::Periodic(Duration)`: spawns a background thread coalescing dirty pages at interval
+* Upfront storage sizing via `CapacityHint`: pre-allocates backing database files to avoid
+  runtime `mmap` expansion latency spikes during high-throughput ingestion
+* Lookup cache mode: trade-off between instant cold startup (4 KiB RSS) and pre-indexed memory
+  lookups for read-intensive workloads
 
-Granular control over OS page cache residency and storage footprint:
+```rust
+use std::time::Duration;
+use turbofox::{CapacityHint, SyncMode, TurboCfg, TurboFox};
 
-* Advisory cache trimming via `evict` advises host kernel page tables to release clean file-backed
-  pages (`PreserveHeaders` or `PurgeAll`) to relieve physical RAM pressure
-* Telemetry queries inspect active page cache residency via `resident_bytes_in_memory()` and
-  allocated file size via `resident_bytes_on_disk()`
-* Virtual address space expands lazily up to 0x40_0000_0000 bytes (256 GiB) while physical file
-  size starts at only 16 KiB
+let dir = tempfile::tempdir().unwrap();
+let path = dir.path();
 
-## Lifecycle & Initialization
+// Pre-size container upfront to eliminate runtime mmap expansion pauses
+let hint = CapacityHint::new()
+    .with_kv(0x0001_86A0, 0x10, 0x20)
+    .with_list(0x0400, 0x08, 0x40);
 
-TurboFox provides three initialization primitives,
+// Manual sync mode: caller retains total control over flush timing and threads
+let manual_cfg = TurboCfg::manual(path).with_capacity_hint(hint);
+let db = TurboFox::open_or_create(manual_cfg).unwrap();
 
-* [`TurboFox::open_or_create`]: Recommended for general application lifecycles; checks
-  backing storage presence and initializes if missing, while strictly propagating corruption
-  or validation errors rather than silently clobbering existing state
-* [`TurboFox::open`]: Strict open; requires existing database files and validates magic,
-  layout version, page alignment, and header integrity; fails if storage is absent
-* [`TurboFox::create`]: Strict creation; initializes physical pages and format metadata;
-  fails with [`TurboError::Storage`] if storage files already exist
+// Periodic sync mode: dedicated background worker flushes at interval
+let periodic_cfg = TurboCfg::periodic(path, Duration::from_millis(0x32));
+assert_eq!(periodic_cfg.sync_mode, SyncMode::Periodic(Duration::from_millis(0x32)));
 
-TurboFox provides three distinct initialization entry points to match operational requirements,
+db.delete().unwrap();
+```
 
-| Method           | Target Exists | Target Missing | Target Corrupt | Recommended Use Case                     |
-|:-----------------|:------------- |:---------------|:---------------|:-----------------------------------------|
-| `open_or_create` | Opens DB      | Inits DB       | Fails (`Err`)  | General application boot sequences       |
-| `create`         | Fails (`Err`) | Inits DB       | N/A            | Cold setup or provisioning scripts       |
-| `open`           | Opens DB      | Fails (`Err`)  | Fails (`Err`)  | Strict restarts requiring existing state |
+TurboFox provides three distinct initialization entry points to match operational requirements:
+
+| Method           | Target Exists | Target Missing | Target Corrupt | Recommended Use Case        |
+|:-----------------|:--------------|:---------------|:---------------|:----------------------------|
+| `open_or_create` | Opens DB      | Formats DB     | Fails (`Err`)  | Application boot sequences  |
+| `create`         | Fails (`Err`) | Formats DB     | N/A            | Provisioning & cold setups  |
+| `open`           | Opens DB      | Fails (`Err`)  | Fails (`Err`)  | Strict crash restarts       |
+
+> [!TIP]
+> Use `CapacityHint` in write-heavy environments to pre-size storage pages upfront, eliminating
+> runtime memory-map resizing and bounding tail write latency
+
+### §6 · Page Cache Eviction & Telemetry: evict
+
+Granular control over OS page cache residency and backing storage footprint:
+
+* Advisory cache trimming via `evict`: advises host kernel page tables to release clean file-backed
+  pages to relieve physical RAM pressure
+* `EvictionMode::PreserveHeaders`: unmaps data pages while retaining index headers hot in RAM
+* `EvictionMode::PurgeAll`: unmaps all database pages across virtual address space; subsequent
+  reads demand-page faulted blocks back into physical RAM
+* Automatic pre-eviction sync: flushes dirty pages before dispatching kernel eviction hints,
+  ensuring crash consistency and marking outstanding tickets durable
+* Telemetry metrics: inspect active page residency via `resident_bytes_in_memory()` and file
+  allocation via `resident_bytes_on_disk()`
+
+```rust
+use turbofox::{EvictionMode, TurboCfg, TurboFox};
+
+let dir = tempfile::tempdir().unwrap();
+let db = TurboFox::create(TurboCfg::manual(dir.path())).unwrap();
+
+db.set(b"hot_key", b"payload_bytes").unwrap();
+
+// Telemetry: inspect physical memory residency vs disk allocation
+assert!(db.resident_bytes_in_memory().unwrap() > 0x00);
+assert!(db.resident_bytes_on_disk() >= 0x4000); // 16 KiB initial footprint
+
+// Pre-eviction sync flushes dirty pages automatically;
+// Sheds cold data pages from physical RAM while keeping index headers hot
+db.evict(EvictionMode::PreserveHeaders).unwrap();
+
+// Subsequent read faults evicted page back into physical memory on demand
+assert_eq!(db.get(b"hot_key").unwrap(), Some(b"payload_bytes".to_vec()));
+
+db.delete().unwrap();
+```
 
 ## Architecture Guarantees
 
@@ -309,11 +442,6 @@ Constraints callers must design for:
 |:----------------|:---------------------------------------------|
 | x86_64          | Linux, macOS, Windows                        |
 | AArch64 (ARM64) | Linux, macOS, Windows                        |
-
-## Thread Safety
-
-`TurboFox` wraps `Arc<Engine>` internally and is thread-safe (`Send + Sync`) by default, i.e. all
-point reads (`get`), writes (`set`), and deletes (`del`) run concurrently without global locks
 
 ## Benchmarks
 

@@ -1828,11 +1828,12 @@ ALL_CHARTS = {
 
 
 def main():
-    json_path = (
-        sys.argv[1]
-        if len(sys.argv) > 1
+    default_json = (
+        "tmp/assets/turbofox_benchmark_results.json"
+        if os.path.exists("tmp/assets/turbofox_benchmark_results.json")
         else "tmp/results/turbofox_benchmark_results.json"
     )
+    json_path = sys.argv[1] if len(sys.argv) > 1 else default_json
     out_dir = sys.argv[2] if len(sys.argv) > 2 else "tmp/assets"
 
     dataset = load_dataset(json_path)

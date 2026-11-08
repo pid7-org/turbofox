@@ -19,8 +19,8 @@ set -euo pipefail
 
 BENCHER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${BENCHER_DIR}/.." && pwd)"
-RESULTS_DIR="${ROOT_DIR}/tmp/results"
-OUTPUT_JSON="${RESULTS_DIR}/turbofox_benchmark_results.json"
+ASSETS_DIR="${ROOT_DIR}/tmp/assets"
+OUTPUT_JSON="${ASSETS_DIR}/turbofox_benchmark_results.json"
 SSH_KEY="${BENCHER_DIR}/id_ed25519"
 AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
 export AWS_REGION
@@ -88,7 +88,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-mkdir -p "${RESULTS_DIR}"
+mkdir -p "${ASSETS_DIR}"
 
 CLEANUP_CALLED=0
 
@@ -98,12 +98,12 @@ cleanup() {
   fi
   CLEANUP_CALLED=1
 
-  echo "=== [Phase 11/12] Executing guaranteed infrastructure teardown ===" >&2
+  echo "=== [Phase 12/13] Executing guaranteed infrastructure teardown ===" >&2
   cd "${BENCHER_DIR}"
   terraform destroy -auto-approve || true
 
   if [[ -n "${INSTANCE_ID:-}" ]]; then
-    echo "=== [Phase 12/12] Validating EC2 termination status ===" >&2
+    echo "=== [Phase 13/13] Validating EC2 termination status ===" >&2
     local state
     state=$(aws ec2 describe-instances --region "${AWS_REGION}" \
       --instance-ids "${INSTANCE_ID}" \
@@ -122,7 +122,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-echo "=== [Phase 1/12] Validating local dependencies ===" >&2
+echo "=== [Phase 1/13] Validating local dependencies ===" >&2
 for cmd in terraform aws ssh scp python3; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
     echo "Error: required command '${cmd}' not found" >&2
@@ -131,20 +131,20 @@ for cmd in terraform aws ssh scp python3; do
 done
 echo "Validation passed: required local tooling is present" >&2
 
-echo "=== [Phase 2/12] Validating AWS authentication ===" >&2
+echo "=== [Phase 2/13] Validating AWS authentication ===" >&2
 CALLER_ARN=$(aws sts get-caller-identity --query "Arn" --output text)
 echo "Validation passed: authenticated as ${CALLER_ARN}" >&2
 
-echo "=== [Phase 3/12] Initializing and validating Terraform module ===" >&2
+echo "=== [Phase 3/13] Initializing and validating Terraform module ===" >&2
 cd "${BENCHER_DIR}"
 terraform init -upgrade
 terraform validate
 echo "Validation passed: Terraform configuration is valid" >&2
 
-echo "=== [Phase 4/12] Provisioning EC2 infrastructure via Terraform ===" >&2
+echo "=== [Phase 4/13] Provisioning EC2 infrastructure via Terraform ===" >&2
 terraform apply -auto-approve -var="aws_region=${AWS_REGION}"
 
-echo "=== [Phase 5/12] Extracting outputs and configuring SSH credentials ===" >&2
+echo "=== [Phase 5/13] Extracting outputs and configuring SSH credentials ===" >&2
 INSTANCE_ID=$(terraform output -raw instance_id)
 PUBLIC_IP=$(terraform output -raw instance_public_ip)
 terraform output -raw ssh_private_key_pem > "${SSH_KEY}"
@@ -153,7 +153,7 @@ chmod 0600 "${SSH_KEY}"
 echo "Instance ID: ${INSTANCE_ID}" >&2
 echo "Public IP  : ${PUBLIC_IP}" >&2
 
-echo "=== [Phase 6/12] Validating EC2 instance state via AWS CLI ===" >&2
+echo "=== [Phase 6/13] Validating EC2 instance state via AWS CLI ===" >&2
 INSTANCE_STATE=""
 for attempt in $(seq 1 0x1E); do
   INSTANCE_STATE=$(aws ec2 describe-instances --region "${AWS_REGION}" \
@@ -173,7 +173,7 @@ if [[ "${INSTANCE_STATE}" != "running" ]]; then
 fi
 echo "Validation passed: EC2 instance is running" >&2
 
-echo "=== [Phase 7/12] Validating SSH connectivity and cloud-init readiness ===" >&2
+echo "=== [Phase 7/13] Validating SSH connectivity and cloud-init readiness ===" >&2
 SSH_OPTS=(-i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
   -o ConnectTimeout=5 -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=120)
 
@@ -193,18 +193,18 @@ if [[ ${SSH_READY} -ne 1 ]]; then
 fi
 echo "Validation passed: SSH connection established" >&2
 
-echo "=== [Phase 8/12] Synchronizing benchmark bootstrapper to remote host ===" >&2
+echo "=== [Phase 8/13] Synchronizing benchmark bootstrapper to remote host ===" >&2
 scp "${SSH_OPTS[@]}" "${ROOT_DIR}/scripts/init_ec2_bench.sh" \
   "ubuntu@${PUBLIC_IP}:/tmp/init_ec2_bench.sh"
 ssh "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" "chmod +x /tmp/init_ec2_bench.sh"
 echo "Validation passed: bootstrapper synchronized and marked executable" >&2
 
-echo "=== [Phase 9/12] Executing remote benchmark suite ===" >&2
+echo "=== [Phase 9/13] Executing remote benchmark suite ===" >&2
 ssh -t "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" \
   "/tmp/init_ec2_bench.sh --run --branch '${BRANCH_ARG}' --benches '${BENCHES_ARG}' --out /tmp/results.json"
 echo "Validation passed: remote benchmark suite finished successfully" >&2
 
-echo "=== [Phase 10/12] Downloading and validating benchmark telemetry ===" >&2
+echo "=== [Phase 10/13] Downloading and validating benchmark telemetry ===" >&2
 scp "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}:/tmp/results.json" "${OUTPUT_JSON}"
 
 if [[ ! -s "${OUTPUT_JSON}" ]]; then
@@ -214,5 +214,15 @@ fi
 
 python3 -m json.tool "${OUTPUT_JSON}" > /dev/null
 echo "Validation passed: Telemetry JSON schema is valid; written to ${OUTPUT_JSON}" >&2
+
+echo "=== [Phase 11/13] Generating publication SVG assets from telemetry ===" >&2
+GEN_SCRIPT="${ROOT_DIR}/scripts/generate_all_assets.py"
+if [[ ! -f "${GEN_SCRIPT}" ]]; then
+  echo "Error: asset generator script not found at ${GEN_SCRIPT}" >&2
+  exit 1
+fi
+
+python3 "${GEN_SCRIPT}" "${OUTPUT_JSON}" "${ASSETS_DIR}"
+echo "Validation passed: Benchmark SVG assets generated in ${ASSETS_DIR}" >&2
 
 echo "All benchmark phases completed; Proceeding to automated teardown" >&2

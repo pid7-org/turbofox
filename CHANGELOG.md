@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.301] - 2026-11-08
+
+- **Breaking:** Minimum Supported Rust Version (MSRV) raised to 1.89.0
+- **Breaking:** Databases created with previous versions are incompatible and unsupported
+- AVX-512F vector probing kernels and dynamic ISA dispatch for x86_64 architectures
+- 32-entry (`0x20`) bucket SIMD probing to accelerate hash matching and reduce trie depth
+- Bit 31 keyspace partitioning isolating key-value and sequence domains against cross collisions
+- Demand-paged `TurboListIter` streaming item payloads lazily with O(1) memory overhead
+- Fail-safe iterator traversal terminating gracefully upon concurrent sequence deletion or pop
+- `TurboList`:
+  - `del` method for removing an entire sequence and freeing descriptor and payload buffers
+
 ## [0.0.300] - 2026-11-04
 
 - **Breaking:** Databases created with previous versions are incompatible and unsupported

@@ -1,6 +1,6 @@
 [package]
 name = "turbofox"
-version = "0.0.300"
+version = "0.0.301"
 edition = "2024"
 rust-version = "1.89.0"
 description = "An embedded, memory-mapped key-value engine providing lock-free concurrency & explicit sync barriers"

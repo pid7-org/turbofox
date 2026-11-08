@@ -188,7 +188,8 @@ relational join overhead,
 * Sequential appends and pops execute with amortized O(1) complexity
 * Boundary inspection via `first` and `last` inspects queue extremes without traversing elements
 * Zero-based random access via `get_at` fetches items by ordinal position
-* Forward snapshot iteration via `iter` traverses active items sequentially
+* Demand-paged forward iteration via `iter` streams active items with O(1) payload footprint
+* Pre-read slot validation terminates iteration cleanly if trailing items are popped
 * Per-item CRC32 checksums validate payload integrity on every retrieval
 
 ```rust
@@ -212,7 +213,7 @@ assert_eq!(list.last().unwrap(), Some(b"job_3".to_vec()));
 // O(1) indexed random access by 0-based position
 assert_eq!(list.get_at(0x01).unwrap(), Some(b"job_2".to_vec()));
 
-// Forward snapshot iterator verifying per-item CRC32 integrity
+// Demand-paged forward iterator verifying per-item CRC32 integrity
 let items: Vec<_> = list.iter().unwrap().collect();
 assert_eq!(items.len(), 0x03);
 
@@ -227,7 +228,9 @@ db.delete().unwrap();
 
 > [!NOTE]
 > `TurboList` operations share memory-mapped adjacent array descriptor blocks; calling `clear()`
-> reclaims descriptor slots in place without file truncation or storage reorganization
+> reclaims descriptor slots in place without file truncation or storage reorganization;
+> `iter()` snapshots compact 12 B index descriptors upfront and validates slot occupancy before
+> reading payloads, halting cleanly without reading recycled memory if concurrent pops occur
 
 ### §5 · Configuration & Lifecycle: TurboCfg
 

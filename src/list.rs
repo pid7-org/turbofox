@@ -324,14 +324,15 @@ impl TurboList {
         Ok(self.len()? == 0)
     }
 
-    /// Create an iterator snapshot over all item payloads in the list
+    /// Create a demand-paged forward iterator over all item payloads in the list
     ///
-    /// Forward snapshot iterator validating per-item CRC32 integrity on traversal
+    /// Snapshots compact 12 B index descriptors upfront; lazily streams payloads from
+    /// memory-mapped data buffers on demand with O(1) memory overhead and pre-read validation
     ///
     /// ## Errors
     ///
-    /// * [`TurboError::Storage`](crate::TurboError::Storage) if reading item payloads fails
-    /// * [`TurboError::CorruptedPayload`](crate::TurboError::CorruptedPayload) on CRC fault
+    /// * [`TurboError::Storage`](crate::TurboError::Storage) if trie or descriptor traversal fails
+    /// * [`TurboError::ResourceBusy`](crate::TurboError::ResourceBusy) if OCC conflict limit hit
     ///
     /// ## Example
     ///

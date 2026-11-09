@@ -25,6 +25,7 @@ jobs:
           - os: macos-latest
             arch: aarch64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -49,6 +50,7 @@ jobs:
   release:
     needs: lints
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -85,6 +87,7 @@ jobs:
   publish:
     needs: lints
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 

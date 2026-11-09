@@ -868,7 +868,7 @@ impl Engine {
         let mut depth = 1usize;
 
         loop {
-            let node = self.mmap.read_exact::<Node, _, _>(curr_slot as usize, |n| *n)?;
+            let node = self.mmap.read_optimistic::<Node, _, _>(curr_slot as usize, |n| *n)?;
             let child_idx = trie_child_idx(hash, depth);
             let target_slot = node.bucket_indices[child_idx];
 
@@ -969,16 +969,17 @@ impl Engine {
         let hash = hash_kv_key(key);
         let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
 
-        let val = self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |bucket| {
-            bucket.probe_match_extract(hash, |entry_idx| {
-                let entry = bucket.entry(entry_idx);
-                if entry.is_list() {
-                    return None;
-                }
+        let bucket: Bucket =
+            self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-                self.read_kv_entry_if_matches(&entry, key)
-            })
-        })?;
+        let val = bucket.probe_match_extract(hash, |entry_idx| {
+            let entry = bucket.entry(entry_idx);
+            if entry.is_list() {
+                return None;
+            }
+
+            self.read_kv_entry_if_matches(&entry, key)
+        });
 
         Ok(val)
     }
@@ -987,15 +988,26 @@ impl Engine {
         let (pool_hop, local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
         let dbuf_slot = self.locate_databuf_slot(pool_hop).ok()?;
 
-        let res = self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |dbuf| {
-            dbuf.verify_and_read_kv_payload(local_idx, key)
-        });
+        let dbuf: DBuf =
+            self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |d| *d).ok()?;
 
-        match res {
-            Ok(Ok(Some(val))) => Some(val),
-            Ok(Ok(None)) => None,
-            Ok(Err(DBufError::InvalidIndex)) => {
+        match dbuf.verify_and_read_kv_payload(local_idx, key) {
+            Ok(Some(val)) => Some(val),
+            Ok(None) => None,
+            Err(DBufError::InvalidIndex) => {
                 self.read_spanned_kv_if_matches(entry, pool_hop, local_idx, key)
+            }
+            Err(DBufError::CrcMismatch { .. }) => {
+                for _ in 0..0x03 {
+                    std::hint::spin_loop();
+                    if let Ok(d) =
+                        self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |d| *d)
+                        && let Ok(Some(val)) = d.verify_and_read_kv_payload(local_idx, key)
+                    {
+                        return Some(val);
+                    }
+                }
+                None
             }
             _ => None,
         }
@@ -1050,13 +1062,12 @@ impl Engine {
 
         let hash = hash_kv_key(key);
         let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
+        let bucket: Bucket =
+            self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-        let matched =
-            self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |bucket| {
-                bucket
-                    .probe_match(hash, |entry_idx| self.match_kv_key(&bucket.entry(entry_idx), key))
-                    .is_some()
-            })?;
+        let matched = bucket
+            .probe_match(hash, |entry_idx| self.match_kv_key(&bucket.entry(entry_idx), key))
+            .is_some();
 
         Ok(matched)
     }
@@ -1074,13 +1085,12 @@ impl Engine {
                 return false;
             };
 
-            let Ok(matches) = self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |d| {
-                d.verify_key(local_idx, key)
-            }) else {
+            let Ok(dbuf) = self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |d| *d)
+            else {
                 return false;
             };
 
-            matches
+            dbuf.verify_key(local_idx, key)
         } else {
             let start_pool = pool_hop;
             let end_pool = (entry.buf_idx() + (req_key as u32) - 1) / (DBUF_BUF_COUNT as u32);
@@ -1516,7 +1526,8 @@ impl Engine {
 
         for attempt in 0..OCC_MAX_RETRIES {
             let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+            let bucket: Bucket =
+                self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
             let matched_idx = bucket
                 .probe_match(hash, |entry_idx| self.match_kv_key(&bucket.entry(entry_idx), key));

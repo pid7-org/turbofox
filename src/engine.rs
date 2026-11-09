@@ -557,7 +557,7 @@ impl Engine {
 
         for h in (start_hop + 1)..=pool_hop {
             let next =
-                self.mmap.read_exact::<DBuf, _, _>(curr as usize, |d| d.next_dbuf_index())?;
+                self.mmap.read_optimistic::<DBuf, _, _>(curr as usize, |d| d.next_dbuf_index())?;
 
             if next == 0 {
                 return Err(TurboError::CorruptedHeader("broken databuf chain"));
@@ -868,7 +868,7 @@ impl Engine {
         let mut depth = 1usize;
 
         loop {
-            let node = self.mmap.read_optimistic::<Node, _, _>(curr_slot as usize, |n| *n)?;
+            let node = self.mmap.read_optimistic_val::<Node>(curr_slot as usize)?;
             let child_idx = trie_child_idx(hash, depth);
             let target_slot = node.bucket_indices[child_idx];
 
@@ -969,8 +969,7 @@ impl Engine {
         let hash = hash_kv_key(key);
         let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
 
-        let bucket: Bucket =
-            self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        let bucket: Bucket = self.mmap.read_optimistic_val::<Bucket>(bucket_slot as usize)?;
 
         let val = bucket.probe_match_extract(hash, |entry_idx| {
             let entry = bucket.entry(entry_idx);
@@ -988,8 +987,7 @@ impl Engine {
         let (pool_hop, local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
         let dbuf_slot = self.locate_databuf_slot(pool_hop).ok()?;
 
-        let dbuf: DBuf =
-            self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |d| *d).ok()?;
+        let dbuf: DBuf = self.mmap.read_optimistic_val::<DBuf>(dbuf_slot as usize).ok()?;
 
         match dbuf.verify_and_read_kv_payload(local_idx, key) {
             Ok(Some(val)) => Some(val),
@@ -1000,8 +998,7 @@ impl Engine {
             Err(DBufError::CrcMismatch { .. }) => {
                 for _ in 0..0x03 {
                     std::hint::spin_loop();
-                    if let Ok(d) =
-                        self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |d| *d)
+                    if let Ok(d) = self.mmap.read_optimistic_val::<DBuf>(dbuf_slot as usize)
                         && let Ok(Some(val)) = d.verify_and_read_kv_payload(local_idx, key)
                     {
                         return Some(val);
@@ -1043,7 +1040,7 @@ impl Engine {
 
         for p in (start_pool + 1)..=end_pool {
             let slot = self.locate_databuf_slot(p).ok()?;
-            let d = self.mmap.read_optimistic::<DBuf, _, _>(slot as usize, |d| *d).ok()?;
+            let d = self.mmap.read_optimistic_val::<DBuf>(slot as usize).ok()?;
             dbufs.push(d);
         }
 
@@ -1062,8 +1059,7 @@ impl Engine {
 
         let hash = hash_kv_key(key);
         let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket: Bucket =
-            self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+        let bucket: Bucket = self.mmap.read_optimistic_val::<Bucket>(bucket_slot as usize)?;
 
         let matched = bucket
             .probe_match(hash, |entry_idx| self.match_kv_key(&bucket.entry(entry_idx), key))
@@ -1085,8 +1081,7 @@ impl Engine {
                 return false;
             };
 
-            let Ok(dbuf) = self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |d| *d)
-            else {
+            let Ok(dbuf) = self.mmap.read_optimistic_val::<DBuf>(dbuf_slot as usize) else {
                 return false;
             };
 
@@ -1101,8 +1096,7 @@ impl Engine {
                     return false;
                 };
 
-                let Ok(dbuf) = self.mmap.read_optimistic::<DBuf, _, _>(slot as usize, |d| *d)
-                else {
+                let Ok(dbuf) = self.mmap.read_optimistic_val::<DBuf>(slot as usize) else {
                     return false;
                 };
 
@@ -1126,7 +1120,7 @@ impl Engine {
             let (parent_slot, parent_child_idx, bucket_slot, depth) =
                 self.traverse_to_leaf(hash)?;
 
-            let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+            let bucket: Bucket = self.mmap.read_optimistic_val::<Bucket>(bucket_slot as usize)?;
             let probe_res =
                 bucket.probe(hash, |entry_idx| self.match_kv_key(&bucket.entry(entry_idx), key));
 
@@ -1526,8 +1520,7 @@ impl Engine {
 
         for attempt in 0..OCC_MAX_RETRIES {
             let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-            let bucket: Bucket =
-                self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
+            let bucket: Bucket = self.mmap.read_optimistic_val::<Bucket>(bucket_slot as usize)?;
 
             let matched_idx = bucket
                 .probe_match(hash, |entry_idx| self.match_kv_key(&bucket.entry(entry_idx), key));
@@ -3751,6 +3744,70 @@ mod tests {
         assert_eq!(engine.get(&oversized).unwrap(), None);
         assert!(!engine.contains_key(&oversized).unwrap());
 
+        engine.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_optimistic_val_reads_and_databuf_locates() {
+        let dir = tempdir().unwrap();
+        // Lookup cache disabled to force uncached locate_databuf_slot traversal
+        let cfg = TurboCfg::manual(dir.path()).with_lookup_cache(false);
+        let engine = std::sync::Arc::new(Engine::create(cfg).unwrap());
+
+        // Pre-populate keys across multiple databuf pools to create multi-hop chains
+        let count = 0x40usize;
+        for i in 0..count {
+            let key = format!("opt_key_{:04x}", i);
+            let val = format!("opt_val_{:04x}_{}", i, "x".repeat(0x30));
+            let _ = engine.set(key.as_bytes(), val.as_bytes()).unwrap();
+        }
+
+        // Validate locate_databuf_slot resolution across multi-hop chain without lock contention
+        let hop_slot = engine.locate_databuf_slot(0x02).unwrap();
+        assert!(hop_slot > 0);
+
+        // Validate concurrent optimistic reads alongside active writers
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+        let mut handles = Vec::new();
+
+        // 1 writer thread updating entries
+        {
+            let eng = std::sync::Arc::clone(&engine);
+            let bar = std::sync::Arc::clone(&barrier);
+            handles.push(std::thread::spawn(move || {
+                let _ = bar.wait();
+                for round in 0..0x20 {
+                    for i in 0..0x10 {
+                        let key = format!("opt_key_{:04x}", i);
+                        let val = format!("mutated_round_{:02x}", round);
+                        let _ = eng.set(key.as_bytes(), val.as_bytes());
+                    }
+                }
+            }));
+        }
+
+        // 2 reader threads performing concurrent get via read_optimistic_val
+        for tid in 0..2 {
+            let eng = std::sync::Arc::clone(&engine);
+            let bar = std::sync::Arc::clone(&barrier);
+            handles.push(std::thread::spawn(move || {
+                let _ = bar.wait();
+                for _ in 0..0x30 {
+                    for i in 0..count {
+                        let key = format!("opt_key_{:04x}", i);
+                        if let Ok(Some(val)) = eng.get(key.as_bytes()) {
+                            assert!(!val.is_empty(), "thread {} saw empty value", tid);
+                        }
+                    }
+                }
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let engine = std::sync::Arc::try_unwrap(engine).unwrap();
         engine.delete().unwrap();
     }
 }

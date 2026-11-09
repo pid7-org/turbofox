@@ -72,22 +72,32 @@ impl Bucket {
     }
 
     #[inline(always)]
-    pub(crate) fn probe_match<F>(&self, hash: u32, mut key_match: F) -> Option<usize>
+    pub(crate) fn probe_match_extract<T, F>(&self, hash: u32, mut key_extract: F) -> Option<T>
     where
-        F: FnMut(usize) -> bool,
+        F: FnMut(usize) -> Option<T>,
     {
         let mut matches = crate::probe::probe_match(&self.hashes, hash);
         while matches != 0x00 {
             let slot = matches.trailing_zeros() as usize;
 
-            if slot < BUCKET_ENTRIES && key_match(slot) {
-                return Some(slot);
+            if slot < BUCKET_ENTRIES
+                && let Some(res) = key_extract(slot)
+            {
+                return Some(res);
             }
 
             matches &= matches - 1;
         }
 
         None
+    }
+
+    #[inline(always)]
+    pub(crate) fn probe_match<F>(&self, hash: u32, mut key_match: F) -> Option<usize>
+    where
+        F: FnMut(usize) -> bool,
+    {
+        self.probe_match_extract(hash, |slot| if key_match(slot) { Some(slot) } else { None })
     }
 
     pub(crate) fn probe<F>(&self, hash: u32, mut key_match: F) -> ProbeResult
@@ -295,5 +305,25 @@ mod tests {
         assert_eq!(b.probe(0x9999, |_| false), ProbeResult::Vacant(0));
         b.set_kv(0, 0x9999, 4);
         assert_eq!(b.probe(0xAAAA, |_| false), ProbeResult::Vacant(1));
+    }
+
+    #[test]
+    fn ok_bucket_probe_match_extract() {
+        let mut b = Bucket::new();
+        let hash = 0x5555_6666;
+        b.set_kv(2, hash, 0x10);
+        b.set_kv(5, hash, 0x20);
+
+        let res =
+            b.probe_match_extract(
+                hash,
+                |slot| {
+                    if slot == 5 { Some("extracted_at_5") } else { None }
+                },
+            );
+        assert_eq!(res, Some("extracted_at_5"));
+
+        let none_res: Option<&str> = b.probe_match_extract(hash, |_| None);
+        assert_eq!(none_res, None);
     }
 }

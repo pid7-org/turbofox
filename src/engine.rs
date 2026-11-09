@@ -9,7 +9,7 @@ use crate::common::{
     MAX_VAL_LEN, MODULE_ID, NODE_CHILDREN, OCC_MAX_RETRIES, ROOT_NODE_SLOT, SLOT_SIZE, Slot,
 };
 use crate::dbuf::{
-    DBuf, mark_spanned_buffers, read_kv_payload_spanned, read_list_val_payload_spanned,
+    DBuf, DBufError, mark_spanned_buffers, read_kv_payload_spanned, read_list_val_payload_spanned,
     unmark_spanned_buffers, verify_key_spanned, verify_list_key_spanned, write_kv_payload_spanned,
     write_list_key_payload_spanned, write_list_val_payload_spanned,
 };
@@ -968,53 +968,79 @@ impl Engine {
 
         let hash = hash_kv_key(key);
         let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-        let matched_idx =
-            bucket.probe_match(hash, |entry_idx| self.match_kv_key(&bucket.entry(entry_idx), key));
-
-        match matched_idx {
-            Some(entry_idx) => {
+        let val = self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |bucket| {
+            bucket.probe_match_extract(hash, |entry_idx| {
                 let entry = bucket.entry(entry_idx);
-                let (pool_hop, local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
-                let dbuf_slot = self.locate_databuf_slot(pool_hop)?;
-                let dbuf = self.mmap.read_exact::<DBuf, _, _>(dbuf_slot as usize, |d| *d)?;
-
-                let klen = dbuf
-                    .read_header_klen(local_idx)
-                    .map_err(|_| TurboError::CorruptedPayload("invalid databuf index"))?;
-                let vlen = dbuf
-                    .read_header_vlen_or_adjarr_index(local_idx)
-                    .map_err(|_| TurboError::CorruptedPayload("invalid databuf index"))?
-                    as usize;
-                let req = DBuf::required_kv_buffers(klen, vlen);
-
-                if req <= DBUF_BUF_COUNT && local_idx + req <= DBUF_BUF_COUNT {
-                    let (_, val) = dbuf
-                        .read_kv_payload(local_idx, klen, vlen)
-                        .map_err(|_| TurboError::CorruptedPayload("KV CRC32 mismatch"))?;
-
-                    Ok(Some(val.to_vec()))
-                } else {
-                    let start_pool = pool_hop;
-                    let end_pool = (entry.buf_idx() + (req as u32) - 1) / (DBUF_BUF_COUNT as u32);
-
-                    let mut dbufs = Vec::with_capacity((end_pool - start_pool + 1) as usize);
-                    dbufs.push(dbuf);
-                    for p in (start_pool + 1)..=end_pool {
-                        let slot = self.locate_databuf_slot(p)?;
-                        let d = self.mmap.read_exact::<DBuf, _, _>(slot as usize, |d| *d)?;
-                        dbufs.push(d);
-                    }
-
-                    let (_, val) = read_kv_payload_spanned(&dbufs, entry.buf_idx(), klen, vlen)
-                        .map_err(|_| TurboError::CorruptedPayload("KV CRC32 mismatch"))?;
-
-                    Ok(Some(val))
+                if entry.is_list() {
+                    return None;
                 }
+
+                self.read_kv_entry_if_matches(&entry, key)
+            })
+        })?;
+
+        Ok(val)
+    }
+
+    fn read_kv_entry_if_matches(&self, entry: &BucketEntry, key: &[u8]) -> Option<Vec<u8>> {
+        let (pool_hop, local_idx) = DBuf::decompose_buf_idx(entry.buf_idx());
+        let dbuf_slot = self.locate_databuf_slot(pool_hop).ok()?;
+
+        let res = self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |dbuf| {
+            dbuf.verify_and_read_kv_payload(local_idx, key)
+        });
+
+        match res {
+            Ok(Ok(Some(val))) => Some(val),
+            Ok(Ok(None)) => None,
+            Ok(Err(DBufError::InvalidIndex)) => {
+                self.read_spanned_kv_if_matches(entry, pool_hop, local_idx, key)
             }
-            None => Ok(None),
+            _ => None,
         }
+    }
+
+    fn read_spanned_kv_if_matches(
+        &self,
+        entry: &BucketEntry,
+        pool_hop: u32,
+        local_idx: usize,
+        key: &[u8],
+    ) -> Option<Vec<u8>> {
+        let dbuf_slot = self.locate_databuf_slot(pool_hop).ok()?;
+        let (klen, vlen, initial_dbuf) = self
+            .mmap
+            .read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |d| {
+                let klen = d.read_header_klen(local_idx).ok()?;
+                let vlen = d.read_header_vlen_or_adjarr_index(local_idx).ok()? as usize;
+                Some((klen, vlen, *d))
+            })
+            .ok()??;
+
+        if klen != key.len() {
+            return None;
+        }
+
+        let req = DBuf::required_kv_buffers(klen, vlen);
+        let start_pool = pool_hop;
+        let end_pool = (entry.buf_idx() + (req as u32) - 1) / (DBUF_BUF_COUNT as u32);
+
+        let mut dbufs = Vec::with_capacity((end_pool - start_pool + 1) as usize);
+        dbufs.push(initial_dbuf);
+
+        for p in (start_pool + 1)..=end_pool {
+            let slot = self.locate_databuf_slot(p).ok()?;
+            let d = self.mmap.read_optimistic::<DBuf, _, _>(slot as usize, |d| *d).ok()?;
+            dbufs.push(d);
+        }
+
+        if !verify_key_spanned(&dbufs, entry.buf_idx(), key) {
+            return None;
+        }
+
+        let (_, val) = read_kv_payload_spanned(&dbufs, entry.buf_idx(), klen, vlen).ok()?;
+        Some(val)
     }
 
     pub(crate) fn contains_key(&self, key: &[u8]) -> TurboResult<bool> {
@@ -1024,12 +1050,15 @@ impl Engine {
 
         let hash = hash_kv_key(key);
         let (_, _, bucket_slot, _depth) = self.traverse_to_leaf(hash)?;
-        let bucket = self.mmap.read_exact::<Bucket, _, _>(bucket_slot as usize, |b| *b)?;
 
-        let matched_idx =
-            bucket.probe_match(hash, |entry_idx| self.match_kv_key(&bucket.entry(entry_idx), key));
+        let matched =
+            self.mmap.read_optimistic::<Bucket, _, _>(bucket_slot as usize, |bucket| {
+                bucket
+                    .probe_match(hash, |entry_idx| self.match_kv_key(&bucket.entry(entry_idx), key))
+                    .is_some()
+            })?;
 
-        Ok(matched_idx.is_some())
+        Ok(matched)
     }
 
     fn match_kv_key(&self, entry: &BucketEntry, key: &[u8]) -> bool {
@@ -1045,10 +1074,9 @@ impl Engine {
                 return false;
             };
 
-            let Ok(matches) = self
-                .mmap
-                .read_exact::<DBuf, _, _>(dbuf_slot as usize, |d| d.verify_key(local_idx, key))
-            else {
+            let Ok(matches) = self.mmap.read_optimistic::<DBuf, _, _>(dbuf_slot as usize, |d| {
+                d.verify_key(local_idx, key)
+            }) else {
                 return false;
             };
 
@@ -1063,7 +1091,8 @@ impl Engine {
                     return false;
                 };
 
-                let Ok(dbuf) = self.mmap.read_exact::<DBuf, _, _>(slot as usize, |d| *d) else {
+                let Ok(dbuf) = self.mmap.read_optimistic::<DBuf, _, _>(slot as usize, |d| *d)
+                else {
                     return false;
                 };
 
@@ -3678,5 +3707,39 @@ mod tests {
         }
 
         reopened.delete().unwrap();
+    }
+
+    #[test]
+    fn ok_engine_get_optimistic_single_pass() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg).unwrap();
+
+        // 1: Basic hit and miss verification
+        let _ = engine.set(b"alpha", b"val_alpha").unwrap();
+        let _ = engine.set(b"beta", b"val_beta").unwrap();
+        assert_eq!(engine.get(b"alpha").unwrap(), Some(b"val_alpha".to_vec()));
+        assert_eq!(engine.get(b"beta").unwrap(), Some(b"val_beta".to_vec()));
+        assert_eq!(engine.get(b"gamma").unwrap(), None);
+
+        // 2: Contains key verification
+        assert!(engine.contains_key(b"alpha").unwrap());
+        assert!(engine.contains_key(b"beta").unwrap());
+        assert!(!engine.contains_key(b"gamma").unwrap());
+
+        // 3: Spanned KV payload verification (large value spanning multiple pools)
+        let large_val = vec![0x5A; 0x0200];
+        let _ = engine.set(b"spanned_key", &large_val).unwrap();
+        assert_eq!(engine.get(b"spanned_key").unwrap(), Some(large_val.clone()));
+        assert!(engine.contains_key(b"spanned_key").unwrap());
+
+        // 4: Empty and oversized key boundary handling
+        assert_eq!(engine.get(b"").unwrap(), None);
+        assert!(!engine.contains_key(b"").unwrap());
+        let oversized = vec![0x41; crate::common::MAX_KEY_LEN + 1];
+        assert_eq!(engine.get(&oversized).unwrap(), None);
+        assert!(!engine.contains_key(&oversized).unwrap());
+
+        engine.delete().unwrap();
     }
 }

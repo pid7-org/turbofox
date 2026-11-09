@@ -227,43 +227,6 @@ impl DBuf {
         Ok(())
     }
 
-    /// Ref: `DESIGN.md` §3.3
-    pub(crate) fn read_kv_payload(
-        &self,
-        start_idx: usize,
-        klen: usize,
-        vlen: usize,
-    ) -> Result<(&[u8], &[u8]), DBufError> {
-        let req = Self::required_kv_buffers(klen, vlen);
-        if req > DBUF_BUF_COUNT || start_idx + req > DBUF_BUF_COUNT {
-            return Err(DBufError::InvalidIndex);
-        }
-
-        let total_bytes = req * DBUF_BUF_SIZE;
-        let start_byte = start_idx * DBUF_BUF_SIZE;
-
-        let raw = self.payload_bytes();
-        let frame = &raw[start_byte..start_byte + total_bytes];
-
-        let mut crc_b = [0u8; CRC_SIZE];
-        crc_b.copy_from_slice(&frame[..CRC_SIZE]);
-
-        let expected_crc = u32::from_le_bytes(crc_b);
-        let data_start = DBUF_BUF_SIZE;
-        let key_end = data_start + klen;
-        let val_end = key_end + vlen;
-
-        let actual_crc = turbo_crc::crc32c(&frame[4..val_end]);
-        if actual_crc != expected_crc {
-            return Err(DBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
-        }
-
-        let k = &frame[data_start..key_end];
-        let v = &frame[key_end..val_end];
-
-        Ok((k, v))
-    }
-
     #[inline]
     pub(crate) fn verify_key(&self, start_idx: usize, key: &[u8]) -> bool {
         let req_key = Self::required_kv_buffers(key.len(), 0);
@@ -281,6 +244,59 @@ impl DBuf {
 
         let key_start = start_byte + DBUF_BUF_SIZE;
         &raw[key_start..key_start + key.len()] == key
+    }
+
+    #[inline]
+    pub(crate) fn verify_and_read_kv_payload(
+        &self,
+        start_idx: usize,
+        key: &[u8],
+    ) -> Result<Option<Vec<u8>>, DBufError> {
+        if start_idx >= DBUF_BUF_COUNT {
+            return Err(DBufError::InvalidIndex);
+        }
+
+        let start_byte = start_idx * DBUF_BUF_SIZE;
+        let raw = self.payload_bytes();
+
+        let stored_klen = raw[start_byte + 4] as usize;
+        if stored_klen != key.len() {
+            return Ok(None);
+        }
+
+        let req_key = Self::required_kv_buffers(key.len(), 0);
+        if start_idx + req_key > DBUF_BUF_COUNT {
+            return Err(DBufError::InvalidIndex);
+        }
+
+        let key_start = start_byte + DBUF_BUF_SIZE;
+        if &raw[key_start..key_start + key.len()] != key {
+            return Ok(None);
+        }
+
+        let stored_vlen = u16::from_le_bytes([raw[start_byte + 5], raw[start_byte + 6]]) as usize;
+
+        let req = Self::required_kv_buffers(stored_klen, stored_vlen);
+        if req > DBUF_BUF_COUNT || start_idx + req > DBUF_BUF_COUNT {
+            return Err(DBufError::InvalidIndex);
+        }
+
+        let total_bytes = req * DBUF_BUF_SIZE;
+        let frame = &raw[start_byte..start_byte + total_bytes];
+
+        let mut crc_b = [0u8; CRC_SIZE];
+        crc_b.copy_from_slice(&frame[..CRC_SIZE]);
+        let expected_crc = u32::from_le_bytes(crc_b);
+
+        let key_end = DBUF_BUF_SIZE + stored_klen;
+        let val_end = key_end + stored_vlen;
+
+        let actual_crc = turbo_crc::crc32c(&frame[4..val_end]);
+        if actual_crc != expected_crc {
+            return Err(DBufError::CrcMismatch { expected: expected_crc, found: actual_crc });
+        }
+
+        Ok(Some(frame[key_end..val_end].to_vec()))
     }
 
     /// Inspect vlen at Bytes 4..5 of start buffer (Phase 1 of two-phase read)
@@ -866,9 +882,41 @@ mod tests {
         assert!(dbuf.verify_key(start, key));
         assert!(!dbuf.verify_key(start, b"wrong_key"));
 
-        let (read_k, read_v) = dbuf.read_kv_payload(start, key.len(), val.len()).unwrap();
-        assert_eq!(read_k, key);
-        assert_eq!(read_v, val);
+        let read_v = dbuf.verify_and_read_kv_payload(start, key).unwrap();
+        assert_eq!(read_v, Some(val.to_vec()));
+    }
+
+    #[test]
+    fn ok_dbuf_verify_and_read_kv_payload() {
+        let mut dbuf = DBuf::new();
+        let key = b"my_key";
+        let val = b"my_payload_value";
+
+        let req = DBuf::required_kv_buffers(key.len(), val.len());
+        let start = dbuf.alloc_contiguous(req).unwrap();
+        dbuf.write_kv_payload(start, key, val).unwrap();
+
+        // 1: Hit path
+        let hit = dbuf.verify_and_read_kv_payload(start, key).unwrap();
+        assert_eq!(hit, Some(val.to_vec()));
+
+        // 2: Key length mismatch
+        let miss_len = dbuf.verify_and_read_kv_payload(start, b"my_key_extended").unwrap();
+        assert_eq!(miss_len, None);
+
+        // 3: Key byte mismatch
+        let miss_val = dbuf.verify_and_read_kv_payload(start, b"my_kay").unwrap();
+        assert_eq!(miss_val, None);
+
+        // 4: Out of bounds index
+        let oob = dbuf.verify_and_read_kv_payload(0x1F, key);
+        assert!(matches!(oob, Err(DBufError::InvalidIndex)));
+
+        // 5: CRC corruption on value byte
+        let raw = dbuf.payload_bytes_mut();
+        raw[start * DBUF_BUF_SIZE + DBUF_BUF_SIZE + key.len()] ^= 0xFF;
+        let crc_err = dbuf.verify_and_read_kv_payload(start, key);
+        assert!(matches!(crc_err, Err(DBufError::CrcMismatch { .. })));
     }
 
     #[test]
@@ -882,9 +930,9 @@ mod tests {
         dbuf.write_kv_payload(start, key, val).unwrap();
 
         let raw = dbuf.payload_bytes_mut();
-        raw[start * DBUF_BUF_SIZE + 4] ^= 0xFF;
+        raw[start * DBUF_BUF_SIZE] ^= 0xFF;
 
-        let res = dbuf.read_kv_payload(start, key.len(), val.len());
+        let res = dbuf.verify_and_read_kv_payload(start, key);
         assert!(matches!(res, Err(DBufError::CrcMismatch { .. })));
     }
 
@@ -894,7 +942,7 @@ mod tests {
         let err_too_large = dbuf.write_kv_payload(0x1F, b"k", b"v");
         assert_eq!(err_too_large, Err(DBufError::PayloadTooLarge));
 
-        let err_invalid_idx = dbuf.read_kv_payload(0x1F, 4, 8);
+        let err_invalid_idx = dbuf.verify_and_read_kv_payload(0x1F, b"k");
         assert_eq!(err_invalid_idx, Err(DBufError::InvalidIndex));
     }
 
@@ -1015,9 +1063,8 @@ mod tests {
         kv_dbuf.write_kv_payload(kv_start, key, val).unwrap();
         assert!(kv_dbuf.verify_key(kv_start, key));
 
-        let (read_k, read_v) = kv_dbuf.read_kv_payload(kv_start, key.len(), val.len()).unwrap();
-        assert_eq!(read_k, key);
-        assert_eq!(read_v, val);
+        let read_v = kv_dbuf.verify_and_read_kv_payload(kv_start, key).unwrap();
+        assert_eq!(read_v, Some(val.to_vec()));
     }
 
     #[test]

@@ -136,6 +136,61 @@ impl Drop for DBufSlotCache {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct RootNodeCache {
+    root: AtomicPtr<Node>,
+    retired: Mutex<Vec<usize>>,
+}
+
+unsafe impl Send for RootNodeCache {}
+unsafe impl Sync for RootNodeCache {}
+
+impl RootNodeCache {
+    pub(crate) fn new(initial: *mut Node) -> Self {
+        Self { root: AtomicPtr::new(initial), retired: Mutex::new(Vec::new()) }
+    }
+
+    #[inline(always)]
+    pub(crate) fn load(&self, order: Ordering) -> *mut Node {
+        self.root.load(order)
+    }
+
+    #[inline(always)]
+    pub(crate) fn store(&self, ptr: *mut Node, order: Ordering) {
+        self.root.store(ptr, order);
+    }
+
+    #[inline]
+    pub(crate) fn update(&self, mutated: Node) {
+        let new_ptr = Box::into_raw(Box::new(mutated));
+        let old_ptr = self.root.swap(new_ptr, Ordering::AcqRel);
+        if !old_ptr.is_null() {
+            let mut retired = self.retired.lock().unwrap_or_else(|e| e.into_inner());
+            retired.push(old_ptr as usize);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn memory_bytes(&self) -> usize {
+        let retired_count = self.retired.lock().map_or(0, |r| r.len());
+        (1 + retired_count) * core::mem::size_of::<Node>()
+    }
+}
+
+impl Drop for RootNodeCache {
+    fn drop(&mut self) {
+        let ptr = self.root.swap(std::ptr::null_mut(), Ordering::AcqRel);
+        if !ptr.is_null() {
+            unsafe { drop(Box::from_raw(ptr)) };
+        }
+
+        let mut retired = self.retired.lock().unwrap_or_else(|e| e.into_inner());
+        for addr in retired.drain(..) {
+            unsafe { drop(Box::from_raw(addr as *mut Node)) };
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct DbufAllocPlan {
     start_slot: usize,
@@ -161,6 +216,7 @@ pub(crate) struct Engine {
     active_dbuf_hint: AtomicU32,
     sys_page_size: PageSize,
     dbuf_slot_cache: Option<DBufSlotCache>,
+    root_node: RootNodeCache,
 }
 
 impl Engine {
@@ -194,6 +250,7 @@ impl Engine {
             active_dbuf_hint: AtomicU32::new(0),
             sys_page_size: page_size,
             dbuf_slot_cache: if cfg.lookup_cache { Some(DBufSlotCache::new()) } else { None },
+            root_node: RootNodeCache::new(std::ptr::null_mut()),
         };
 
         engine.format_initial_topography(LAYOUT_VERSION, initial_pages as u32)?;
@@ -288,6 +345,8 @@ impl Engine {
             return Err(TurboError::InvalidRootNode);
         }
 
+        let root_node = mmap.read_exact::<Node, _, _>(ROOT_NODE_SLOT as usize, |n| *n)?;
+
         let engine = Self {
             mmap,
             growth_mutex: Mutex::new(()),
@@ -297,6 +356,7 @@ impl Engine {
             active_dbuf_hint: AtomicU32::new(0),
             sys_page_size,
             dbuf_slot_cache: if cfg.lookup_cache { Some(DBufSlotCache::new()) } else { None },
+            root_node: RootNodeCache::new(Box::into_raw(Box::new(root_node))),
         };
 
         Ok(engine)
@@ -330,6 +390,7 @@ impl Engine {
 
         let root_node = Node::with_children(children);
         let _ = self.mmap.write_exact::<Node, _, _>(ROOT_NODE_SLOT as usize, |n| *n = root_node)?;
+        self.root_node.store(Box::into_raw(Box::new(root_node)), Ordering::Release);
 
         for s in 0..INITIAL_BUCKET_COUNT {
             let bucket_slot = INITIAL_BUCKET_START_SLOT + (s as u32) * (BUCKET_SLOTS as u32);
@@ -790,8 +851,21 @@ impl Engine {
 
     /// Traverse trie to leaf bucket
     fn traverse_to_leaf(&self, hash: u32) -> TurboResult<(u32, usize, u32, usize)> {
-        let mut curr_slot = ROOT_NODE_SLOT;
-        let mut depth = 0usize;
+        let child_idx = trie_child_idx(hash, 0);
+        let root_ptr = self.root_node.load(Ordering::Acquire);
+        if root_ptr.is_null() {
+            return Err(TurboError::CorruptedHeader("uninitialized root node"));
+        }
+
+        let root = unsafe { &*root_ptr };
+        let target_slot = root.bucket_indices[child_idx];
+
+        if !root.is_child_node(child_idx) {
+            return Ok((ROOT_NODE_SLOT, child_idx, target_slot, 0));
+        }
+
+        let mut curr_slot = target_slot;
+        let mut depth = 1usize;
 
         loop {
             let node = self.mmap.read_exact::<Node, _, _>(curr_slot as usize, |n| *n)?;
@@ -1385,6 +1459,9 @@ impl Engine {
 
                     match tx.commit() {
                         Ok(ticket) => {
+                            if parent_slot == ROOT_NODE_SLOT {
+                                self.root_node.update(mutated_parent);
+                            }
                             let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
                             return Ok(TurboTicket::new(ticket));
                         }
@@ -1908,6 +1985,9 @@ impl Engine {
 
                     match tx.commit() {
                         Ok(ticket) => {
+                            if parent_slot == ROOT_NODE_SLOT {
+                                self.root_node.update(mutated_parent);
+                            }
                             let _ = self.total_entries.fetch_add(1, Ordering::Relaxed);
                             return Ok(TurboTicket::new(ticket));
                         }
@@ -2837,7 +2917,8 @@ impl Engine {
     pub(crate) fn resident_bytes_in_memory(&self) -> TurboResult<usize> {
         let mmap_bytes = self.mmap.resident_bytes()?;
         let cache_bytes = self.dbuf_slot_cache.as_ref().map_or(0, |c| c.memory_bytes());
-        Ok(mmap_bytes.saturating_add(cache_bytes))
+        let root_bytes = self.root_node.memory_bytes();
+        Ok(mmap_bytes.saturating_add(cache_bytes).saturating_add(root_bytes))
     }
 
     /// Ref: `DESIGN.md` §8.1
@@ -3537,5 +3618,65 @@ mod tests {
         Engine::occ_backoff(0);
         Engine::occ_backoff(4);
         Engine::occ_backoff(8);
+    }
+
+    #[test]
+    fn ok_engine_root_node_cache_lifecycle_and_splits() {
+        let dir = tempdir().unwrap();
+        let cfg = TurboCfg::manual(dir.path());
+        let engine = Engine::create(cfg.clone()).unwrap();
+
+        // 1: Initial state validation
+        let root_ptr = engine.root_node.load(Ordering::Acquire);
+        assert!(!root_ptr.is_null());
+        let initial_root = unsafe { *root_ptr };
+        assert_eq!(initial_root.flag, crate::common::NODE_FLAG);
+        assert_eq!(engine.root_node.memory_bytes(), core::mem::size_of::<Node>());
+
+        // 2: Trigger trie split by targeting bucket 0 until overflow (0x22 entries)
+        let mut keys = Vec::new();
+        let mut counter = 0usize;
+        while keys.len() < 0x22 {
+            let k = format!("k_{:08x}", counter).into_bytes();
+            counter += 1;
+            if (crate::hash::hash_kv_key(&k) & 0x0F) == 0 {
+                let v = format!("v_{:08x}", counter).into_bytes();
+                let _ = engine.set(&k, &v).unwrap();
+                keys.push((k, v));
+            }
+        }
+
+        // 3: Verify cache updated and retired nodes tracked
+        let updated_ptr = engine.root_node.load(Ordering::Acquire);
+        assert!(!updated_ptr.is_null());
+        assert_ne!(root_ptr, updated_ptr);
+        let updated_root = unsafe { *updated_ptr };
+        assert_ne!(updated_root.flag, crate::common::NODE_FLAG);
+        assert!(updated_root.is_child_node(0));
+        assert!(!engine.root_node.retired.lock().unwrap().is_empty());
+        assert!(engine.root_node.memory_bytes() > core::mem::size_of::<Node>());
+
+        // 4: Verify point reads via cached root node traversing to child node
+        for (k, expected) in &keys {
+            assert_eq!(engine.get(k).unwrap(), Some(expected.clone()));
+        }
+
+        engine.sync().unwrap();
+        drop(engine);
+
+        // 5: Reopen and assert root cache loaded from persisted mmap topography
+        let reopened = Engine::open(cfg).unwrap();
+        let reopened_ptr = reopened.root_node.load(Ordering::Acquire);
+        assert!(!reopened_ptr.is_null());
+        let reopened_root = unsafe { *reopened_ptr };
+        assert_eq!(reopened_root.flag, updated_root.flag);
+        assert_eq!(reopened_root.bucket_indices, updated_root.bucket_indices);
+        assert!(reopened_root.is_child_node(0));
+
+        for (k, expected) in &keys {
+            assert_eq!(reopened.get(k).unwrap(), Some(expected.clone()));
+        }
+
+        reopened.delete().unwrap();
     }
 }

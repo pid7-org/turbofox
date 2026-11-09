@@ -1,9 +1,9 @@
 mod common;
 
 use common::{
-    BenchDir, BenchSummary, KEY_SIZE, VAL_SIZE, generate_60_40_probe_keys, generate_del_60_40_keys,
-    generate_set_80_20_keys, make_key, make_val, new_histogram, pin_to_physical_core,
-    print_json_summary, spin_backoff,
+    BenchDir, BenchSummary, KEY_SIZE, LATENCY_SAMPLE_MASK, VAL_SIZE, generate_60_40_probe_keys,
+    generate_del_60_40_keys, generate_set_80_20_keys, make_key, make_val, new_histogram,
+    pin_to_physical_core, print_json_summary, spin_backoff,
 };
 use std::time::Instant;
 use turbofox::{CapacityHint, TurboCfg, TurboFox};
@@ -48,7 +48,8 @@ fn run_single_thread(total_ops: usize) {
 
     for (op_idx, key) in set_keys.iter().enumerate() {
         let val: [u8; VAL_SIZE] = make_val(op_idx as u32);
-        let t0 = Instant::now();
+        let sample = (op_idx & LATENCY_SAMPLE_MASK) == 0;
+        let t0 = if sample { Some(Instant::now()) } else { None };
 
         let mut attempts = 0x00;
         let ticket = loop {
@@ -66,8 +67,10 @@ fn run_single_thread(total_ops: usize) {
         };
 
         std::hint::black_box(&ticket);
-        let elapsed_ns = t0.elapsed().as_nanos() as u64;
-        set_hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
+        if let Some(t) = t0 {
+            let elapsed_ns = t.elapsed().as_nanos() as u64;
+            set_hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
+        }
     }
 
     let elapsed_set = start_set.elapsed();
@@ -82,13 +85,16 @@ fn run_single_thread(total_ops: usize) {
     let mut get_hist = new_histogram();
     let start_get = Instant::now();
 
-    for key in &get_probes {
-        let t0 = Instant::now();
+    for (op_idx, key) in get_probes.iter().enumerate() {
+        let sample = (op_idx & LATENCY_SAMPLE_MASK) == 0;
+        let t0 = if sample { Some(Instant::now()) } else { None };
         let res = db.get(key).expect("get failed");
 
         std::hint::black_box(&res);
-        let elapsed_ns = t0.elapsed().as_nanos() as u64;
-        get_hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
+        if let Some(t) = t0 {
+            let elapsed_ns = t.elapsed().as_nanos() as u64;
+            get_hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
+        }
     }
 
     let elapsed_get = start_get.elapsed();
@@ -101,8 +107,9 @@ fn run_single_thread(total_ops: usize) {
     let mut del_hist = new_histogram();
     let start_del = Instant::now();
 
-    for key in &del_keys {
-        let t0 = Instant::now();
+    for (op_idx, key) in del_keys.iter().enumerate() {
+        let sample = (op_idx & LATENCY_SAMPLE_MASK) == 0;
+        let t0 = if sample { Some(Instant::now()) } else { None };
         let mut attempts = 0x00;
         let res = loop {
             match db.del(key) {
@@ -119,8 +126,10 @@ fn run_single_thread(total_ops: usize) {
         };
 
         std::hint::black_box(res);
-        let elapsed_ns = t0.elapsed().as_nanos() as u64;
-        del_hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
+        if let Some(t) = t0 {
+            let elapsed_ns = t.elapsed().as_nanos() as u64;
+            del_hist.record(elapsed_ns.max(0x01)).expect("hist record failed");
+        }
     }
 
     let elapsed_del = start_del.elapsed();

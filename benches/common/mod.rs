@@ -17,6 +17,7 @@ pub const VAL_SIZE: usize = 0x08;
 pub const SIGFIG: u8 = 0x03;
 pub const HISTOGRAM_MAX_NANOS: u64 = 0x0DF8_4758_0000;
 pub const NANOS_PER_MICRO: f64 = 0x03E8 as f64;
+pub const LATENCY_SAMPLE_MASK: usize = 0x3F;
 
 pub const HIT_PREFIX: u16 = 0x0001;
 const MISS_PREFIX: u16 = 0xFFFF;

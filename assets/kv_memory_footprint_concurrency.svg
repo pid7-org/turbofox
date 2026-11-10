@@ -23,8 +23,8 @@
 <text x="442.5" y="252.5" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">41.6MB</text>
 <text x="442.5" y="395" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">Single-Thread RAM</text>
 <text x="442.5" y="413" fill="#57606a" font-size="9.5" text-anchor="middle">1 Worker Transaction</text>
-<rect x="639.2" y="175.3" width="90" height="179.7" rx="5" fill="#df8e1d"/>
-<text x="684.2" y="167.3" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">79.1MB</text>
+<rect x="639.2" y="196.8" width="90" height="158.2" rx="5" fill="#df8e1d"/>
+<text x="684.2" y="188.8" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">69.6MB</text>
 <text x="684.2" y="395" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">Two-Threads RAM</text>
 <text x="684.2" y="413" fill="#57606a" font-size="9.5" text-anchor="middle">+82.9% Concurrency Buffers</text>
 </svg>

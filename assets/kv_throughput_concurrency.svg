@@ -6,44 +6,44 @@
 <rect x="95" y="100" width="280" height="310" fill="#f8f9fa" rx="6" stroke="#e1e4e8" stroke-width="1"/>
 <text x="235.0" y="88" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">SET (80/20 New/Update)</text>
 <line x1="95" y1="390.0" x2="375" y2="390.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="85" y="394.0" fill="#57606a" font-size="9.5" text-anchor="end">0.0 kops/s</text>
+<text x="85" y="394.0" fill="#57606a" font-size="9.5" text-anchor="end">0 kops/s</text>
 <line x1="95" y1="322.5" x2="375" y2="322.5" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="85" y="326.5" fill="#57606a" font-size="9.5" text-anchor="end">3.5 kops/s</text>
+<text x="85" y="326.5" fill="#57606a" font-size="9.5" text-anchor="end">5 kops/s</text>
 <line x1="95" y1="255.0" x2="375" y2="255.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="85" y="259.0" fill="#57606a" font-size="9.5" text-anchor="end">7.0 kops/s</text>
+<text x="85" y="259.0" fill="#57606a" font-size="9.5" text-anchor="end">10 kops/s</text>
 <line x1="95" y1="187.5" x2="375" y2="187.5" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="85" y="191.5" fill="#57606a" font-size="9.5" text-anchor="end">10.5 kops/s</text>
+<text x="85" y="191.5" fill="#57606a" font-size="9.5" text-anchor="end">15 kops/s</text>
 <line x1="95" y1="120.0" x2="375" y2="120.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="85" y="124.0" fill="#57606a" font-size="9.5" text-anchor="end">14.0 kops/s</text>
-<rect x="179.0" y="161.6" width="48" height="228.4" rx="4" fill="#1e66f5"/>
-<text x="203.0" y="153.6" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">11.8 kops/s</text>
+<text x="85" y="124.0" fill="#57606a" font-size="9.5" text-anchor="end">20 kops/s</text>
+<rect x="179.0" y="209.3" width="48" height="180.7" rx="4" fill="#1e66f5"/>
+<rect x="243.0" y="332.7" width="48" height="57.3" rx="4" fill="#729bfa"/>
+<text x="203.0" y="201.3" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">13.4 kops/s</text>
 <text x="203.0" y="428" fill="#57606a" font-size="10" text-anchor="middle">1 Thread</text>
-<rect x="243.0" y="336.3" width="48" height="53.7" rx="4" fill="#729bfa"/>
-<text x="267.0" y="328.3" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">2.8 kops/s</text>
+<text x="267.0" y="324.7" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">4.2 kops/s</text>
 <text x="267.0" y="428" fill="#57606a" font-size="10" text-anchor="middle">2 Threads</text>
-<text x="235.0" y="140" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">-75.6% Lock Contention</text>
+<text x="235.0" y="136" fill="#d20f39" font-size="10" font-weight="bold" text-anchor="middle">-68.3% Lock Contention</text>
 <rect x="445" y="100" width="530" height="310" fill="#f8f9fa" rx="6" stroke="#e1e4e8" stroke-width="1"/>
 <text x="710.0" y="88" fill="#24292f" font-size="12" font-weight="bold" text-anchor="middle">GET &amp; DEL (60/40 Hit/Miss)</text>
 <line x1="445" y1="390.0" x2="975" y2="390.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="435" y="394.0" fill="#57606a" font-size="9.5" text-anchor="end">0.00 Mops/s</text>
+<text x="435" y="394.0" fill="#57606a" font-size="9.5" text-anchor="end">0.0 Mops/s</text>
 <line x1="445" y1="322.5" x2="975" y2="322.5" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="435" y="326.5" fill="#57606a" font-size="9.5" text-anchor="end">0.45 Mops/s</text>
+<text x="435" y="326.5" fill="#57606a" font-size="9.5" text-anchor="end">2.0 Mops/s</text>
 <line x1="445" y1="255.0" x2="975" y2="255.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="435" y="259.0" fill="#57606a" font-size="9.5" text-anchor="end">0.90 Mops/s</text>
+<text x="435" y="259.0" fill="#57606a" font-size="9.5" text-anchor="end">4.0 Mops/s</text>
 <line x1="445" y1="187.5" x2="975" y2="187.5" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="435" y="191.5" fill="#57606a" font-size="9.5" text-anchor="end">1.35 Mops/s</text>
+<text x="435" y="191.5" fill="#57606a" font-size="9.5" text-anchor="end">6.0 Mops/s</text>
 <line x1="445" y1="120.0" x2="975" y2="120.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="435" y="124.0" fill="#57606a" font-size="9.5" text-anchor="end">1.80 Mops/s</text>
-<rect x="541.4" y="163.3" width="48" height="226.7" rx="4" fill="#179299"/>
-<text x="565.4" y="155.3" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">1.51 Mops/s</text>
-<rect x="597.4" y="238.6" width="48" height="151.4" rx="4" fill="#64b6ba"/>
-<text x="621.4" y="230.6" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">1.01 Mops/s</text>
+<text x="435" y="124.0" fill="#57606a" font-size="9.5" text-anchor="end">8.0 Mops/s</text>
+<rect x="538.4" y="262.2" width="48" height="127.8" rx="4" fill="#179299"/>
+<rect x="600.4" y="164.6" width="48" height="225.4" rx="4" fill="#64b6ba"/>
+<text x="562.4" y="254.2" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">3.79 Mops/s</text>
+<text x="624.4" y="156.6" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">6.68 Mops/s</text>
 <text x="593.4" y="428" fill="#24292f" font-size="11" font-weight="bold" text-anchor="middle">GET Workload</text>
 <text x="593.4" y="444" fill="#57606a" font-size="9.5" text-anchor="middle">1T vs 2T</text>
-<rect x="774.6" y="197.6" width="48" height="192.4" rx="4" fill="#8839ef"/>
-<text x="798.6" y="189.6" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">1.28 Mops/s</text>
-<rect x="830.6" y="264.2" width="48" height="125.8" rx="4" fill="#b487f5"/>
-<text x="854.6" y="256.2" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">838.8 kops/s</text>
+<rect x="771.6" y="314.5" width="48" height="75.5" rx="4" fill="#8839ef"/>
+<rect x="833.6" y="273.5" width="48" height="116.5" rx="4" fill="#b487f5"/>
+<text x="795.6" y="306.5" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">2.24 Mops/s</text>
+<text x="857.6" y="265.5" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">3.45 Mops/s</text>
 <text x="826.6" y="428" fill="#24292f" font-size="11" font-weight="bold" text-anchor="middle">DEL Workload</text>
 <text x="826.6" y="444" fill="#57606a" font-size="9.5" text-anchor="middle">1T vs 2T</text>
 </svg>

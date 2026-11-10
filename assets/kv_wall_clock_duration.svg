@@ -14,19 +14,19 @@
 <text x="67" y="176.2" fill="#57606a" font-size="9" text-anchor="end">1m</text>
 <line x1="75" y1="126.2" x2="805" y2="126.2" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
 <text x="67" y="130.2" fill="#57606a" font-size="9" text-anchor="end">5m</text>
-<rect x="146.7" y="161.1" width="46" height="193.9" rx="4" fill="#1e66f5"/>
-<text x="169.7" y="153.1" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">88.5s</text>
-<rect x="200.7" y="119.7" width="46" height="235.3" rx="4" fill="#729bfa"/>
-<text x="223.7" y="111.7" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">376.9s</text>
+<rect x="146.7" y="164.6" width="46" height="190.4" rx="4" fill="#1e66f5"/>
+<text x="169.7" y="156.6" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">78.3s</text>
+<rect x="200.7" y="131.8" width="46" height="223.2" rx="4" fill="#729bfa"/>
+<text x="223.7" y="123.8" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">247.2s</text>
 <text x="196.7" y="395" fill="#24292f" font-size="11" font-weight="bold" text-anchor="middle">SET (80/20 New/Update)</text>
-<rect x="390.0" y="299.7" width="46" height="55.3" rx="4" fill="#179299"/>
-<text x="413.0" y="291.7" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">0.7s</text>
-<rect x="444.0" y="288.1" width="46" height="66.9" rx="4" fill="#64b6ba"/>
-<text x="467.0" y="280.1" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">1.0s</text>
+<rect x="390.0" y="325.9" width="46" height="29.1" rx="4" fill="#179299"/>
+<text x="413.0" y="317.9" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">0.3s</text>
+<rect x="444.0" y="342.1" width="46" height="12.9" rx="4" fill="#64b6ba"/>
+<text x="467.0" y="334.1" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">0.2s</text>
 <text x="440.0" y="395" fill="#24292f" font-size="11" font-weight="bold" text-anchor="middle">GET (60/40 Hit/Miss)</text>
-<rect x="633.3" y="295.0" width="46" height="60.0" rx="4" fill="#8839ef"/>
-<text x="656.3" y="287.0" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">0.8s</text>
-<rect x="687.3" y="282.8" width="46" height="72.2" rx="4" fill="#b487f5"/>
-<text x="710.3" y="274.8" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">1.3s</text>
+<rect x="633.3" y="310.9" width="46" height="44.1" rx="4" fill="#8839ef"/>
+<text x="656.3" y="302.9" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">0.5s</text>
+<rect x="687.3" y="323.3" width="46" height="31.7" rx="4" fill="#b487f5"/>
+<text x="710.3" y="315.3" fill="#24292f" font-size="10" font-weight="bold" text-anchor="middle">0.3s</text>
 <text x="683.3" y="395" fill="#24292f" font-size="11" font-weight="bold" text-anchor="middle">DEL (60/40 Hit/Miss)</text>
 </svg>

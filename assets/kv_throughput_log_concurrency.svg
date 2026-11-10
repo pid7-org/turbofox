@@ -6,27 +6,29 @@
 <rect x="80" y="85" width="790" height="320" fill="#f8f9fa" rx="6" stroke="#e1e4e8" stroke-width="1"/>
 <line x1="80" y1="385.0" x2="870" y2="385.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
 <text x="70" y="389.0" fill="#57606a" font-size="9" text-anchor="end">1 kops/s</text>
-<line x1="80" y1="305.0" x2="870" y2="305.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="70" y="309.0" fill="#57606a" font-size="9" text-anchor="end">10 kops/s</text>
-<line x1="80" y1="225.0" x2="870" y2="225.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="70" y="229.0" fill="#57606a" font-size="9" text-anchor="end">100 kops/s</text>
-<line x1="80" y1="145.0" x2="870" y2="145.0" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="70" y="149.0" fill="#57606a" font-size="9" text-anchor="end">1 Mops/s</text>
-<line x1="80" y1="120.9" x2="870" y2="120.9" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
-<text x="70" y="124.9" fill="#57606a" font-size="9" text-anchor="end">2 Mops/s</text>
-<rect x="165.7" y="299.1" width="42" height="85.9" rx="4" fill="#1e66f5"/>
-<text x="186.7" y="291.1" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">11.8 kops/s</text>
-<rect x="215.7" y="349.4" width="42" height="35.6" rx="4" fill="#729bfa"/>
-<text x="236.7" y="341.4" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">2.8 kops/s</text>
+<line x1="80" y1="316.4" x2="870" y2="316.4" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="70" y="320.4" fill="#57606a" font-size="9" text-anchor="end">10 kops/s</text>
+<line x1="80" y1="247.7" x2="870" y2="247.7" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="70" y="251.7" fill="#57606a" font-size="9" text-anchor="end">100 kops/s</text>
+<line x1="80" y1="179.1" x2="870" y2="179.1" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="70" y="183.1" fill="#57606a" font-size="9" text-anchor="end">1 Mops/s</text>
+<line x1="80" y1="131.1" x2="870" y2="131.1" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="70" y="135.1" fill="#57606a" font-size="9" text-anchor="end">5 Mops/s</text>
+<line x1="80" y1="110.4" x2="870" y2="110.4" stroke="#e1e4e8" stroke-dasharray="3,3" stroke-width="1"/>
+<text x="70" y="114.4" fill="#57606a" font-size="9" text-anchor="end">10 Mops/s</text>
+<rect x="162.7" y="307.7" width="42" height="77.3" rx="4" fill="#1e66f5"/>
+<rect x="218.7" y="341.9" width="42" height="43.1" rx="4" fill="#729bfa"/>
+<text x="183.7" y="299.7" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">13.4 kops/s</text>
+<text x="239.7" y="333.9" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">4.2 kops/s</text>
 <text x="211.7" y="425" fill="#24292f" font-size="11" font-weight="bold" text-anchor="middle">SET (80/20 New/Update)</text>
-<rect x="429.0" y="130.7" width="42" height="254.3" rx="4" fill="#179299"/>
-<text x="450.0" y="122.7" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">1.51 Mops/s</text>
-<rect x="479.0" y="144.7" width="42" height="240.3" rx="4" fill="#64b6ba"/>
-<text x="500.0" y="136.7" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">1.01 Mops/s</text>
+<rect x="426.0" y="139.4" width="42" height="245.6" rx="4" fill="#179299"/>
+<rect x="482.0" y="122.5" width="42" height="262.5" rx="4" fill="#64b6ba"/>
+<text x="447.0" y="131.4" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">3.79 Mops/s</text>
+<text x="503.0" y="114.5" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">6.68 Mops/s</text>
 <text x="475.0" y="425" fill="#24292f" font-size="11" font-weight="bold" text-anchor="middle">GET (60/40 Hit/Miss)</text>
-<rect x="692.3" y="136.3" width="42" height="248.7" rx="4" fill="#8839ef"/>
-<text x="713.3" y="128.3" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">1.28 Mops/s</text>
-<rect x="742.3" y="151.1" width="42" height="233.9" rx="4" fill="#b487f5"/>
-<text x="763.3" y="143.1" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">838.8 kops/s</text>
+<rect x="689.3" y="155.1" width="42" height="229.9" rx="4" fill="#8839ef"/>
+<rect x="745.3" y="142.1" width="42" height="242.9" rx="4" fill="#b487f5"/>
+<text x="710.3" y="147.1" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">2.24 Mops/s</text>
+<text x="766.3" y="134.1" fill="#24292f" font-size="9.5" font-weight="bold" text-anchor="middle">3.45 Mops/s</text>
 <text x="738.3" y="425" fill="#24292f" font-size="11" font-weight="bold" text-anchor="middle">DEL (60/40 Hit/Miss)</text>
 </svg>

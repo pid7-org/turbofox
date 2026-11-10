@@ -28,18 +28,26 @@ export AWS_DEFAULT_REGION="${AWS_REGION}"
 
 BRANCH_ARG="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")"
 BENCHES_ARG="all"
+SCALE_OPS_ARG="${SCALE_OPS:-0x8000}"
+OPS_ARG="${BENCH_OPS:-0x100000}"
 
 show_help() {
   cat << 'EOF'
-Usage: ./bencher/run.sh [OPTIONS]
+Usage: ./bencher/run.sh [OPTIONS] [SCALE_HEX] [KV_HEX]
 
 TurboFox Automated AWS EC2 Benchmark Lifecycle Runner
 
 Provisions a dedicated c6id.xlarge EC2 instance with local NVMe, executes
 the selected benchmark suite(s) sequentially, downloads consolidated telemetry,
-and guarantees full cloud infrastructure teardown.
+and guarantees full cloud infrastructure teardown
+
+Arguments:
+  [SCALE_HEX]                   Scale benchmark key count in hex (default: 0x8000)
+  [KV_HEX]                      KV benchmark ops count in hex (default: 0x100000)
 
 Options:
+  --scale-ops, --scale <HEX>    Scale benchmark entries in hex (default: 0x8000)
+  --ops, --kv-ops <HEX>         KV benchmarks operation count in hex (default: 0x100000)
   --benches, --bench <TARGETS>  Comma-separated list of benchmarks to run:
                                   all   : scale_perf, kv_perf, kv_perf_multi_tx (default)
                                   scale : scale_perf (single-core interval open/evict)
@@ -51,11 +59,27 @@ Options:
 
 Examples:
   ./bencher/run.sh                          # Run all 3 benchmarks sequentially (default)
+  ./bencher/run.sh 0x8000 0x100000          # Run with custom scale and KV hex counts
+  ./bencher/run.sh --scale-ops 0x8000 --ops 0x100000
   ./bencher/run.sh --benches multi          # Run only multi-threaded KV benchmark
   ./bencher/run.sh --region us-west-2       # Run in specific AWS region
 EOF
   exit 0
 }
+
+normalize_hex() {
+  local val="$1"
+  local clean="${val//_/}"
+  if [[ "${clean}" =~ ^0[xX][0-9a-fA-F]+$ ]]; then
+    echo "${clean}"
+  elif [[ "${clean}" =~ ^[0-9a-fA-F]+$ ]]; then
+    echo "0x${clean}"
+  else
+    echo "INVALID"
+  fi
+}
+
+POSITIONAL_HEX=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -70,6 +94,14 @@ while [[ $# -gt 0 ]]; do
       fi
       shift 2
       ;;
+    --scale-ops|--scale|--scale-keys)
+      SCALE_OPS_ARG="$2"
+      shift 2
+      ;;
+    --ops|--kv-ops|--bench-ops)
+      OPS_ARG="$2"
+      shift 2
+      ;;
     --branch)
       BRANCH_ARG="$2"
       shift 2
@@ -80,13 +112,41 @@ while [[ $# -gt 0 ]]; do
       export AWS_DEFAULT_REGION="${AWS_REGION}"
       shift 2
       ;;
+    0[xX]*)
+      POSITIONAL_HEX+=("$1")
+      shift 1
+      ;;
     *)
-      echo "Unknown option: $1" >&2
-      echo "Run './bencher/run.sh --help' for usage details" >&2
-      exit 1
+      if [[ "$1" =~ ^[0-9a-fA-F]+$ ]]; then
+        POSITIONAL_HEX+=("0x$1")
+        shift 1
+      else
+        echo "Unknown option: $1" >&2
+        echo "Run './bencher/run.sh --help' for usage details" >&2
+        exit 1
+      fi
       ;;
   esac
 done
+
+if [[ ${#POSITIONAL_HEX[@]} -ge 1 ]]; then
+  SCALE_OPS_ARG="${POSITIONAL_HEX[0]}"
+fi
+if [[ ${#POSITIONAL_HEX[@]} -ge 2 ]]; then
+  OPS_ARG="${POSITIONAL_HEX[1]}"
+fi
+
+SCALE_OPS_ARG=$(normalize_hex "${SCALE_OPS_ARG}")
+if [[ "${SCALE_OPS_ARG}" == "INVALID" ]]; then
+  echo "Error: scale-ops must be a valid hexadecimal value (e.g. 0x8000)" >&2
+  exit 1
+fi
+
+OPS_ARG=$(normalize_hex "${OPS_ARG}")
+if [[ "${OPS_ARG}" == "INVALID" ]]; then
+  echo "Error: ops must be a valid hexadecimal value (e.g. 0x100000)" >&2
+  exit 1
+fi
 
 mkdir -p "${ASSETS_DIR}"
 
@@ -201,7 +261,8 @@ echo "Validation passed: bootstrapper synchronized and marked executable" >&2
 
 echo "=== [Phase 9/13] Executing remote benchmark suite ===" >&2
 ssh -t "${SSH_OPTS[@]}" "ubuntu@${PUBLIC_IP}" \
-  "/tmp/init_ec2_bench.sh --run --branch '${BRANCH_ARG}' --benches '${BENCHES_ARG}' --out /tmp/results.json"
+  "/tmp/init_ec2_bench.sh --run --branch '${BRANCH_ARG}' --benches '${BENCHES_ARG}' \
+  --scale-ops '${SCALE_OPS_ARG}' --ops '${OPS_ARG}' --out /tmp/results.json"
 echo "Validation passed: remote benchmark suite finished successfully" >&2
 
 echo "=== [Phase 10/13] Downloading and validating benchmark telemetry ===" >&2

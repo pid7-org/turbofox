@@ -10,6 +10,8 @@ BENCH_DIR="/tmp/turbofox_bench"
 OUT_FILE="${DEFAULT_OUT}"
 REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-unknown}}"
 SELECTED_BENCHES="all"
+SCALE_OPS="${SCALE_OPS:-0x8000}"
+BENCH_OPS="${BENCH_OPS:-0xF4240}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -19,6 +21,14 @@ while [[ $# -gt 0 ]]; do
       else
         SELECTED_BENCHES="${SELECTED_BENCHES},$2"
       fi
+      shift 2
+      ;;
+    --scale-ops|--scale|--scale-keys)
+      SCALE_OPS="$2"
+      shift 2
+      ;;
+    --ops|--kv-ops|--bench-ops)
+      BENCH_OPS="$2"
       shift 2
       ;;
     --dir)
@@ -39,6 +49,10 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+export SCALE_OPS
+export BENCH_SCALE_OPS="${SCALE_OPS}"
+export BENCH_OPS
 
 mkdir -p "${BENCH_DIR}"
 mkdir -p "$(dirname "${OUT_FILE}")"

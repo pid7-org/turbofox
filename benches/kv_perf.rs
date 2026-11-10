@@ -178,12 +178,14 @@ fn run_single_thread(total_ops: usize) {
 
 fn main() {
     let ops = std::env::var("BENCH_OPS")
+        .or_else(|_| std::env::var("KV_OPS"))
         .ok()
         .and_then(|v| {
-            if v.starts_with("0x") || v.starts_with("0X") {
-                usize::from_str_radix(&v[0x02..], 0x10).ok()
+            let clean = v.trim().replace('_', "");
+            if clean.starts_with("0x") || clean.starts_with("0X") {
+                usize::from_str_radix(&clean[0x02..], 0x10).ok()
             } else {
-                v.parse::<usize>().ok()
+                clean.parse::<usize>().ok()
             }
         })
         .unwrap_or(TOTAL_OPS);

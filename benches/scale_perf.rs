@@ -9,7 +9,6 @@ use turbofox::{EvictionMode, TurboCfg, TurboFox};
 
 const TOTAL_KEYS: usize = 0x8000;
 const INTERVALS: usize = 0x08;
-const STEP: usize = TOTAL_KEYS / INTERVALS;
 const BENCH_NAME: &str = "scale_perf";
 
 #[inline(always)]
@@ -128,8 +127,22 @@ fn run_bench(db_path: &Path, num_intervals: usize, step: usize, val: [u8; VAL_SI
 fn main() {
     pin_to_physical_core(0x00);
 
+    let total_keys = std::env::var("SCALE_OPS")
+        .or_else(|_| std::env::var("BENCH_SCALE_OPS"))
+        .ok()
+        .and_then(|v| {
+            let clean = v.trim().replace('_', "");
+            if clean.starts_with("0x") || clean.starts_with("0X") {
+                usize::from_str_radix(&clean[0x02..], 0x10).ok()
+            } else {
+                clean.parse::<usize>().ok()
+            }
+        })
+        .unwrap_or(TOTAL_KEYS);
+
+    let step = (total_keys / INTERVALS).max(0x01);
     let (_bench_dir, db_path) = BenchDir::new(None, "scale_perf");
     let val = [0x42u8; VAL_SIZE];
 
-    run_bench(&db_path, INTERVALS, STEP, val);
+    run_bench(&db_path, INTERVALS, step, val);
 }

@@ -177,5 +177,15 @@ fn run_single_thread(total_ops: usize) {
 }
 
 fn main() {
-    run_single_thread(TOTAL_OPS);
+    let ops = std::env::var("BENCH_OPS")
+        .ok()
+        .and_then(|v| {
+            if v.starts_with("0x") || v.starts_with("0X") {
+                usize::from_str_radix(&v[0x02..], 0x10).ok()
+            } else {
+                v.parse::<usize>().ok()
+            }
+        })
+        .unwrap_or(TOTAL_OPS);
+    run_single_thread(ops);
 }

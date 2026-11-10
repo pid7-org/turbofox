@@ -81,6 +81,28 @@ def format_n(n):
     return str(n)
 
 
+def calc_nice_ceiling(raw_val, divisions=4):
+    if raw_val <= 0.0:
+        return 1.0 * divisions
+    rough_step = raw_val / divisions
+    magnitude = 10.0 ** math.floor(math.log10(rough_step))
+    norm = rough_step / magnitude
+    if norm <= 1.0:
+        step_mult = 1.0
+    elif norm <= 2.0:
+        step_mult = 2.0
+    elif norm <= 2.5:
+        step_mult = 2.5
+    elif norm <= 3.0:
+        step_mult = 3.0
+    elif norm <= 5.0:
+        step_mult = 5.0
+    else:
+        step_mult = 10.0
+    step = step_mult * magnitude
+    return step * divisions
+
+
 def pill_label(
     svg,
     cx,
@@ -657,7 +679,7 @@ def chart_kv_throughput_concurrency(dataset):
 
     set_1t = kv.get("set_perf", {}).get("throughput_ops_sec", 0.0)
     set_2t = kv.get("set_perf_multi_tx", {}).get("throughput_ops_sec", 0.0)
-    max_set = 14_000.0
+    max_set = calc_nice_ceiling(max(set_1t, set_2t, 1_000.0) * 1.15, 4)
 
     for i in range(5):
         val = (max_set / 4.0) * i
@@ -666,9 +688,11 @@ def chart_kv_throughput_concurrency(dataset):
             f'<line x1="{p1_x}" y1="{y_pos:.1f}" x2="{p1_x + p1_w}" y2="{y_pos:.1f}" '
             f'stroke="{COLOR_LINE}" stroke-dasharray="3,3" stroke-width="1"/>'
         )
+        step_k = (max_set / 4.0) / 1000.0
+        lbl = f"{val/1000.0:.0f} kops/s" if step_k.is_integer() else f"{val/1000.0:.1f} kops/s"
         svg.append(
             f'<text x="{p1_x - 10}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
-            f'font-size="9.5" text-anchor="end">{val/1000.0:.1f} kops/s</text>'
+            f'font-size="9.5" text-anchor="end">{lbl}</text>'
         )
 
     b_w = 48
@@ -684,6 +708,10 @@ def chart_kv_throughput_concurrency(dataset):
         f'rx="4" fill="{COLOR_SET_1T}"/>'
     )
     svg.append(
+        f'<rect x="{cx_2t:.1f}" y="{y_2t:.1f}" width="{b_w}" height="{h_2t:.1f}" '
+        f'rx="4" fill="{COLOR_SET_2T}"/>'
+    )
+    svg.append(
         f'<text x="{cx_1t + b_w/2:.1f}" y="{y_1t - 8:.1f}" fill="{COLOR_TEXT}" '
         f'font-size="10" font-weight="bold" text-anchor="middle">'
         f'{format_throughput(set_1t)}</text>'
@@ -691,11 +719,6 @@ def chart_kv_throughput_concurrency(dataset):
     svg.append(
         f'<text x="{cx_1t + b_w/2:.1f}" y="{p1_y + p1_h + 18}" fill="{COLOR_SUBTLE}" '
         f'font-size="10" text-anchor="middle">1 Thread</text>'
-    )
-
-    svg.append(
-        f'<rect x="{cx_2t:.1f}" y="{y_2t:.1f}" width="{b_w}" height="{h_2t:.1f}" '
-        f'rx="4" fill="{COLOR_SET_2T}"/>'
     )
     svg.append(
         f'<text x="{cx_2t + b_w/2:.1f}" y="{y_2t - 8:.1f}" fill="{COLOR_TEXT}" '
@@ -707,10 +730,18 @@ def chart_kv_throughput_concurrency(dataset):
         f'font-size="10" text-anchor="middle">2 Threads</text>'
     )
 
-    svg.append(
-        f'<text x="{p1_x + p1_w/2:.1f}" y="{p1_y + 40}" fill="#d20f39" font-size="10" '
-        f'font-weight="bold" text-anchor="middle">-75.6% Lock Contention</text>'
-    )
+    if set_1t > 0.0:
+        set_pct = ((set_2t - set_1t) / set_1t) * 100.0
+        if set_pct >= 0.0:
+            set_ann_text = f"+{set_pct:.1f}% Concurrency Speedup"
+            set_ann_col = "#1e66f5"
+        else:
+            set_ann_text = f"{set_pct:.1f}% Lock Contention"
+            set_ann_col = "#d20f39"
+        svg.append(
+            f'<text x="{p1_x + p1_w/2:.1f}" y="{p1_y + 36}" fill="{set_ann_col}" '
+            f'font-size="10" font-weight="bold" text-anchor="middle">{set_ann_text}</text>'
+        )
 
     p2_x, p2_y, p2_w, p2_h = 445, 100, 530, 310
     svg.append(
@@ -727,7 +758,7 @@ def chart_kv_throughput_concurrency(dataset):
     get_2t = kv.get("get_perf_multi_tx", {}).get("throughput_ops_sec", 0.0)
     del_1t = kv.get("del_perf", {}).get("throughput_ops_sec", 0.0)
     del_2t = kv.get("del_perf_multi_tx", {}).get("throughput_ops_sec", 0.0)
-    max_read = 1_800_000.0
+    max_read = calc_nice_ceiling(max(get_1t, get_2t, del_1t, del_2t, 100_000.0) * 1.15, 4)
 
     for i in range(5):
         val = (max_read / 4.0) * i
@@ -736,9 +767,11 @@ def chart_kv_throughput_concurrency(dataset):
             f'<line x1="{p2_x}" y1="{y_pos:.1f}" x2="{p2_x + p2_w}" y2="{y_pos:.1f}" '
             f'stroke="{COLOR_LINE}" stroke-dasharray="3,3" stroke-width="1"/>'
         )
+        step_m = (max_read / 4.0) / 1_000_000.0
+        lbl = f"{val/1_000_000.0:.1f} Mops/s" if step_m < 10.0 else f"{val/1_000_000.0:.0f} Mops/s"
         svg.append(
             f'<text x="{p2_x - 10}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
-            f'font-size="9.5" text-anchor="end">{val/1_000_000.0:.2f} Mops/s</text>'
+            f'font-size="9.5" text-anchor="end">{lbl}</text>'
         )
 
     get_cx = p2_x + p2_w * 0.28
@@ -747,21 +780,23 @@ def chart_kv_throughput_concurrency(dataset):
     y_g1 = p2_y + p2_h - 20 - h_g1
     y_g2 = p2_y + p2_h - 20 - h_g2
 
+    gx1 = get_cx - b_w - 7
+    gx2 = get_cx + 7
     svg.append(
-        f'<rect x="{get_cx - b_w - 4:.1f}" y="{y_g1:.1f}" width="{b_w}" height="{h_g1:.1f}" '
+        f'<rect x="{gx1:.1f}" y="{y_g1:.1f}" width="{b_w}" height="{h_g1:.1f}" '
         f'rx="4" fill="{COLOR_GET_1T}"/>'
     )
     svg.append(
-        f'<text x="{get_cx - b_w/2 - 4:.1f}" y="{y_g1 - 8:.1f}" fill="{COLOR_TEXT}" '
+        f'<rect x="{gx2:.1f}" y="{y_g2:.1f}" width="{b_w}" height="{h_g2:.1f}" '
+        f'rx="4" fill="{COLOR_GET_2T}"/>'
+    )
+    svg.append(
+        f'<text x="{gx1 + b_w/2:.1f}" y="{y_g1 - 8:.1f}" fill="{COLOR_TEXT}" '
         f'font-size="10" font-weight="bold" text-anchor="middle">'
         f'{format_throughput(get_1t)}</text>'
     )
     svg.append(
-        f'<rect x="{get_cx + 4:.1f}" y="{y_g2:.1f}" width="{b_w}" height="{h_g2:.1f}" '
-        f'rx="4" fill="{COLOR_GET_2T}"/>'
-    )
-    svg.append(
-        f'<text x="{get_cx + b_w/2 + 4:.1f}" y="{y_g2 - 8:.1f}" fill="{COLOR_TEXT}" '
+        f'<text x="{gx2 + b_w/2:.1f}" y="{y_g2 - 8:.1f}" fill="{COLOR_TEXT}" '
         f'font-size="10" font-weight="bold" text-anchor="middle">'
         f'{format_throughput(get_2t)}</text>'
     )
@@ -780,21 +815,23 @@ def chart_kv_throughput_concurrency(dataset):
     y_d1 = p2_y + p2_h - 20 - h_d1
     y_d2 = p2_y + p2_h - 20 - h_d2
 
+    dx1 = del_cx - b_w - 7
+    dx2 = del_cx + 7
     svg.append(
-        f'<rect x="{del_cx - b_w - 4:.1f}" y="{y_d1:.1f}" width="{b_w}" height="{h_d1:.1f}" '
+        f'<rect x="{dx1:.1f}" y="{y_d1:.1f}" width="{b_w}" height="{h_d1:.1f}" '
         f'rx="4" fill="{COLOR_DEL_1T}"/>'
     )
     svg.append(
-        f'<text x="{del_cx - b_w/2 - 4:.1f}" y="{y_d1 - 8:.1f}" fill="{COLOR_TEXT}" '
+        f'<rect x="{dx2:.1f}" y="{y_d2:.1f}" width="{b_w}" height="{h_d2:.1f}" '
+        f'rx="4" fill="{COLOR_DEL_2T}"/>'
+    )
+    svg.append(
+        f'<text x="{dx1 + b_w/2:.1f}" y="{y_d1 - 8:.1f}" fill="{COLOR_TEXT}" '
         f'font-size="10" font-weight="bold" text-anchor="middle">'
         f'{format_throughput(del_1t)}</text>'
     )
     svg.append(
-        f'<rect x="{del_cx + 4:.1f}" y="{y_d2:.1f}" width="{b_w}" height="{h_d2:.1f}" '
-        f'rx="4" fill="{COLOR_DEL_2T}"/>'
-    )
-    svg.append(
-        f'<text x="{del_cx + b_w/2 + 4:.1f}" y="{y_d2 - 8:.1f}" fill="{COLOR_TEXT}" '
+        f'<text x="{dx2 + b_w/2:.1f}" y="{y_d2 - 8:.1f}" fill="{COLOR_TEXT}" '
         f'font-size="10" font-weight="bold" text-anchor="middle">'
         f'{format_throughput(del_2t)}</text>'
     )
@@ -845,32 +882,6 @@ def chart_kv_throughput_log_concurrency(dataset):
         f'fill="{COLOR_SURFACE}" rx="6" stroke="{COLOR_LINE}" stroke-width="1"/>'
     )
 
-    log_min = 3.0
-    log_max = 6.5
-
-    def y_log(ops):
-        val = math.log10(max(ops, 1000.0))
-        ratio = (val - log_min) / (log_max - log_min)
-        return p_y + p_h - 20 - ratio * (p_h - 40)
-
-    ticks = [
-        (1_000, "1 kops/s"),
-        (10_000, "10 kops/s"),
-        (100_000, "100 kops/s"),
-        (1_000_000, "1 Mops/s"),
-        (2_000_000, "2 Mops/s"),
-    ]
-    for val, lbl in ticks:
-        y_pos = y_log(val)
-        svg.append(
-            f'<line x1="{p_x}" y1="{y_pos:.1f}" x2="{p_x + p_w}" y2="{y_pos:.1f}" '
-            f'stroke="{COLOR_LINE}" stroke-dasharray="3,3" stroke-width="1"/>'
-        )
-        svg.append(
-            f'<text x="{p_x - 10}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
-            f'font-size="9" text-anchor="end">{lbl}</text>'
-        )
-
     items = [
         (
             "SET (80/20 New/Update)",
@@ -895,6 +906,51 @@ def chart_kv_throughput_log_concurrency(dataset):
         ),
     ]
 
+    all_ops = [t for _, t1, t2, _, _ in items for t in (t1, t2) if t > 0.0]
+    max_ops = max(all_ops) if all_ops else 2_000_000.0
+
+    ticks = [
+        (1_000, "1 kops/s"),
+        (10_000, "10 kops/s"),
+        (100_000, "100 kops/s"),
+        (1_000_000, "1 Mops/s"),
+    ]
+    if max_ops > 1_000_000.0:
+        if max_ops <= 2_000_000.0:
+            ticks.append((2_000_000, "2 Mops/s"))
+            top_val = 2_200_000.0
+        elif max_ops <= 5_000_000.0:
+            ticks.extend([(2_000_000, "2 Mops/s"), (5_000_000, "5 Mops/s")])
+            top_val = 5_500_000.0
+        elif max_ops <= 10_000_000.0:
+            ticks.extend([(5_000_000, "5 Mops/s"), (10_000_000, "10 Mops/s")])
+            top_val = 12_000_000.0
+        else:
+            ticks.extend([(10_000_000, "10 Mops/s"), (20_000_000, "20 Mops/s")])
+            top_val = max(22_000_000.0, max_ops * 1.15)
+    else:
+        ticks.append((2_000_000, "2 Mops/s"))
+        top_val = 2_200_000.0
+
+    log_min = 3.0
+    log_max = math.log10(top_val)
+
+    def y_log(ops):
+        val = math.log10(max(ops, 1000.0))
+        ratio = (val - log_min) / (log_max - log_min)
+        return p_y + p_h - 20 - ratio * (p_h - 40)
+
+    for val, lbl in ticks:
+        y_pos = y_log(val)
+        svg.append(
+            f'<line x1="{p_x}" y1="{y_pos:.1f}" x2="{p_x + p_w}" y2="{y_pos:.1f}" '
+            f'stroke="{COLOR_LINE}" stroke-dasharray="3,3" stroke-width="1"/>'
+        )
+        svg.append(
+            f'<text x="{p_x - 10}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
+            f'font-size="9" text-anchor="end">{lbl}</text>'
+        )
+
     group_w = p_w / 3.0
     bar_w = 42
 
@@ -905,21 +961,20 @@ def chart_kv_throughput_log_concurrency(dataset):
         h1 = (p_y + p_h - 20) - y1
         h2 = (p_y + p_h - 20) - y2
 
-        bx1 = cx - bar_w - 4
+        bx1 = cx - bar_w - 7
+        bx2 = cx + 7
         svg.append(
             f'<rect x="{bx1:.1f}" y="{y1:.1f}" width="{bar_w}" height="{h1:.1f}" '
             f'rx="4" fill="{c1}"/>'
         )
         svg.append(
+            f'<rect x="{bx2:.1f}" y="{y2:.1f}" width="{bar_w}" height="{h2:.1f}" '
+            f'rx="4" fill="{c2}"/>'
+        )
+        svg.append(
             f'<text x="{bx1 + bar_w/2:.1f}" y="{y1 - 8:.1f}" fill="{COLOR_TEXT}" '
             f'font-size="9.5" font-weight="bold" text-anchor="middle">'
             f'{format_throughput(t1)}</text>'
-        )
-
-        bx2 = cx + 4
-        svg.append(
-            f'<rect x="{bx2:.1f}" y="{y2:.1f}" width="{bar_w}" height="{h2:.1f}" '
-            f'rx="4" fill="{c2}"/>'
         )
         svg.append(
             f'<text x="{bx2 + bar_w/2:.1f}" y="{y2 - 8:.1f}" fill="{COLOR_TEXT}" '
@@ -1260,33 +1315,6 @@ def chart_concurrency_scaling_efficiency(dataset):
         f'fill="{COLOR_SURFACE}" rx="6" stroke="{COLOR_LINE}" stroke-width="1"/>'
     )
 
-    max_eff = 1.2
-
-    def y_eff(val):
-        return p_y + p_h - 20 - (val / max_eff) * (p_h - 40)
-
-    y_parity = y_eff(1.0)
-    svg.append(
-        f'<line x1="{p_x}" y1="{y_parity:.1f}" x2="{p_x + p_w}" y2="{y_parity:.1f}" '
-        f'stroke="#d20f39" stroke-dasharray="4,4" stroke-width="1.5"/>'
-    )
-    svg.append(
-        f'<text x="{p_x + p_w - 6}" y="{y_parity - 6:.1f}" fill="#d20f39" '
-        f'font-size="9.5" font-weight="bold" text-anchor="end">1.0x (Parity Baseline)</text>'
-    )
-
-    for i in range(7):
-        val = 0.2 * i
-        y_pos = y_eff(val)
-        svg.append(
-            f'<line x1="{p_x}" y1="{y_pos:.1f}" x2="{p_x + p_w}" y2="{y_pos:.1f}" '
-            f'stroke="{COLOR_LINE}" stroke-dasharray="3,3" stroke-width="1"/>'
-        )
-        svg.append(
-            f'<text x="{p_x - 8}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
-            f'font-size="9" text-anchor="end">{val:.1f}x</text>'
-        )
-
     set_eff = (
         kv.get("set_perf_multi_tx", {}).get("throughput_ops_sec", 0.0)
         / max(kv.get("set_perf", {}).get("throughput_ops_sec", 1.0), 1.0)
@@ -1300,10 +1328,52 @@ def chart_concurrency_scaling_efficiency(dataset):
         / max(kv.get("del_perf", {}).get("throughput_ops_sec", 1.0), 1.0)
     )
 
+    peak_eff = max(set_eff, get_eff, del_eff, 1.0)
+    if peak_eff <= 1.15:
+        max_eff = 1.2
+        step_eff = 0.2
+    elif peak_eff <= 2.2:
+        max_eff = 2.5
+        step_eff = 0.5
+    else:
+        max_eff = math.ceil(peak_eff * 1.15)
+        step_eff = 0.5 if max_eff <= 3.5 else 1.0
+
+    def y_eff(val):
+        return p_y + p_h - 20 - (val / max_eff) * (p_h - 40)
+
+    y_parity = y_eff(1.0)
+    svg.append(
+        f'<line x1="{p_x}" y1="{y_parity:.1f}" x2="{p_x + p_w}" y2="{y_parity:.1f}" '
+        f'stroke="#d20f39" stroke-dasharray="4,4" stroke-width="1.5"/>'
+    )
+
+    n_ticks = int(round(max_eff / step_eff)) + 1
+    for i in range(n_ticks):
+        val = step_eff * i
+        y_pos = y_eff(val)
+        svg.append(
+            f'<line x1="{p_x}" y1="{y_pos:.1f}" x2="{p_x + p_w}" y2="{y_pos:.1f}" '
+            f'stroke="{COLOR_LINE}" stroke-dasharray="3,3" stroke-width="1"/>'
+        )
+        svg.append(
+            f'<text x="{p_x - 8}" y="{y_pos + 4:.1f}" fill="{COLOR_SUBTLE}" '
+            f'font-size="9" text-anchor="end">{val:.1f}x</text>'
+        )
+
+    def format_eff_note(eff, op_name):
+        if eff >= 1.0:
+            return f"{eff:.2f}x (Parallel Speedup)"
+        if op_name == "SET":
+            return f"{eff:.2f}x (Write Lock Contention)"
+        if op_name == "GET":
+            return f"{eff:.2f}x (Cache / Bus Contention)"
+        return f"{eff:.2f}x (Tombstone Contention)"
+
     bars = [
-        ("SET (Writes)", set_eff, COLOR_SET_1T, "0.24x (Write Lock Contention)"),
-        ("GET (Reads)", get_eff, COLOR_GET_1T, "0.69x (Cache / Bus Contention)"),
-        ("DEL (Deletes)", del_eff, COLOR_DEL_1T, "0.68x (Tombstone Contention)"),
+        ("SET (Writes)", set_eff, COLOR_SET_1T, format_eff_note(set_eff, "SET")),
+        ("GET (Reads)", get_eff, COLOR_GET_1T, format_eff_note(get_eff, "GET")),
+        ("DEL (Deletes)", del_eff, COLOR_DEL_1T, format_eff_note(del_eff, "DEL")),
     ]
 
     bw = 70
@@ -1329,6 +1399,11 @@ def chart_concurrency_scaling_efficiency(dataset):
             f'<text x="{cx:.1f}" y="{p_y + p_h + 38}" fill="{COLOR_SUBTLE}" '
             f'font-size="9.5" text-anchor="middle">{note}</text>'
         )
+
+    svg.append(
+        f'<text x="{p_x + p_w - 6}" y="{y_parity - 6:.1f}" fill="#d20f39" '
+        f'font-size="9.5" font-weight="bold" text-anchor="end">Baseline</text>'
+    )
 
     svg.append("</svg>")
     return "\n".join(svg)

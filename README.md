@@ -516,7 +516,7 @@ Latency distributions capture response times from median (`p50`) through extreme
 <img src="assets/kv_tail_latency_split_threads.svg" width="100%"
   alt="Tail Latency Distribution" />
 
-Read and delete operations exhibit near-flat percentile curves across the entire distribution,
+Read and delete operations exhibit near-flat percentile curves across the entire distribution:
 
 * Point lookups (`GET`): Median latency remains sub-microsecond; at higher percentiles up to `p99`,
   latencies stay tightly bounded under lock-free memory mapping
@@ -535,7 +535,7 @@ under multi-threaded contention due to OCC validation conflicts and NVMe writeba
 <img src="assets/kv_latency_cdf_curves.svg" width="100%"
   alt="Latency Percentile Progression Curves" />
 
-The semi-log percentile progression curves highlight the sharp inflection point for write mutations,
+The semi-log percentile progression curves highlight the sharp inflection point for write mutations:
 
 * Sub-microsecond median write: Sequential writes commit into active memory pages with low median
   latency
@@ -554,7 +554,7 @@ tables and internal transaction state after completing 0x10_0000 operations
 <img src="assets/kv_memory_footprint_concurrency.svg" width="100%"
   alt="Resident Memory Footprint Under Concurrency" />
 
-Physical storage growth on NVMe tracks sequential allocation while memory footprint remains bounded,
+Physical storage growth on NVMe tracks sequential allocation while memory footprint remains bounded:
 
 * Demand-paged single thread: Single-worker transactions maintain a resident memory footprint well
   below on-disk database size because unreferenced pages remain un-faulted by the kernel
@@ -575,7 +575,7 @@ eager in-memory lookup cache construction
 <img src="assets/scale_perf_combined_horizontal.svg" width="100%"
   alt="Database Open Latency and Resource Footprint Scaling" />
 
-Cold startup behavior exhibits two distinct operational modes,
+Cold startup behavior exhibits two distinct operational modes:
 
 * Raw database open (`lookup_cache_disabled`): Bypasses key traversal entirely; startup latency
   remains sub-millisecond and flat; resident memory footprint remains pinned at a constant 4 KiB
@@ -597,7 +597,7 @@ without experiencing non-linear compaction spikes
 <img src="assets/scale_perf_cache_overhead.svg" width="100%"
   alt="In-Memory Lookup Cache Overhead and RAM Density" />
 
-The cache overhead profile illustrates the operational trade-offs of eager indexing,
+The cache overhead profile illustrates the operational trade-offs of eager indexing:
 
 * Latency multiplier: The startup time ratio between cached and raw open remains bounded while cold
   open stays sub-millisecond across tested intervals

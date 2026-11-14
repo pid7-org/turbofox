@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.302] - 2026-11-14
+
+- Improved concurrent read throughput and reduced contention during parallel lookups
+- Reduced latency for point read operations across key-value workloads
+- Lowered CPU overhead during value retrieval
+
 ## [0.0.301] - 2026-11-08
 
 - **Breaking:** Minimum Supported Rust Version (MSRV) raised to 1.89.0

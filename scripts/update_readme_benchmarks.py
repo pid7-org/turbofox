@@ -4,31 +4,32 @@
 # Benchmarks section with telemetry metadata and optional
 # commit-pinned image URLs
 #
-# Basic usage (relative asset paths, local/GitHub rendering):
+# Automated release workflow:
 #
-#   python scripts/update_readme_benchmarks.py
+#   1. Execute benchmarks via bencher/run.sh (output to tmp/assets/)
+#   2. Run this script:
 #
-# Pin images to a specific commit for crates.io immutability:
+#        python scripts/update_readme_benchmarks.py
 #
-#   python scripts/update_readme_benchmarks.py --commit $(git rev-parse HEAD)
+#      The script automatically executes the two-stage commit pipeline:
+#        a. Synchronizes SVGs from tmp/assets/ to assets/
+#        b. Prompts to commit assets/ (or accepts default commit message),
+#           capturing the new immutable commit SHA
+#        c. Rewrites README <img> tags with raw.githubusercontent.com URLs
+#           anchored to that immutable commit SHA
+#        d. Prompts to commit README.md (or accepts default commit message)
 #
-# When --commit is supplied, every <img src="assets/..."> reference
-# in the generated Benchmarks section is rewritten to an absolute
-# raw.githubusercontent.com URL anchored at that commit SHA; this
-# ensures crates.io (which resolves relative paths against the
-# default branch HEAD) serves the exact images that were current at
-# publish time rather than whatever is on `main` today
+# Non-interactive / CI usage:
 #
-# Auto-detect HEAD (equivalent to the above):
+#   python scripts/update_readme_benchmarks.py --non-interactive
 #
-#   python scripts/update_readme_benchmarks.py --commit HEAD
+# Skip git commits (pure local generation with relative URLs):
 #
-# Typical release workflow:
+#   python scripts/update_readme_benchmarks.py --no-commit
 #
-#   1. Generate / update benchmark SVGs into tmp/assets/
-#   2. Run this script with --commit HEAD
-#   3. Commit the updated README.md and assets/
-#   4. Tag and cargo publish
+# Override commit pin manually:
+#
+#   python scripts/update_readme_benchmarks.py --commit <SHA>
 #
 
 import argparse
@@ -44,6 +45,10 @@ DEFAULT_SRC_DIR = "tmp/assets"
 DEFAULT_DEST_DIR = "assets"
 DEFAULT_RESULTS_JSON = "tmp/assets/turbofox_benchmark_results.json"
 DEFAULT_README = "README.md"
+DEFAULT_ASSET_COMMIT_MSG = "(assets) refresh KV and scale benchmark charts [skip ci]"
+DEFAULT_README_COMMIT_MSG = (
+    "(docs) synchronize README benchmarks and pin asset URLs [skip ci]"
+)
 REPO_RAW_BASE = (
     "https://raw.githubusercontent.com/pid7-org/turbofox"
 )
@@ -54,7 +59,7 @@ def resolve_commit(commit_arg: str | None) -> str | None:
 
     Returns None when no commit pinning is requested; raises on
     resolution failure so the caller never silently falls back to
-    relative paths.
+    relative paths
     """
     if commit_arg is None:
         return None
@@ -70,6 +75,49 @@ def resolve_commit(commit_arg: str | None) -> str | None:
         raise RuntimeError(
             f"Failed to resolve commit '{commit_arg}': {exc}"
         ) from exc
+
+
+def has_working_tree_changes(paths: list[str]) -> bool:
+    """Checks whether any specified paths have staged or unstaged changes."""
+    cmd = ["git", "status", "--porcelain", "--"] + paths
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return bool(res.stdout.strip())
+
+
+def prompt_commit_message(
+    default_msg: str,
+    target_name: str,
+    non_interactive: bool = False,
+) -> str | None:
+    """Obtains commit message via interactive input or default; returns None to skip."""
+    if non_interactive or not sys.stdin.isatty():
+        return default_msg
+
+    print(f"\n--- Commit Stage: {target_name} ---")
+    print(f"Default message: {default_msg}")
+    prompt = "Enter custom message (or press Enter for default, 'skip' to omit): "
+    try:
+        user_input = input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nNotice: Commit prompt cancelled; skipping commit", file=sys.stderr)
+        return None
+
+    if not user_input:
+        return default_msg
+    if user_input.lower() in ("s", "skip", "no", "n"):
+        return None
+    return user_input
+
+
+def git_commit_stage(files: list[str], message: str) -> str | None:
+    """Stages specified paths and creates a git commit; returns resulting commit SHA."""
+    try:
+        subprocess.run(["git", "add", "--"] + files, check=True)
+        subprocess.run(["git", "commit", "-m", message], check=True)
+        return resolve_commit("HEAD")
+    except subprocess.CalledProcessError as exc:
+        print(f"Warning: Git commit failed for {files}: {exc}", file=sys.stderr)
+        return None
 
 TOC_BENCHMARKS = """- [Benchmarks](#benchmarks)
   - [§1 · Concurrency Dynamics & Throughput Scaling](#1--concurrency-dynamics--throughput-scaling)
@@ -117,6 +165,12 @@ def format_env_items(metadata: dict) -> list[str]:
     total_bytes = mem.get("total_bytes", 8153268224)
     hugepage_bytes = mem.get("hugepage_size_bytes", 2097152)
 
+    total_gib = round(total_bytes / (1024**3))
+    hugepage_mib = round(hugepage_bytes / (1024**2))
+
+    gib_hex = f"0x0{total_gib}" if total_gib <= 9 else hex(total_gib)
+    mib_hex = f"0x0{hugepage_mib}" if hugepage_mib <= 9 else hex(hugepage_mib)
+
     storage = metadata.get("storage", {})
     device = storage.get("device", "/dev/nvme1n1")
     bench_path = storage.get("benchmark_path", "/mnt/nvme0n1")
@@ -134,15 +188,26 @@ def format_env_items(metadata: dict) -> list[str]:
     cores_hex = f"0x0{cores}" if cores <= 9 else hex(cores)
 
     return [
-        f"- Host instance: AWS EC2 `{inst}` ({vcpus_hex} vCPUs, {cores_hex} physical cores,\n"
-        f"  {model}, AVX-512 / AVX2 / SHA-NI vector extensions)",
-        f"- Host memory: 0x08 GiB host DDR4 system RAM ({total_bytes:,} bytes); Linux hugepages enabled at\n"
-        f"  0x02 MiB ({hugepage_bytes:,} bytes)",
-        f"- Storage target: Direct local NVMe SSD (`{device}`, mounted at `{bench_path}`), formatted\n"
-        f"  under {fs.upper()} (`{mount_opts}`)",
+        (
+            f"- Host instance: AWS EC2 `{inst}` ({vcpus_hex} vCPUs, {cores_hex} physical cores,\n"
+            f"  {model}, AVX-512 / AVX2 / SHA-NI vector extensions)"
+        ),
+        (
+            f"- Host memory: {gib_hex} GiB host DDR4 system RAM ({total_bytes:,} bytes); "
+            "Linux hugepages enabled at\n"
+            f"  {mib_hex} MiB ({hugepage_bytes:,} bytes)"
+        ),
+        (
+            f"- Storage target: Direct local NVMe SSD (`{device}`, mounted at `{bench_path}`), "
+            "formatted\n"
+            f"  under {fs.upper()} (`{mount_opts}`)"
+        ),
         f"- Operating system: Linux `{kernel}` ({arch})",
-        "- Operation volume: 0x10_0000 (1,048,576) uniform operations per key-value suite; scaling\n"
-        "  benchmarks sweep from 0x00 to 0x8000 (32,768) keys",
+        (
+            "- Operation volume: 0x10_0000 (1,048,576) uniform operations per key-value suite; "
+            "scaling\n"
+            "  benchmarks sweep from 0x00 to 0x8000 (32,768) keys"
+        ),
     ]
 
 
@@ -386,7 +451,7 @@ def main() -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Validate and print markdown without writing files",
+        help="Validate and print markdown without writing files or committing",
     )
     parser.add_argument(
         "--commit",
@@ -394,48 +459,103 @@ def main() -> None:
         help=(
             "Git commit ref (SHA, HEAD, tag) to pin image URLs to; "
             "resolved to a full SHA via git rev-parse. "
-            "When set, <img> sources become absolute "
-            "raw.githubusercontent.com URLs anchored at that "
-            "commit, ensuring crates.io serves immutable images"
+            "When omitted and commits are enabled, the script captures "
+            "the SHA produced by committing the assets directory"
         ),
+    )
+    parser.add_argument(
+        "--no-commit",
+        action="store_true",
+        help="Skip automatic git commits for assets and README",
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Bypass interactive prompts and accept default commit messages",
+    )
+    parser.add_argument(
+        "--asset-commit-msg",
+        default=DEFAULT_ASSET_COMMIT_MSG,
+        help="Commit message for assets synchronization",
+    )
+    parser.add_argument(
+        "--readme-commit-msg",
+        default=DEFAULT_README_COMMIT_MSG,
+        help="Commit message for README documentation update",
     )
 
     args = parser.parse_args()
 
-    # Resolve commit reference to full SHA if provided
-    commit_sha = resolve_commit(args.commit)
+    commit_mode = "disabled" if (args.no_commit or args.dry_run) else (
+        "non-interactive" if args.non_interactive else "interactive"
+    )
 
-    print(f"=== TurboFox Benchmark Documentation Updater ===")
-    print(f"Source assets : {args.src}")
-    print(f"Target assets : {args.dest}")
-    print(f"Results JSON  : {args.results}")
-    print(f"Target README : {args.readme}")
-    if commit_sha:
-        print(f"Commit pin    : {commit_sha}")
+    print("=== TurboFox Benchmark Documentation Updater ===")
+    print(f"Source assets   : {args.src}")
+    print(f"Target assets   : {args.dest}")
+    print(f"Results JSON    : {args.results}")
+    print(f"Target README   : {args.readme}")
+    print(f"Commit mode     : {commit_mode}")
 
-    # Copy assets if source exists and not dry-run
+    # Stage 1: Synchronize SVG assets
     if os.path.exists(args.src) and not args.dry_run:
         copied = copy_svg_assets(args.src, args.dest)
-        print(f"Synchronized {len(copied)} SVG assets from {args.src} -> {args.dest}")
+        count = len(copied)
+        count_hex = f"0x0{count}" if count <= 9 else hex(count)
+        print(f"Synchronized {count_hex} ({count}) SVG assets: {args.src} -> {args.dest}")
     elif args.dry_run:
         print("Dry-run mode: skipping asset copy")
     else:
         print(f"Notice: Source directory {args.src} does not exist; skipping asset copy")
 
-    # Load telemetry metadata
+    # Stage 2: Commit asset changes to acquire immutable commit SHA
+    commit_sha = resolve_commit(args.commit) if args.commit else None
+
+    if not args.no_commit and not args.dry_run:
+        if has_working_tree_changes([args.dest]):
+            msg = prompt_commit_message(
+                args.asset_commit_msg,
+                target_name=f"{args.dest}/",
+                non_interactive=args.non_interactive,
+            )
+            if msg:
+                committed_sha = git_commit_stage([args.dest], msg)
+                if committed_sha and not commit_sha:
+                    commit_sha = committed_sha
+                    print(f"Committed {args.dest}/ -> commit SHA: {commit_sha}")
+            else:
+                print(f"Notice: Asset commit omitted by user")
+        else:
+            print(f"Notice: No working tree changes detected in {args.dest}/")
+            if not commit_sha:
+                try:
+                    commit_sha = resolve_commit("HEAD")
+                    print(f"Using current HEAD commit pin: {commit_sha}")
+                except Exception:
+                    pass
+
+    if commit_sha:
+        print(f"Active commit pin : {commit_sha}")
+    else:
+        print("Active commit pin : None (using relative asset paths)")
+
+    # Stage 3: Load telemetry metadata and build Benchmarks section
     metadata = load_metadata(args.results)
     if metadata:
-        print(f"Loaded telemetry metadata for instance '{metadata.get('instance_type', 'unknown')}'")
+        inst_type = metadata.get("instance_type", "unknown")
+        print(f"Loaded telemetry metadata for instance '{inst_type}'")
     else:
         print("Notice: Telemetry metadata absent; using baseline environment specifications")
 
-    # Generate section markdown
     new_section = build_benchmarks_section(metadata, commit=commit_sha)
 
-    # Validate generated markdown
+    # Stage 4: Validate generated markdown style
     validation_errors = validate_markdown(new_section)
     if validation_errors:
-        print(f"Error: Generated markdown has {len(validation_errors)} style violations:", file=sys.stderr)
+        print(
+            f"Error: Generated markdown has {len(validation_errors)} style violations:",
+            file=sys.stderr,
+        )
         for err in validation_errors:
             print(f"  {err}", file=sys.stderr)
         sys.exit(1)
@@ -446,9 +566,26 @@ def main() -> None:
         print(new_section[:800] + "\n...\n")
         return
 
-    # Update README
+    # Stage 5: Update README.md
     update_readme_content(args.readme, new_section)
     print(f"Successfully updated {args.readme} with synchronized Benchmarks section")
+
+    # Stage 6: Commit README changes
+    if not args.no_commit and not args.dry_run:
+        if has_working_tree_changes([args.readme]):
+            msg = prompt_commit_message(
+                args.readme_commit_msg,
+                target_name=args.readme,
+                non_interactive=args.non_interactive,
+            )
+            if msg:
+                readme_sha = git_commit_stage([args.readme], msg)
+                if readme_sha:
+                    print(f"Committed {args.readme} -> commit SHA: {readme_sha}")
+            else:
+                print(f"Notice: README commit omitted by user")
+        else:
+            print(f"Notice: No working tree changes detected in {args.readme}")
 
 
 if __name__ == "__main__":

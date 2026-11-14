@@ -1,4 +1,4 @@
-<img src="assets/banner.png" width="100%" alt="TurboFox" />
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/banner.png" width="100%" alt="TurboFox" />
 
 [![Crates.io](https://img.shields.io/crates/v/turbofox?style=flat-square&logo=rust&logoColor=eff1f5&color=1e66f5&labelColor=4c4f69)](https://crates.io/crates/turbofox)
 [![Docs.rs](https://img.shields.io/docsrs/turbofox?style=flat-square&logo=docs.rs&logoColor=eff1f5&color=179299&labelColor=4c4f69)](https://docs.rs/turbofox)
@@ -471,7 +471,7 @@ against concurrent worker transactions across 0x10_0000 operations; workloads ev
 writes (`SET` with 80% new keys and 20% updates), point lookups (`GET` with 60% hits and 40%
 misses), and key deletions (`DEL` with 60% present keys and 40% missing)
 
-<img src="assets/kv_throughput_concurrency.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/kv_throughput_concurrency.svg" width="100%"
   alt="KV Operation Throughput Under Concurrency" />
 
 Point reads and deletions execute with sub-microsecond internal dispatch; because point reads are
@@ -479,14 +479,14 @@ lock-free and execute directly against memory-mapped pages without shared mutex 
 concurrency overhead on read throughput is dominated by CPU L1/L2 cache coherency traffic and memory
 bus contention between physical cores rather than engine-level synchronization barriers
 
-<img src="assets/kv_throughput_log_concurrency.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/kv_throughput_log_concurrency.svg" width="100%"
   alt="Operation Throughput Logarithmic Scale" />
 
 The continuous logarithmic throughput profile illustrates the architectural divide between
 in-memory dispatch and persistent storage commits; point reads and deletes operate across the
 mega-ops spectrum while writes track the persistent NVMe barrier regime
 
-<img src="assets/kv_concurrency_scaling_efficiency.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/kv_concurrency_scaling_efficiency.svg" width="100%"
   alt="Concurrency Scaling Efficiency" />
 
 In contrast, mutation writes (`SET`) isolate write lock and transaction commit contention,
@@ -496,7 +496,7 @@ In contrast, mutation writes (`SET`) isolate write lock and transaction commit c
   serialize atomic commit tickets, and synchronize page-level modifications; competing writers
   incur OCC retry cycles and page writeback delays under concurrent transaction pressure
 
-<img src="assets/kv_wall_clock_duration.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/kv_wall_clock_duration.svg" width="100%"
   alt="Total Execution Wall Time" />
 
 Translating throughput into real-world batch latency reveals the operational cost of NVMe commit
@@ -513,7 +513,7 @@ batches reflect the physical latency of dirty page flushing and OCC retry backof
 Latency distributions capture response times from median (`p50`) through extreme tail (`p99`,
 `p999`, and `max`), isolating where lock contention and NVMe persistence barriers impact callers
 
-<img src="assets/kv_tail_latency_split_threads.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/kv_tail_latency_split_threads.svg" width="100%"
   alt="Tail Latency Distribution" />
 
 Read and delete operations exhibit near-flat percentile curves across the entire distribution:
@@ -525,14 +525,14 @@ Read and delete operations exhibit near-flat percentile curves across the entire
 * Zero heap allocation on miss: Missing keys resolve via hash routing without traversing payload
   pages, avoiding memory allocator pressure and eliminating GC-style tail pauses
 
-<img src="assets/kv_tail_latency_grouped_bars.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/kv_tail_latency_grouped_bars.svg" width="100%"
   alt="Tail Latency Grouped Bars Comparison" />
 
 Direct head-to-head comparisons across percentile SLA tiers illustrate exact contention divergence;
 while median latencies across workloads remain tight, write tail latencies expand at higher tiers
 under multi-threaded contention due to OCC validation conflicts and NVMe writeback serialization
 
-<img src="assets/kv_latency_cdf_curves.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/kv_latency_cdf_curves.svg" width="100%"
   alt="Latency Percentile Progression Curves" />
 
 The semi-log percentile progression curves highlight the sharp inflection point for write mutations:
@@ -551,7 +551,7 @@ The semi-log percentile progression curves highlight the sharp inflection point 
 Peak resident set size (RSS) tracks actual physical memory consumed by host operating system page
 tables and internal transaction state after completing 0x10_0000 operations
 
-<img src="assets/kv_memory_footprint_concurrency.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/kv_memory_footprint_concurrency.svg" width="100%"
   alt="Resident Memory Footprint Under Concurrency" />
 
 Physical storage growth on NVMe tracks sequential allocation while memory footprint remains bounded:
@@ -572,7 +572,7 @@ Initialization benchmarks evaluate cold database startup duration and memory sca
 volume grows from 0x00 to 0x8000 (32,768) keys; configurations contrast raw initialization against
 eager in-memory lookup cache construction
 
-<img src="assets/scale_perf_combined_horizontal.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/scale_perf_combined_horizontal.svg" width="100%"
   alt="Database Open Latency and Resource Footprint Scaling" />
 
 Cold startup behavior exhibits two distinct operational modes:
@@ -586,7 +586,7 @@ Cold startup behavior exhibits two distinct operational modes:
   upfront cost amortizes lookup latencies for read-intensive workloads by routing subsequent reads
   in memory without disk navigation
 
-<img src="assets/scale_perf_combined_vertical.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/scale_perf_combined_vertical.svg" width="100%"
   alt="Database Open Latency and Resource Footprint Scaling Aligned" />
 
 Aligning open duration directly against backing resource consumption over a shared key axis reveals
@@ -594,7 +594,7 @@ the proportional relationship between disk allocation and cache latency; physica
 monotonically without external fragmentation, while cached open latency tracks hash bucket depth
 without experiencing non-linear compaction spikes
 
-<img src="assets/scale_perf_cache_overhead.svg" width="100%"
+<img src="https://raw.githubusercontent.com/pid7-org/turbofox/8b3bea340758bdcf12586db1377d2b12955eede9/assets/scale_perf_cache_overhead.svg" width="100%"
   alt="In-Memory Lookup Cache Overhead and RAM Density" />
 
 The cache overhead profile illustrates the operational trade-offs of eager indexing:

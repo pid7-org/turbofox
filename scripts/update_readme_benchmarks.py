@@ -1,4 +1,35 @@
 #!/usr/bin/env python3
+#
+# Synchronize benchmark SVG assets and regenerate the README
+# Benchmarks section with telemetry metadata and optional
+# commit-pinned image URLs
+#
+# Basic usage (relative asset paths, local/GitHub rendering):
+#
+#   python scripts/update_readme_benchmarks.py
+#
+# Pin images to a specific commit for crates.io immutability:
+#
+#   python scripts/update_readme_benchmarks.py --commit $(git rev-parse HEAD)
+#
+# When --commit is supplied, every <img src="assets/..."> reference
+# in the generated Benchmarks section is rewritten to an absolute
+# raw.githubusercontent.com URL anchored at that commit SHA; this
+# ensures crates.io (which resolves relative paths against the
+# default branch HEAD) serves the exact images that were current at
+# publish time rather than whatever is on `main` today
+#
+# Auto-detect HEAD (equivalent to the above):
+#
+#   python scripts/update_readme_benchmarks.py --commit HEAD
+#
+# Typical release workflow:
+#
+#   1. Generate / update benchmark SVGs into tmp/assets/
+#   2. Run this script with --commit HEAD
+#   3. Commit the updated README.md and assets/
+#   4. Tag and cargo publish
+#
 
 import argparse
 import glob
@@ -6,12 +37,39 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 
 DEFAULT_SRC_DIR = "tmp/assets"
 DEFAULT_DEST_DIR = "assets"
 DEFAULT_RESULTS_JSON = "tmp/assets/turbofox_benchmark_results.json"
 DEFAULT_README = "README.md"
+REPO_RAW_BASE = (
+    "https://raw.githubusercontent.com/pid7-org/turbofox"
+)
+
+
+def resolve_commit(commit_arg: str | None) -> str | None:
+    """Resolves a commit reference to a full SHA hex digest.
+
+    Returns None when no commit pinning is requested; raises on
+    resolution failure so the caller never silently falls back to
+    relative paths.
+    """
+    if commit_arg is None:
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", commit_arg],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        raise RuntimeError(
+            f"Failed to resolve commit '{commit_arg}': {exc}"
+        ) from exc
 
 TOC_BENCHMARKS = """- [Benchmarks](#benchmarks)
   - [§1 · Concurrency Dynamics & Throughput Scaling](#1--concurrency-dynamics--throughput-scaling)
@@ -88,9 +146,21 @@ def format_env_items(metadata: dict) -> list[str]:
     ]
 
 
-def build_benchmarks_section(metadata: dict) -> str:
-    """Builds the complete decoupled, results-agnostic Benchmarks Markdown section."""
+def build_benchmarks_section(
+    metadata: dict,
+    commit: str | None = None,
+) -> str:
+    """Builds the complete Benchmarks Markdown section.
+
+    When commit is provided, image sources use absolute
+    raw.githubusercontent.com URLs pinned to that SHA.
+    """
     env_items = "\n".join(format_env_items(metadata))
+
+    if commit:
+        asset_prefix = f"{REPO_RAW_BASE}/{commit}/assets"
+    else:
+        asset_prefix = "assets"
 
     return f"""## Benchmarks
 
@@ -105,7 +175,7 @@ against concurrent worker transactions across 0x10_0000 operations; workloads ev
 writes (`SET` with 80% new keys and 20% updates), point lookups (`GET` with 60% hits and 40%
 misses), and key deletions (`DEL` with 60% present keys and 40% missing)
 
-<img src="assets/kv_throughput_concurrency.svg" width="100%"
+<img src="{asset_prefix}/kv_throughput_concurrency.svg" width="100%"
   alt="KV Operation Throughput Under Concurrency" />
 
 Point reads and deletions execute with sub-microsecond internal dispatch; because point reads are
@@ -113,14 +183,14 @@ lock-free and execute directly against memory-mapped pages without shared mutex 
 concurrency overhead on read throughput is dominated by CPU L1/L2 cache coherency traffic and memory
 bus contention between physical cores rather than engine-level synchronization barriers
 
-<img src="assets/kv_throughput_log_concurrency.svg" width="100%"
+<img src="{asset_prefix}/kv_throughput_log_concurrency.svg" width="100%"
   alt="Operation Throughput Logarithmic Scale" />
 
 The continuous logarithmic throughput profile illustrates the architectural divide between
 in-memory dispatch and persistent storage commits; point reads and deletes operate across the
 mega-ops spectrum while writes track the persistent NVMe barrier regime
 
-<img src="assets/kv_concurrency_scaling_efficiency.svg" width="100%"
+<img src="{asset_prefix}/kv_concurrency_scaling_efficiency.svg" width="100%"
   alt="Concurrency Scaling Efficiency" />
 
 In contrast, mutation writes (`SET`) isolate write lock and transaction commit contention,
@@ -130,7 +200,7 @@ In contrast, mutation writes (`SET`) isolate write lock and transaction commit c
   serialize atomic commit tickets, and synchronize page-level modifications; competing writers
   incur OCC retry cycles and page writeback delays under concurrent transaction pressure
 
-<img src="assets/kv_wall_clock_duration.svg" width="100%"
+<img src="{asset_prefix}/kv_wall_clock_duration.svg" width="100%"
   alt="Total Execution Wall Time" />
 
 Translating throughput into real-world batch latency reveals the operational cost of NVMe commit
@@ -147,7 +217,7 @@ batches reflect the physical latency of dirty page flushing and OCC retry backof
 Latency distributions capture response times from median (`p50`) through extreme tail (`p99`,
 `p999`, and `max`), isolating where lock contention and NVMe persistence barriers impact callers
 
-<img src="assets/kv_tail_latency_split_threads.svg" width="100%"
+<img src="{asset_prefix}/kv_tail_latency_split_threads.svg" width="100%"
   alt="Tail Latency Distribution" />
 
 Read and delete operations exhibit near-flat percentile curves across the entire distribution:
@@ -159,14 +229,14 @@ Read and delete operations exhibit near-flat percentile curves across the entire
 * Zero heap allocation on miss: Missing keys resolve via hash routing without traversing payload
   pages, avoiding memory allocator pressure and eliminating GC-style tail pauses
 
-<img src="assets/kv_tail_latency_grouped_bars.svg" width="100%"
+<img src="{asset_prefix}/kv_tail_latency_grouped_bars.svg" width="100%"
   alt="Tail Latency Grouped Bars Comparison" />
 
 Direct head-to-head comparisons across percentile SLA tiers illustrate exact contention divergence;
 while median latencies across workloads remain tight, write tail latencies expand at higher tiers
 under multi-threaded contention due to OCC validation conflicts and NVMe writeback serialization
 
-<img src="assets/kv_latency_cdf_curves.svg" width="100%"
+<img src="{asset_prefix}/kv_latency_cdf_curves.svg" width="100%"
   alt="Latency Percentile Progression Curves" />
 
 The semi-log percentile progression curves highlight the sharp inflection point for write mutations:
@@ -185,7 +255,7 @@ The semi-log percentile progression curves highlight the sharp inflection point 
 Peak resident set size (RSS) tracks actual physical memory consumed by host operating system page
 tables and internal transaction state after completing 0x10_0000 operations
 
-<img src="assets/kv_memory_footprint_concurrency.svg" width="100%"
+<img src="{asset_prefix}/kv_memory_footprint_concurrency.svg" width="100%"
   alt="Resident Memory Footprint Under Concurrency" />
 
 Physical storage growth on NVMe tracks sequential allocation while memory footprint remains bounded:
@@ -206,7 +276,7 @@ Initialization benchmarks evaluate cold database startup duration and memory sca
 volume grows from 0x00 to 0x8000 (32,768) keys; configurations contrast raw initialization against
 eager in-memory lookup cache construction
 
-<img src="assets/scale_perf_combined_horizontal.svg" width="100%"
+<img src="{asset_prefix}/scale_perf_combined_horizontal.svg" width="100%"
   alt="Database Open Latency and Resource Footprint Scaling" />
 
 Cold startup behavior exhibits two distinct operational modes:
@@ -220,7 +290,7 @@ Cold startup behavior exhibits two distinct operational modes:
   upfront cost amortizes lookup latencies for read-intensive workloads by routing subsequent reads
   in memory without disk navigation
 
-<img src="assets/scale_perf_combined_vertical.svg" width="100%"
+<img src="{asset_prefix}/scale_perf_combined_vertical.svg" width="100%"
   alt="Database Open Latency and Resource Footprint Scaling Aligned" />
 
 Aligning open duration directly against backing resource consumption over a shared key axis reveals
@@ -228,7 +298,7 @@ the proportional relationship between disk allocation and cache latency; physica
 monotonically without external fragmentation, while cached open latency tracks hash bucket depth
 without experiencing non-linear compaction spikes
 
-<img src="assets/scale_perf_cache_overhead.svg" width="100%"
+<img src="{asset_prefix}/scale_perf_cache_overhead.svg" width="100%"
   alt="In-Memory Lookup Cache Overhead and RAM Density" />
 
 The cache overhead profile illustrates the operational trade-offs of eager indexing:
@@ -279,7 +349,8 @@ def validate_markdown(section: str) -> list[str]:
     """Validates markdown line length and punctuation rules."""
     errors = []
     for idx, line in enumerate(section.splitlines(), start=1):
-        if len(line) > 100:
+        is_img_tag = line.lstrip().startswith("<img ")
+        if len(line) > 100 and not is_img_tag:
             errors.append(f"Line {idx} exceeds 100 characters ({len(line)}): {line}")
         if line.rstrip().endswith("."):
             errors.append(f"Line {idx} ends with a full stop: {line}")
@@ -317,14 +388,30 @@ def main() -> None:
         action="store_true",
         help="Validate and print markdown without writing files",
     )
+    parser.add_argument(
+        "--commit",
+        default=None,
+        help=(
+            "Git commit ref (SHA, HEAD, tag) to pin image URLs to; "
+            "resolved to a full SHA via git rev-parse. "
+            "When set, <img> sources become absolute "
+            "raw.githubusercontent.com URLs anchored at that "
+            "commit, ensuring crates.io serves immutable images"
+        ),
+    )
 
     args = parser.parse_args()
+
+    # Resolve commit reference to full SHA if provided
+    commit_sha = resolve_commit(args.commit)
 
     print(f"=== TurboFox Benchmark Documentation Updater ===")
     print(f"Source assets : {args.src}")
     print(f"Target assets : {args.dest}")
     print(f"Results JSON  : {args.results}")
     print(f"Target README : {args.readme}")
+    if commit_sha:
+        print(f"Commit pin    : {commit_sha}")
 
     # Copy assets if source exists and not dry-run
     if os.path.exists(args.src) and not args.dry_run:
@@ -343,7 +430,7 @@ def main() -> None:
         print("Notice: Telemetry metadata absent; using baseline environment specifications")
 
     # Generate section markdown
-    new_section = build_benchmarks_section(metadata)
+    new_section = build_benchmarks_section(metadata, commit=commit_sha)
 
     # Validate generated markdown
     validation_errors = validate_markdown(new_section)
